@@ -50,7 +50,7 @@ jobs:
 
   tests:
 
-    needs: [check-requirements]
+    #needs: [check-requirements]
 
     runs-on: ubuntu-latest
     timeout-minutes: 45
