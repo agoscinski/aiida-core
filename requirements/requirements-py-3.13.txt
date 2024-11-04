@@ -108,7 +108,7 @@ overrides==7.4.0
 packaging==23.2
 palettable==3.3.3
 pamqp==3.3.0
-pandas==2.1.1
+pandas==2.2.3
 pandocfilters==1.5.0
 paramiko==3.4.1
 parso==0.8.3
