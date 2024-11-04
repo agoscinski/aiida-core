@@ -103,7 +103,7 @@ nest-asyncio==1.5.8
 networkx==3.2
 notebook==6.5.4
 notebook-shim==0.2.3
-numpy==1.26.1
+numpy==1.26.2
 overrides==7.4.0
 packaging==23.2
 palettable==3.3.3
