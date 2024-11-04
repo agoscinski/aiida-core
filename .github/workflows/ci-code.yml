@@ -118,7 +118,7 @@ jobs:
 
   tests-presto:
 
-    needs: [check-requirements]
+    #needs: [check-requirements]
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -144,7 +144,7 @@ jobs:
 
   verdi:
 
-    needs: [check-requirements]
+    #needs: [check-requirements]
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
