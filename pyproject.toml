@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
   'alembic~=1.2',
   'archive-path~=0.4.2',
-  'circus@git+https://github.com/circus-tent/circus',
+  'circus~=0.18.0',
   'click-spinner~=0.1.8',
   'click~=8.1',
   'disk-objectstore~=1.2',
