@@ -8,13 +8,12 @@
 ###########################################################################
 """Tests for `verdi process`."""
 
-from contextlib import contextmanager
 import functools
-from os.path import exists
 import re
 import time
 import typing as t
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -27,22 +26,23 @@ from aiida.common.log import LOG_LEVEL_REPORT
 from aiida.engine import Process, ProcessState
 from aiida.engine.processes import control as process_control
 from aiida.orm import CalcJobNode, Group, WorkChainNode, WorkflowNode, WorkFunctionNode
-from tests.utils.processes import WaitProcess 
+from tests.utils.processes import WaitProcess
 
 
 def start_daemon_worker_in_foreground_and_redirect_streams(aiida_profile, log_dir: Path):
     """Starts a daemon worker and logs its stdout and and stderr streams to a file in the daemon log directory."""
-    from aiida.engine.daemon.worker import start_daemon_worker
     import os
     import sys
 
-    original_stdout = sys.stdout 
+    from aiida.engine.daemon.worker import start_daemon_worker
+
+    original_stdout = sys.stdout
     original_stderr = sys.stderr
 
     try:
         pid = os.getpid()
-        sys.stdout = open(log_dir / f"worker-{pid}.out", "w")
-        sys.stderr = open(log_dir / f"worker-{pid}.err", "w")
+        sys.stdout = open(log_dir / f'worker-{pid}.out', 'w')
+        sys.stderr = open(log_dir / f'worker-{pid}.err', 'w')
         start_daemon_worker(False, aiida_profile.name)
     finally:
         if sys.stdout != original_stdout:
@@ -52,13 +52,15 @@ def start_daemon_worker_in_foreground_and_redirect_streams(aiida_profile, log_di
             sys.stderr.close()
             sys.stderr = original_stderr
 
+
 @pytest.fixture()
 @pytest.mark.usefixtures('started_daemon_client')
 def fork_worker_context(aiida_profile):
     """Runs daemon worker on a new process with redirected stdout and stderr streams."""
     import multiprocessing
-    from contextlib import contextmanager
+
     from aiida.engine.daemon.client import get_daemon_client
+
     client = get_daemon_client(aiida_profile)
     nb_workers = client.get_number_of_workers()
     client.decrease_workers(nb_workers)
@@ -66,15 +68,17 @@ def fork_worker_context(aiida_profile):
 
     @contextmanager
     def fork_worker():
-        ctx = multiprocessing.get_context("fork")
+        ctx = multiprocessing.get_context('fork')
         # we need to pass the aiida profile so it uses the same configuration
-        process = ctx.Process(target=start_daemon_worker_in_foreground_and_redirect_streams, args=(aiida_profile, daemon_log_dir))
+        process = ctx.Process(
+            target=start_daemon_worker_in_foreground_and_redirect_streams, args=(aiida_profile, daemon_log_dir)
+        )
         process.start()
 
         yield process
-        
-        # TODO This should work according to start_daemon_worker code but it does not 
-        #process.terminate()
+
+        # TODO This should work according to start_daemon_worker code but it does not
+        # process.terminate()
         process.kill()
         process.join()
 
@@ -94,10 +98,13 @@ def await_condition(condition: t.Callable, timeout: int = 1) -> t.Any:
 
     return result
 
+
 # TODO this test fails if I run something daemon related before
 @pytest.mark.requires_rmq
 @pytest.mark.usefixtures('started_daemon_client')
-def test_process_kill_failing_transport(fork_worker_context, submit_and_await, aiida_code_installed, run_cli_command, monkeypatch):
+def test_process_kill_failing_transport(
+    fork_worker_context, submit_and_await, aiida_code_installed, run_cli_command, monkeypatch
+):
     """Tests if a process that is unable to open a transport connection can be force killed.
 
     A failure in opening a transport connection results in the EBM to be fired blocking a regular kill command.
@@ -106,6 +113,7 @@ def test_process_kill_failing_transport(fork_worker_context, submit_and_await, a
     from aiida.orm import Int
 
     code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
+
     def make_a_builder(sleep_seconds=0):
         builder = code.get_builder()
         builder.x = Int(1)
@@ -118,15 +126,16 @@ def test_process_kill_failing_transport(fork_worker_context, submit_and_await, a
     # patch a faulty transport open, to make EBM go crazy
     def mock_open(_):
         raise Exception('Mock open exception')
+
     monkeypatch.setattr('aiida.transports.plugins.local.LocalTransport.open', mock_open)
 
     # We fork after the monkeypatching so the process inherits the changes
     with fork_worker_context():
         # TODO remove
-        #ipdb> print(run_cli_command(cmd_process.process_list).stdout_bytes.decode())
+        # ipdb> print(run_cli_command(cmd_process.process_list).stdout_bytes.decode())
         node = submit_and_await(make_a_builder(100), ProcessState.WAITING)
         result = await_condition(lambda: get_process_function_report(node), timeout=kill_timeout)
-        assert 'Mock open exception' in result 
+        assert 'Mock open exception' in result
         assert 'exponential_backoff_retry' in result
 
         # force kill the process
@@ -136,6 +145,7 @@ def test_process_kill_failing_transport(fork_worker_context, submit_and_await, a
         assert node.process_status == 'Force killed through `verdi process kill`'
 
     # TODO test if it can kill while stuck in EBM
+
 
 class TestVerdiProcess:
     """Tests for `verdi process`."""
