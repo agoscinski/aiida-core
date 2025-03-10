@@ -80,12 +80,13 @@ class WaitProcess(Process):
     def next_step(self):
         pass
 
-class RunningProcess(Process):
 
+class RunningProcess(Process):
     _node_class = WorkflowNode
 
     async def run(self):
         import asyncio
+
         await asyncio.sleep(100)
         # TODO this does not work but at the moment never reaches there
         return plumpy.Continue(self.run)

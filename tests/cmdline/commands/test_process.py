@@ -26,7 +26,7 @@ from aiida.common.log import LOG_LEVEL_REPORT
 from aiida.engine import Process, ProcessState
 from aiida.engine.processes import control as process_control
 from aiida.orm import CalcJobNode, Group, WorkChainNode, WorkflowNode, WorkFunctionNode
-from tests.utils.processes import WaitProcess, RunningProcess
+from tests.utils.processes import RunningProcess, WaitProcess
 
 
 def start_daemon_worker_in_foreground_and_redirect_streams(aiida_profile, log_dir: Path):
@@ -144,7 +144,6 @@ def test_process_kill_failing_transport(
         await_condition(lambda: node.is_killed, timeout=kill_timeout)
         assert node.is_killed
         assert node.process_status == 'Force killed through `verdi process kill`'
-
 
 
 class TestVerdiProcess:
