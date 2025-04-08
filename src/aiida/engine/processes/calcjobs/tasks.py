@@ -404,7 +404,6 @@ async def task_kill_job(node: CalcJobNode, transport_queue: TransportQueue, forc
 
     :raises: TransportTaskException if after the maximum number of retries the transport task still excepted
     """
-    breakpoint()
     initial_interval = get_config_option(RETRY_INTERVAL_OPTION)
     max_attempts = get_config_option(MAX_ATTEMPTS_OPTION)# if not force_kill else 1
 
@@ -560,7 +559,6 @@ class Waiting(plumpy.process_states.Waiting):
         except TransportTaskException as exception:
             raise plumpy.process_states.PauseInterruption(f'Pausing after failed transport task: {exception}')
         except plumpy.process_states.KillInterruption as exception:
-            breakpoint()
             await self._kill_job(node, transport_queue, exception.force_kill)
             node.set_process_status(str(exception))
             return self.retrieve(monitor_result=self._monitor_result)
@@ -603,7 +601,6 @@ class Waiting(plumpy.process_states.Waiting):
 
     async def _kill_job(self, node, transport_queue, force_kill: bool) -> None:
         """Kill the job."""
-        breakpoint()
         await self._launch_task(task_kill_job, node, transport_queue, force_kill)
         if self._killing is not None:
             self._killing.set_result(True)
@@ -668,10 +665,8 @@ class Waiting(plumpy.process_states.Waiting):
 
     def interrupt(self, reason: Any) -> Optional[plumpy.futures.Future]:  # type: ignore[override]
         """Interrupt the `Waiting` state by calling interrupt on the transport task `InterruptableFuture`."""
-        breakpoint()
         if self._task is not None:
             self._task.interrupt(reason)
-        breakpoint()
 
         if isinstance(reason, plumpy.process_states.KillInterruption):
             if self._killing is None:
