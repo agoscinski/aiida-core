@@ -26,7 +26,7 @@ from aiida.common.log import LOG_LEVEL_REPORT
 from aiida.engine import Process, ProcessState
 from aiida.engine.processes import control as process_control
 from aiida.orm import CalcJobNode, Group, WorkChainNode, WorkflowNode, WorkFunctionNode
-from tests.utils.processes import RunningProcess, WaitProcess
+from tests.utils.processes import WaitProcess
 
 
 def start_daemon_worker_in_foreground_and_redirect_streams(aiida_profile, log_dir: Path):
@@ -103,7 +103,7 @@ def await_condition(condition: t.Callable, timeout: int = 1) -> t.Any:
 # TODO this test fails if I run something daemon related before
 @pytest.mark.requires_rmq
 @pytest.mark.usefixtures('started_daemon_client')
-def test_process_kill_failing_transport(
+def test_process_kill_failing_transport_force_kill(
     fork_worker_context, submit_and_await, aiida_code_installed, run_cli_command, monkeypatch
 ):
     """Tests if a process that is unable to open a transport connection can be force killed.
@@ -131,8 +131,10 @@ def test_process_kill_failing_transport(
     monkeypatch.setattr('aiida.transports.plugins.local.LocalTransport.open', mock_open)
 
     # We fork after the monkeypatching so the process inherits the changes
+    # 7) *Force* kill a process that has stuck in EBM, something that *kill* cannot do.
+    # `verdi process kill -F` --as the first attempt--
     with fork_worker_context():
-        # TODO temporart here for debugging remove
+        # TODO temporary here for debugging remove
         # print(run_cli_command(cmd_process.process_list).stdout_bytes.decode())
         node = submit_and_await(make_a_builder(100), ProcessState.WAITING)
         result = await_condition(lambda: get_process_function_report(node), timeout=kill_timeout)
@@ -145,6 +147,93 @@ def test_process_kill_failing_transport(
         assert node.is_killed
         assert node.process_status == 'Force killed through `verdi process kill`'
 
+@pytest.mark.requires_rmq
+@pytest.mark.usefixtures('started_daemon_client')
+def test_process_kill_failing_transport_failed_kill(
+    fork_worker_context, submit_and_await, aiida_code_installed, run_cli_command, monkeypatch
+):
+    """Tests if a process that is unable to open a transport connection can be force killed.
+
+    A failure in opening a transport connection results in the EBM to be fired blocking a regular kill command.
+    The force kill command will ignore the EBM and kill the process in any case."""
+    from aiida.cmdline.utils.common import get_process_function_report
+    from aiida.orm import Int
+
+    code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
+
+    def make_a_builder(sleep_seconds=0):
+        builder = code.get_builder()
+        builder.x = Int(1)
+        builder.y = Int(1)
+        builder.metadata.options.sleep = sleep_seconds
+        return builder
+
+    kill_timeout = 5
+
+    # patch a faulty transport open
+    def mock_open(_):
+        raise Exception('Mock open exception')
+
+    monkeypatch.setattr('aiida.transports.plugins.local.LocalTransport.open', mock_open)
+    # 8) A process that has stuck in EBM, cannot get killed directly by `verdi process kill`.
+    # Such a process with a history of failed attempts, should still be able to get force killed.
+    # `verdi process kill -F` --as the second attempt--
+    with fork_worker_context():
+        node = submit_and_await(make_a_builder(5), ProcessState.WAITING)
+
+        # assert the process is stuck in EBM
+        result = await_condition(lambda: get_process_function_report(node), timeout=kill_timeout)
+        assert 'Mock open exception' in result
+        assert 'exponential_backoff_retry' in result
+
+        # practice a normal kill, which should fail
+        result = run_cli_command(cmd_process.process_kill, [str(node.pk), '--wait', '--timeout', '1.0'])
+        assert f'Error: call to kill Process<{node.pk}> timed out' in result.stdout
+
+        # force kill the process
+        result = run_cli_command(cmd_process.process_kill, [str(node.pk), '-F', '--wait'])
+        await_condition(lambda: node.is_killed, timeout=kill_timeout)
+        assert node.process_status == 'Force killed through `verdi process kill`'
+
+
+@pytest.mark.requires_rmq
+@pytest.mark.usefixtures('started_daemon_client')
+def test_process_kill_failng_ebm(
+    fork_worker_context, submit_and_await, aiida_code_installed, run_cli_command, monkeypatch
+):
+    """9) Kill a process that is paused after EBM (5 times failed). It should be possible to kill it normally.
+    # (e.g. in scenarios that transport is working again)
+    """
+    from aiida.cmdline.utils.common import get_process_function_report
+    from aiida.orm import Int
+
+    code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
+
+    def make_a_builder(sleep_seconds=0):
+        builder = code.get_builder()
+        builder.x = Int(1)
+        builder.y = Int(1)
+        builder.metadata.options.sleep = sleep_seconds
+        return builder
+
+    kill_timeout = 10
+
+    from aiida.common.exceptions import TransportTaskException
+    async def mock_exponential_backoff_retry(*_, **__):
+        raise TransportTaskException
+
+    # patch EBM, to make it fail quickly.
+    monkeypatch.setattr('aiida.engine.utils.exponential_backoff_retry', mock_exponential_backoff_retry)
+    with fork_worker_context():
+        node = submit_and_await(make_a_builder(), ProcessState.WAITING)
+        await_condition(
+            lambda: node.process_status
+            == 'Pausing after failed transport task: upload_calculation failed 5 times consecutively',
+            timeout=kill_timeout,
+        )
+
+        run_cli_command(cmd_process.process_kill, [str(node.pk), '--wait'])
+        await_condition(lambda: node.is_killed, timeout=kill_timeout)
 
 class TestVerdiProcess:
     """Tests for `verdi process`."""
@@ -647,7 +736,7 @@ def test_process_play_all(submit_and_await, run_cli_command):
 
 @pytest.mark.requires_rmq
 @pytest.mark.usefixtures('started_daemon_client')
-def test_process_kill_uni(submit_and_await, run_cli_command):
+def test_process_kill_uni(submit_and_await, run_cli_command, aiida_code_installed):
     """Test the ``verdi process kill`` command.
     It tries to cover all the possible scenarios of killing a process.
     """
@@ -659,8 +748,17 @@ def test_process_kill_uni(submit_and_await, run_cli_command):
     assert result.exit_code == ExitCode.USAGE_ERROR
     assert len(result.output_lines) > 0
 
+
+    from aiida.calculations.arithmetic.add import ArithmeticAddCalculation
+    from aiida.orm import Int
+    code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
+    builder = code.get_builder()
+    builder.x = Int(2)
+    builder.y = Int(3)
+    builder.metadata.options.sleep = 10
+
     # 1) Kill a paused process
-    node = submit_and_await(WaitProcess, ProcessState.WAITING)
+    node = submit_and_await(builder, ProcessState.WAITING)
 
     run_cli_command(cmd_process.process_pause, [str(node.pk), '--wait'])
     await_condition(lambda: node.paused)
@@ -671,7 +769,7 @@ def test_process_kill_uni(submit_and_await, run_cli_command):
     assert node.process_status == 'Killed through `verdi process kill`'
 
     # 2) Force kill a paused process
-    node = submit_and_await(WaitProcess, ProcessState.WAITING)
+    node = submit_and_await(builder, ProcessState.WAITING)
 
     run_cli_command(cmd_process.process_pause, [str(node.pk), '--wait'])
     await_condition(lambda: node.paused)
@@ -682,26 +780,11 @@ def test_process_kill_uni(submit_and_await, run_cli_command):
     assert node.process_status == 'Force killed through `verdi process kill`'
 
     # TODO test takes very long
-    # 3) Kill a running process
-    node = submit_and_await(RunningProcess, ProcessState.RUNNING)
-    run_cli_command(cmd_process.process_kill, [str(node.pk), '--wait'])
-
-    await_condition(lambda: node.is_killed, timeout=kill_timeout)
-    assert node.process_status == 'Killed through `verdi process kill`'
-
-    # 4) *Force* kill a running process
-    node = submit_and_await(RunningProcess, ProcessState.RUNNING)
-    result = run_cli_command(cmd_process.process_kill, [str(node.pk), '-F', '--wait'])
-
-    await_condition(lambda: node.is_killed, timeout=kill_timeout)
-    assert node.process_status == 'Force killed through `verdi process kill`'
-
-    # TODO test takes very long
-    # 5) `verdi process kill --all` should kill all processes (running / not running)
-    node_1 = submit_and_await(WaitProcess, ProcessState.WAITING)
+    # 5) `verdi process kill --all` should kill all processes
+    node_1 = submit_and_await(builder, ProcessState.WAITING)
     run_cli_command(cmd_process.process_pause, [str(node_1.pk), '--wait'])
     await_condition(lambda: node_1.paused)
-    node_2 = submit_and_await(RunningProcess, ProcessState.RUNNING)
+    node_2 = submit_and_await(builder, ProcessState.WAITING)
 
     run_cli_command(cmd_process.process_kill, ['--all', '--wait'], user_input='y')
     await_condition(lambda: node_1.is_killed, timeout=kill_timeout)
@@ -710,10 +793,10 @@ def test_process_kill_uni(submit_and_await, run_cli_command):
     assert node_2.process_status == 'Killed through `verdi process kill`'
 
     # 6) `verdi process kill --all -F` should Force kill all processes (running / not running)
-    node_1 = submit_and_await(WaitProcess, ProcessState.WAITING)
+    node_1 = submit_and_await(builder, ProcessState.WAITING)
     run_cli_command(cmd_process.process_pause, [str(node_1.pk), '--wait'])
     await_condition(lambda: node_1.paused)
-    node_2 = submit_and_await(RunningProcess, ProcessState.RUNNING)
+    node_2 = submit_and_await(builder, ProcessState.WAITING)
 
     run_cli_command(cmd_process.process_kill, ['--all', '--wait', '-F'], user_input='y')
     await_condition(lambda: node_1.is_killed, timeout=kill_timeout)

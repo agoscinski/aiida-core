@@ -27,7 +27,8 @@ from aiida.common.folders import SandboxFolder
 from aiida.engine.daemon import execmanager
 from aiida.engine.processes.exit_code import ExitCode
 from aiida.engine.transports import TransportQueue
-from aiida.engine.utils import InterruptableFuture, exponential_backoff_retry, interruptable_task
+from aiida.engine import utils
+from aiida.engine.utils import InterruptableFuture, interruptable_task
 from aiida.manage.configuration import get_config_option
 from aiida.orm.nodes.process.calculation.calcjob import CalcJobNode
 from aiida.schedulers.datastructures import JobState
@@ -59,7 +60,7 @@ async def task_upload_job(process: 'CalcJob', transport_queue: TransportQueue, c
     """Transport task that will attempt to upload the files of a job calculation to the remote.
 
     The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
-    function is called, wrapped in the exponential_backoff_retry coroutine, which, in case of a caught exception, will
+    function is called, wrapped in the utils.exponential_backoff_retry coroutine, which, in case of a caught exception, will
     retry after an interval that increases exponentially with the number of retries, for a maximum number of retries.
     If all retries fail, the task will raise a TransportTaskException
 
@@ -102,7 +103,7 @@ async def task_upload_job(process: 'CalcJob', transport_queue: TransportQueue, c
     try:
         logger.info(f'scheduled request to upload CalcJob<{node.pk}>')
         ignore_exceptions = (plumpy.futures.CancelledError, PreSubmitException, plumpy.process_states.Interruption)
-        skip_submit = await exponential_backoff_retry(
+        skip_submit = await utils.exponential_backoff_retry(
             do_upload, initial_interval, max_attempts, logger=node.logger, ignore_exceptions=ignore_exceptions
         )
     except PreSubmitException:
@@ -122,7 +123,7 @@ async def task_submit_job(node: CalcJobNode, transport_queue: TransportQueue, ca
     """Transport task that will attempt to submit a job calculation.
 
     The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
-    function is called, wrapped in the exponential_backoff_retry coroutine, which, in case of a caught exception, will
+    function is called, wrapped in the utils.exponential_backoff_retry coroutine, which, in case of a caught exception, will
     retry after an interval that increases exponentially with the number of retries, for a maximum number of retries.
     If all retries fail, the task will raise a TransportTaskException
 
@@ -150,7 +151,7 @@ async def task_submit_job(node: CalcJobNode, transport_queue: TransportQueue, ca
     try:
         logger.info(f'scheduled request to submit CalcJob<{node.pk}>')
         ignore_exceptions = (plumpy.futures.CancelledError, plumpy.process_states.Interruption)
-        result = await exponential_backoff_retry(
+        result = await utils.exponential_backoff_retry(
             do_submit, initial_interval, max_attempts, logger=node.logger, ignore_exceptions=ignore_exceptions
         )
     except (plumpy.futures.CancelledError, plumpy.process_states.Interruption):
@@ -168,7 +169,7 @@ async def task_update_job(node: CalcJobNode, job_manager, cancellable: Interrupt
     """Transport task that will attempt to update the scheduler status of the job calculation.
 
     The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
-    function is called, wrapped in the exponential_backoff_retry coroutine, which, in case of a caught exception, will
+    function is called, wrapped in the utils.exponential_backoff_retry coroutine, which, in case of a caught exception, will
     retry after an interval that increases exponentially with the number of retries, for a maximum number of retries.
     If all retries fail, the task will raise a TransportTaskException
 
@@ -208,7 +209,7 @@ async def task_update_job(node: CalcJobNode, job_manager, cancellable: Interrupt
     try:
         logger.info(f'scheduled request to update CalcJob<{node.pk}>')
         ignore_exceptions = (plumpy.futures.CancelledError, plumpy.process_states.Interruption)
-        job_done = await exponential_backoff_retry(
+        job_done = await utils.exponential_backoff_retry(
             do_update, initial_interval, max_attempts, logger=node.logger, ignore_exceptions=ignore_exceptions
         )
     except (plumpy.futures.CancelledError, plumpy.process_states.Interruption):
@@ -230,7 +231,7 @@ async def task_monitor_job(
     """Transport task that will monitor the job calculation if any monitors have been defined.
 
     The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
-    function is called, wrapped in the exponential_backoff_retry coroutine, which, in case of a caught exception, will
+    function is called, wrapped in the utils.exponential_backoff_retry coroutine, which, in case of a caught exception, will
     retry after an interval that increases exponentially with the number of retries, for a maximum number of retries.
     If all retries fail, the task will raise a TransportTaskException
 
@@ -258,7 +259,7 @@ async def task_monitor_job(
     try:
         logger.info(f'scheduled request to monitor CalcJob<{node.pk}>')
         ignore_exceptions = (plumpy.futures.CancelledError, plumpy.process_states.Interruption)
-        monitor_result = await exponential_backoff_retry(
+        monitor_result = await utils.exponential_backoff_retry(
             do_monitor, initial_interval, max_attempts, logger=node.logger, ignore_exceptions=ignore_exceptions
         )
     except (plumpy.futures.CancelledError, plumpy.process_states.Interruption):
@@ -279,7 +280,7 @@ async def task_retrieve_job(
 ):
     """Transport task that will attempt to retrieve all files of a completed job calculation.
     The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
-    function is called, wrapped in the exponential_backoff_retry coroutine, which, in case of a caught exception, will
+    function is called, wrapped in the utils.exponential_backoff_retry coroutine, which, in case of a caught exception, will
     retry after an interval that increases exponentially with the number of retries, for a maximum number of retries.
     If all retries fail, the task will raise a TransportTaskException
     :param process: the job calculation
@@ -326,7 +327,7 @@ async def task_retrieve_job(
     try:
         logger.info(f'scheduled request to retrieve CalcJob<{node.pk}>')
         ignore_exceptions = (plumpy.futures.CancelledError, plumpy.process_states.Interruption)
-        result = await exponential_backoff_retry(
+        result = await utils.exponential_backoff_retry(
             do_retrieve, initial_interval, max_attempts, logger=node.logger, ignore_exceptions=ignore_exceptions
         )
     except (plumpy.futures.CancelledError, plumpy.process_states.Interruption):
@@ -344,7 +345,7 @@ async def task_stash_job(node: CalcJobNode, transport_queue: TransportQueue, can
     """Transport task that will optionally stash files of a completed job calculation on the remote.
 
     The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
-    function is called, wrapped in the exponential_backoff_retry coroutine, which, in case of a caught exception, will
+    function is called, wrapped in the utils.exponential_backoff_retry coroutine, which, in case of a caught exception, will
     retry after an interval that increases exponentially with the number of retries, for a maximum number of retries.
     If all retries fail, the task will raise a TransportTaskException
 
@@ -371,7 +372,7 @@ async def task_stash_job(node: CalcJobNode, transport_queue: TransportQueue, can
             return await execmanager.stash_calculation(node, transport)
 
     try:
-        await exponential_backoff_retry(
+        await utils.exponential_backoff_retry(
             do_stash,
             initial_interval,
             max_attempts,
@@ -389,7 +390,7 @@ async def task_stash_job(node: CalcJobNode, transport_queue: TransportQueue, can
         return
 
 
-async def task_kill_job(node: CalcJobNode, transport_queue: TransportQueue, cancellable: InterruptableFuture):
+async def task_kill_job(node: CalcJobNode, transport_queue: TransportQueue, cancellable: InterruptableFuture, force_kill: bool):
     """Transport task that will attempt to kill a job calculation.
 
     The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
@@ -404,7 +405,7 @@ async def task_kill_job(node: CalcJobNode, transport_queue: TransportQueue, canc
     :raises: TransportTaskException if after the maximum number of retries the transport task still excepted
     """
     initial_interval = get_config_option(RETRY_INTERVAL_OPTION)
-    max_attempts = get_config_option(MAX_ATTEMPTS_OPTION)
+    max_attempts = get_config_option(MAX_ATTEMPTS_OPTION)# if not force_kill else 1
 
     if node.get_state() in [CalcJobState.UPLOADING, CalcJobState.SUBMITTING]:
         logger.warning(f'CalcJob<{node.pk}> killed, it was in the {node.get_state()} state')
@@ -419,7 +420,7 @@ async def task_kill_job(node: CalcJobNode, transport_queue: TransportQueue, canc
 
     try:
         logger.info(f'scheduled request to kill CalcJob<{node.pk}>')
-        result = await exponential_backoff_retry(do_kill, initial_interval, max_attempts, logger=node.logger)
+        result = await utils.exponential_backoff_retry(do_kill, initial_interval, max_attempts, logger=node.logger)
     except plumpy.process_states.Interruption:
         raise
     except Exception as exception:
@@ -558,7 +559,7 @@ class Waiting(plumpy.process_states.Waiting):
         except TransportTaskException as exception:
             raise plumpy.process_states.PauseInterruption(f'Pausing after failed transport task: {exception}')
         except plumpy.process_states.KillInterruption as exception:
-            await self._kill_job(node, transport_queue)
+            await self._kill_job(node, transport_queue, exception.force_kill)
             node.set_process_status(str(exception))
             return self.retrieve(monitor_result=self._monitor_result)
         except (plumpy.futures.CancelledError, asyncio.CancelledError):
@@ -598,9 +599,10 @@ class Waiting(plumpy.process_states.Waiting):
 
         return monitor_result
 
-    async def _kill_job(self, node, transport_queue) -> None:
+    async def _kill_job(self, node, transport_queue, force_kill: bool) -> None:
         """Kill the job."""
-        await self._launch_task(task_kill_job, node, transport_queue)
+        #breakpoint()
+        await self._launch_task(task_kill_job, node, transport_queue, force_kill)
         if self._killing is not None:
             self._killing.set_result(True)
         else:
