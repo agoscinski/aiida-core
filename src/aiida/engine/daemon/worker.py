@@ -69,6 +69,7 @@ def start_daemon_worker(foreground: bool = False, profile_name: str | None = Non
 
     try:
         LOGGER.info('Starting a daemon worker')
+
         runner.start()
     except SystemError as exception:
         LOGGER.info('Received a SystemError: %s', exception)
