@@ -39,7 +39,7 @@ async def shutdown_worker(runner: Runner) -> None:
     await asyncio.gather(*tasks, return_exceptions=True)
 
     #breakpoint()
-    runner.communicator.remove_task_subscriber("unique_idf")
+    #runner.communicator.remove_task_subscriber("unique_idf")
     #runner.communicator.close()
     runner.close()
 

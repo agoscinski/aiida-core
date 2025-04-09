@@ -459,7 +459,7 @@ class Manager:
         )
 
         assert runner.communicator is not None, 'communicator not set for runner'
-        idf = runner.communicator.add_task_subscriber(task_receiver, "unique_idf")
+        runner.communicator.add_task_subscriber(task_receiver)
 
         return runner
 
