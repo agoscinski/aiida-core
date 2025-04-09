@@ -25,22 +25,14 @@ async def shutdown_worker(runner: Runner) -> None:
     """Cleanup tasks tied to the service's shutdown."""
     from asyncio import all_tasks, current_task
 
-    #breakpoint()
-    #from aiida.manage.manager import get_manager
-    #get_manager().get_broker()._communicator.close()
-
     LOGGER.info('Received signal to shut down the daemon worker')
     tasks = [task for task in all_tasks() if task is not current_task()]
-    #breakpoint()
 
     for task in tasks:
         task.cancel()
 
     await asyncio.gather(*tasks, return_exceptions=True)
 
-    #breakpoint()
-    #runner.communicator.remove_task_subscriber("unique_idf")
-    #runner.communicator.close()
     runner.close()
 
     LOGGER.info('Daemon worker stopped')
@@ -75,7 +67,6 @@ def start_daemon_worker(foreground: bool = False, profile_name: str | None = Non
     threads = [t for t in threading.enumerate()]
     import os
     os.getpid()
-    #breakpoint()
 
 
     signals = (signal.SIGTERM, signal.SIGINT)

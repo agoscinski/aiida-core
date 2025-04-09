@@ -55,83 +55,24 @@ def start_daemon_worker_in_foreground_and_redirect_streams(aiida_profile, log_di
 
 
 
-#@pytest.fixture(scope="module")
-#def started_daemon_client_module(daemon_client: 'DaemonClient'):
-#    """Ensure that the daemon is running for the test profile and return the associated client.
-#
-#    Usage::
-#
-#        def test(started_daemon_client):
-#            assert started_daemon_client.is_daemon_running
-#
-#    """
-#    import logging
-#    if not daemon_client.is_daemon_running:
-#        daemon_client.start_daemon()
-#        assert daemon_client.is_daemon_running
-#
-#    logger = logging.getLogger('tests.daemon:started_daemon_client')
-#    logger.debug(f'Daemon log file is located at: {daemon_client.daemon_log_file}')
-#
-#    yield daemon_client
-
-#aiida_profile_clean
 @pytest.fixture(scope="function")
-#@pytest.mark.usefixtures('started_daemon_client_module')
-def fork_worker_context(aiida_profile):#, started_daemon_client_module):
+@pytest.mark.usefixtures('started_daemon_client')
+def fork_worker_context(aiida_profile):
     """Runs daemon worker on a new process with redirected stdout and stderr streams."""
-    #breakpoint()
-
     import multiprocessing
 
     from aiida.engine.daemon.client import get_daemon_client
 
 
-    from aiida.manage.configuration import create_profile
-    from aiida.brokers.rabbitmq.defaults import detect_rabbitmq_config
-    from aiida.manage.manager import get_manager
-    #get_manager().get_runner().communicator.close()
-    #breakpoint()
-
-    # We reset the broker to start a new queue, otherwise task subscription gets stuck
-    get_manager()._broker = None
-
-    #get_manager().get_config()
-    #aiida_profile = create_profile(get_manager().get_config(),
-    #                               storage_backend=aiida_profile.storage_backend,
-    #                               storage_config=aiida_profile.storage_config, broker_backend='core.rabbitmq', broker_config=detect_rabbitmq_config(), name=aiida_profile.name+"1", email="")
-
-    #from aiida.brokers.rabbitmq.defaults import detect_rabbitmq_config
-    #broker_config = detect_rabbitmq_config()
-    #aiida_profile.set_process_controller(name='core.rabbitmq', config=broker_config)
-
-    #from aiida.engine.daemon import get_daemon_client
-    #daemon_client = get_daemon_client(aiida_profile.name)
-    #daemon_client.start_daemon()
 
 
     client = get_daemon_client(aiida_profile)
     nb_workers = client.get_number_of_workers()
     client.decrease_workers(nb_workers)
     daemon_log_dir = Path(client.daemon_log_file).parent
-    #import threading
-    #from aiida.manage.manager import get_manager
-    #threadsb = [t for t in threading.enumerate()]
-    #communicator = get_manager().get_communicator()
-    #breakpoint()
-    #threadsa = [t for t in threading.enumerate()]
-    #breakpoint()
     
-    from aiida.manage.manager import get_manager
-    #communicator = get_manager().get_communicator()
-    #breakpoint()
-
-
     @contextmanager
     def fork_worker():
-        #import threading
-        #threads = [t for t in threading.enumerate()]
-        #breakpoint()
         ctx = multiprocessing.get_context('fork')
         # we need to pass the aiida profile so it uses the same configuration
         process = ctx.Process(
@@ -141,32 +82,17 @@ def fork_worker_context(aiida_profile):#, started_daemon_client_module):
 
         yield process
 
-        # TODO This should work according to start_daemon_worker code but it does not
-        #import asyncio
-        #from aiida.manage.manager import get_manager
-        #loop = asyncio.new_event_loop()
-        #channel = get_manager().get_broker()._communicator._communicator._connection.channel()
-        #breakpoint()
-
-        #rabbitmqctl list_queues | rg 76433be0a6574544818f0ae4df68f342 | awk '{print $1}' | xargs rabbitmqctl delete_queue
-        #subprocess.run(["rabbitmqctl", "list_queues", "|", "grep", f"{aiida_profile.uuid}", "|", "awk" "'{print $1}'", "|", "xargs", "rabbitmqctl", "delete_queue"]
-        #get_manager()._broker = None
-
         process.terminate()
-        #process.kill()
         process.join()
-        #import threading
-        #threads = [t for t in threading.enumerate()]
-        #from aiida.manage.manager import get_manager
-        #communicator = get_manager().get_communicator()
-        #communicator.close()
+
+        # The queue might get deadlocked during the test so we reset the broker which enforces a that new queue to be created when a new worker is forked
+        from aiida.manage.manager import get_manager
+        get_manager()._broker = None
 
     yield fork_worker
 
 
     client.increase_workers(nb_workers)
-
-    #daemon_client.stop_daemon(wait=True)
 
 
 def await_condition(condition: t.Callable, timeout: int = 1) -> t.Any:
@@ -217,10 +143,6 @@ def test_process_kill_failing_transport_force_kill(
     import threading
     threads = [t.name for t in threading.enumerate()]
     with fork_worker_context():
-        #import time
-        #time.sleep(3)
-        # TODO temporary here for debugging remove
-        # print(run_cli_command(cmd_process.process_list).stdout_bytes.decode())
         node = submit_and_await(make_a_builder(100), ProcessState.WAITING)
         result = await_condition(lambda: get_process_function_report(node), timeout=kill_timeout)
         assert 'Mock open exception' in result
@@ -231,52 +153,6 @@ def test_process_kill_failing_transport_force_kill(
         await_condition(lambda: node.is_killed, timeout=kill_timeout)
         assert node.is_killed
         assert node.process_status == 'Force killed through `verdi process kill`'
-    #breakpoint()
-
-   
-    from aiida.manage.manager import get_manager
-    #get_manager().get_runner().communicator.close()
-    #breakpoint()
-    #get_manager()._broker = None
-    #get_manager().get_broker()._prefix = "custom"
-    #get_manager().get_communicator().close()
-
-    #threads = [t for t in threading.enumerate()]
-    #breakpoint()
-    #with fork_worker_context():
-    #    node = submit_and_await(make_a_builder(100), ProcessState.WAITING)
-    #    result = await_condition(lambda: get_process_function_report(node), timeout=kill_timeout)
-    #    assert 'Mock open exception' in result
-    #    assert 'exponential_backoff_retry' in result
-
-    #    # force kill the process
-    #    #run_cli_command(cmd_process.process_kill, [str(node.pk), '-F', '--wait'])
-    #    #await_condition(lambda: node.is_killed, timeout=kill_timeout)
-    #    #assert node.is_killed
-    #    #assert node.process_status == 'Force killed through `verdi process kill`'
-    #breakpoint()
-    #for t in threading.enumerate()
-    #    if t.name == 'RMQ communicator':
-
-
-
-
-    #with fork_worker_context() as process:
-    #    print(process.is_alive())
-    #    breakpoint()
-    #    # TODO temporary here for debugging remove
-    #    # print(run_cli_command(cmd_process.process_list).stdout_bytes.decode())
-    #    node = submit_and_await(make_a_builder(100), ProcessState.WAITING)
-    #    result = await_condition(lambda: get_process_function_report(node), timeout=kill_timeout)
-    #    assert 'Mock open exception' in result
-    #    assert 'exponential_backoff_retry' in result
-
-    #    # force kill the process
-    #    run_cli_command(cmd_process.process_kill, [str(node.pk), '-F', '--wait'])
-    #    await_condition(lambda: node.is_killed, timeout=kill_timeout)
-    #    assert node.is_killed
-    #    assert node.process_status == 'Force killed through `verdi process kill`'
-    #breakpoint()
 
 @pytest.mark.requires_rmq
 @pytest.mark.usefixtures('started_daemon_client')
