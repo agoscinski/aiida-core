@@ -60,7 +60,7 @@ async def task_upload_job(process: 'CalcJob', transport_queue: TransportQueue, c
     """Transport task that will attempt to upload the files of a job calculation to the remote.
 
     The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
-    function is called, wrapped in the utils.exponential_backoff_retry coroutine, which, in case of a caught exception, will
+    function is called, wrapped in the exponential_backoff_retry coroutine, which, in case of a caught exception, will
     retry after an interval that increases exponentially with the number of retries, for a maximum number of retries.
     If all retries fail, the task will raise a TransportTaskException
 
@@ -123,7 +123,7 @@ async def task_submit_job(node: CalcJobNode, transport_queue: TransportQueue, ca
     """Transport task that will attempt to submit a job calculation.
 
     The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
-    function is called, wrapped in the utils.exponential_backoff_retry coroutine, which, in case of a caught exception, will
+    function is called, wrapped in the exponential_backoff_retry coroutine, which, in case of a caught exception, will
     retry after an interval that increases exponentially with the number of retries, for a maximum number of retries.
     If all retries fail, the task will raise a TransportTaskException
 
@@ -231,7 +231,7 @@ async def task_monitor_job(
     """Transport task that will monitor the job calculation if any monitors have been defined.
 
     The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
-    function is called, wrapped in the utils.exponential_backoff_retry coroutine, which, in case of a caught exception, will
+    function is called, wrapped in the exponential_backoff_retry coroutine, which, in case of a caught exception, will
     retry after an interval that increases exponentially with the number of retries, for a maximum number of retries.
     If all retries fail, the task will raise a TransportTaskException
 
@@ -345,7 +345,7 @@ async def task_stash_job(node: CalcJobNode, transport_queue: TransportQueue, can
     """Transport task that will optionally stash files of a completed job calculation on the remote.
 
     The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
-    function is called, wrapped in the utils.exponential_backoff_retry coroutine, which, in case of a caught exception, will
+    function is called, wrapped in the exponential_backoff_retry coroutine, which, in case of a caught exception, will
     retry after an interval that increases exponentially with the number of retries, for a maximum number of retries.
     If all retries fail, the task will raise a TransportTaskException
 

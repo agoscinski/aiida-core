@@ -161,6 +161,8 @@ class Runner:
 
     def close(self) -> None:
         """Close the runner by stopping the loop."""
+        #breakpoint()
+        #self.communicator.close()
         assert not self._closed
         self.stop()
         if not self._loop.is_running():
