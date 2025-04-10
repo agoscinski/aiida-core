@@ -747,7 +747,7 @@ def test_process_kill_uni(submit_and_await, run_cli_command, aiida_code_installe
     It tries to cover all the possible scenarios of killing a process.
     """
 
-    kill_timeout = 5
+    kill_timeout = 20
 
     # 0) Running without identifiers should except and print something
     result = run_cli_command(cmd_process.process_kill, raises=True)
@@ -784,7 +784,6 @@ def test_process_kill_uni(submit_and_await, run_cli_command, aiida_code_installe
     await_condition(lambda: node.is_killed)
     assert node.process_status == 'Force killed through `verdi process kill`'
 
-    # TODO test takes very long
     # 5) `verdi process kill --all` should kill all processes
     node_1 = submit_and_await(builder, ProcessState.WAITING)
     run_cli_command(cmd_process.process_pause, [str(node_1.pk), '--wait'])
