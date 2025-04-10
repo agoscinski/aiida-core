@@ -58,22 +58,23 @@ def start_daemon_worker_in_foreground_and_redirect_streams(aiida_profile, log_di
 @pytest.mark.usefixtures('started_daemon_client')
 def fork_worker_context(aiida_profile):
     """Runs daemon worker on a new process with redirected stdout and stderr streams."""
-    from aiida.manage.manager import get_manager
-    from aiida.engine.daemon.client import get_daemon_client
     import multiprocessing
 
-    #from aiida.brokers.rabbitmq.defaults import detect_rabbitmq_config
+    from aiida.engine.daemon.client import get_daemon_client
+    from aiida.manage.manager import get_manager
 
-    #broker_config = detect_rabbitmq_config()
-    #aiida_profile_tmp.set_process_controller(name='core.rabbitmq', config=broker_config)
-    #from aiida.manage.configuration import create_default_user
-    #from aiida.manage.manager import get_manager
+    # from aiida.brokers.rabbitmq.defaults import detect_rabbitmq_config
 
-    #user = create_default_user(aiida_profile_tmp, '')
-    #user.store()
-    #user.backend._default_user = user
-    #get_manager().get_config().set_default_profile(aiida_profile_tmp.name).store()
-    #get_daemon_client(aiida_profile_tmp).start_daemon()
+    # broker_config = detect_rabbitmq_config()
+    # aiida_profile_tmp.set_process_controller(name='core.rabbitmq', config=broker_config)
+    # from aiida.manage.configuration import create_default_user
+    # from aiida.manage.manager import get_manager
+
+    # user = create_default_user(aiida_profile_tmp, '')
+    # user.store()
+    # user.backend._default_user = user
+    # get_manager().get_config().set_default_profile(aiida_profile_tmp.name).store()
+    # get_daemon_client(aiida_profile_tmp).start_daemon()
 
     client = get_daemon_client(aiida_profile)
     nb_workers = client.get_number_of_workers()
@@ -103,24 +104,23 @@ def fork_worker_context(aiida_profile):
         # get_manager()._broker = None
 
         get_manager().reset_profile()
-        #from concurrent import futures
-        #try:
+        # from concurrent import futures
+        # try:
         #    get_manager().get_broker().close()
-        #except futures.TimeoutError as exception:
+        # except futures.TimeoutError as exception:
         #    pass
-        #get_manager().get_broker().close()
-        #breakpoint()
-        #get_manager().get_process_controller()
-        #get_manager().get_process_controller()
-        #get_manager().get_broker().close()
-        #get_manager().reset_broker()
+        # get_manager().get_broker().close()
+        # breakpoint()
+        # get_manager().get_process_controller()
+        # get_manager().get_process_controller()
+        # get_manager().get_broker().close()
+        # get_manager().reset_broker()
 
     yield fork_worker
 
     client.increase_workers(nb_workers)
-    #client.stop_daemon()
-    #user.backend._default_user = None
-
+    # client.stop_daemon()
+    # user.backend._default_user = None
 
 
 def await_condition(condition: t.Callable, timeout: int = 1) -> t.Any:
