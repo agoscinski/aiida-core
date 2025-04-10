@@ -520,7 +520,7 @@ class Waiting(plumpy.process_states.Waiting):
                     monitor_result = await self._monitor_job(node, transport_queue, self.monitors)
 
                     if monitor_result and monitor_result.action is CalcJobMonitorAction.KILL:
-                        await self._kill_job(node, transport_queue)
+                        await self._kill_job(node, transport_queue, False)
                         job_done = True
 
                     if monitor_result and not monitor_result.retrieve:
