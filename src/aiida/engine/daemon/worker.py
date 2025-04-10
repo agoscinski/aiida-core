@@ -63,12 +63,6 @@ def start_daemon_worker(foreground: bool = False, profile_name: str | None = Non
         LOGGER.info('Setting maximum recursion limit of daemon worker to %s', rlimit)
         sys.setrecursionlimit(rlimit)
 
-    import threading
-    threads = [t for t in threading.enumerate()]
-    import os
-    os.getpid()
-
-
     signals = (signal.SIGTERM, signal.SIGINT)
     for s in signals:
         # https://github.com/python/mypy/issues/12557
