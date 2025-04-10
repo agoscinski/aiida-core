@@ -56,6 +56,7 @@ def start_daemon_worker_in_foreground_and_redirect_streams(aiida_profile, log_di
 
 @pytest.fixture(scope='function')
 @pytest.mark.usefixtures('started_daemon_client')
+@pytest.mark.usefixtures('aiida_profile_clean')
 def fork_worker_context(aiida_profile):
     """Runs daemon worker on a new process with redirected stdout and stderr streams."""
     import multiprocessing
@@ -82,9 +83,9 @@ def fork_worker_context(aiida_profile):
         process.join()
 
         # The queue might get deadlocked during the test so we reset the broker which enforces a that new queue to be created when a new worker is forked
-        from aiida.manage.manager import get_manager
+        #from aiida.manage.manager import get_manager
 
-        get_manager()._broker = None
+        #get_manager()._broker = None
 
     yield fork_worker
 
@@ -103,7 +104,6 @@ def await_condition(condition: t.Callable, timeout: int = 1) -> t.Any:
     return result
 
 
-# TODO this test fails if I run something daemon related before
 @pytest.mark.requires_rmq
 @pytest.mark.usefixtures('started_daemon_client')
 def test_process_kill_failing_transport_force_kill(
@@ -136,9 +136,6 @@ def test_process_kill_failing_transport_force_kill(
     # We fork after the monkeypatching so the process inherits the changes
     # 7) *Force* kill a process that has stuck in EBM, something that *kill* cannot do.
     # `verdi process kill -F` --as the first attempt--
-    import threading
-
-    threads = [t.name for t in threading.enumerate()]
     with fork_worker_context():
         node = submit_and_await(make_a_builder(100), ProcessState.WAITING)
         result = await_condition(lambda: get_process_function_report(node), timeout=kill_timeout)
