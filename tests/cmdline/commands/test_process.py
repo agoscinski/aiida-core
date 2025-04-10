@@ -55,42 +55,27 @@ def start_daemon_worker_in_foreground_and_redirect_streams(aiida_profile, log_di
 
 
 @pytest.fixture(scope='function')
-# @pytest.mark.usefixtures('started_daemon_client')
-def fork_worker_context(aiida_profile_tmp):
+@pytest.mark.usefixtures('started_daemon_client')
+def fork_worker_context(aiida_profile):
     """Runs daemon worker on a new process with redirected stdout and stderr streams."""
+    from aiida.manage.manager import get_manager
+    from aiida.engine.daemon.client import get_daemon_client
     import multiprocessing
 
-    from aiida.brokers.rabbitmq.defaults import detect_rabbitmq_config
-    from aiida.engine.daemon.client import get_daemon_client
+    #from aiida.brokers.rabbitmq.defaults import detect_rabbitmq_config
 
-    broker_config = detect_rabbitmq_config()
-    aiida_profile_tmp.set_process_controller(name='core.rabbitmq', config=broker_config)
-    from aiida.manage.configuration import create_default_user
-    from aiida.manage.manager import get_manager
+    #broker_config = detect_rabbitmq_config()
+    #aiida_profile_tmp.set_process_controller(name='core.rabbitmq', config=broker_config)
+    #from aiida.manage.configuration import create_default_user
+    #from aiida.manage.manager import get_manager
 
-    user = create_default_user(aiida_profile_tmp, '')
-    user.store()
-    user.backend._default_user = user
-    get_manager().get_config().set_default_profile(aiida_profile_tmp.name).store()
-    get_daemon_client(aiida_profile_tmp).start_daemon()
+    #user = create_default_user(aiida_profile_tmp, '')
+    #user.store()
+    #user.backend._default_user = user
+    #get_manager().get_config().set_default_profile(aiida_profile_tmp.name).store()
+    #get_daemon_client(aiida_profile_tmp).start_daemon()
 
-    # from aiida.manage.configuration import create_profile, create_default_user
-
-    # create_profile
-    # config: 'Config',
-    # *,
-    # storage_backend: str,
-    # storage_config: dict[str, Any],
-    # broker_backend: str | None = None,
-    # broker_config: dict[str, Any] | None = None,
-    # name: str,
-    # email: str,
-    # first_name: Optional[str] = None,
-    # last_name: Optional[str] = None,
-    # institution: Optional[str] = None,
-    # is_test_profile: bool = False,
-
-    client = get_daemon_client(aiida_profile_tmp)
+    client = get_daemon_client(aiida_profile)
     nb_workers = client.get_number_of_workers()
     client.decrease_workers(nb_workers)
     daemon_log_dir = Path(client.daemon_log_file).parent
@@ -100,7 +85,7 @@ def fork_worker_context(aiida_profile_tmp):
         ctx = multiprocessing.get_context('fork')
         # we need to pass the aiida profile so it uses the same configuration
         process = ctx.Process(
-            target=start_daemon_worker_in_foreground_and_redirect_streams, args=(aiida_profile_tmp, daemon_log_dir)
+            target=start_daemon_worker_in_foreground_and_redirect_streams, args=(aiida_profile, daemon_log_dir)
         )
         process.start()
 
@@ -109,15 +94,33 @@ def fork_worker_context(aiida_profile_tmp):
         process.terminate()
         process.join()
 
-        # The queue might get deadlocked during the test so we reset the broker which enforces a that new queue to be created when a new worker is forked
+        # The connection might get deadlocked during the test so we need to reset the broker which enforces a that new connection is created when the broker is used
+        # We also need to reassign the profile to the new broker to a profile
+        # A broker is automatically created next time when it is tried to accessed
+
         # from aiida.manage.manager import get_manager
 
         # get_manager()._broker = None
 
+        get_manager().reset_profile()
+        #from concurrent import futures
+        #try:
+        #    get_manager().get_broker().close()
+        #except futures.TimeoutError as exception:
+        #    pass
+        #get_manager().get_broker().close()
+        #breakpoint()
+        #get_manager().get_process_controller()
+        #get_manager().get_process_controller()
+        #get_manager().get_broker().close()
+        #get_manager().reset_broker()
+
     yield fork_worker
 
     client.increase_workers(nb_workers)
-    client.stop_daemon()
+    #client.stop_daemon()
+    #user.backend._default_user = None
+
 
 
 def await_condition(condition: t.Callable, timeout: int = 1) -> t.Any:
