@@ -55,39 +55,40 @@ def start_daemon_worker_in_foreground_and_redirect_streams(aiida_profile, log_di
 
 
 @pytest.fixture(scope='function')
-#@pytest.mark.usefixtures('started_daemon_client')
+# @pytest.mark.usefixtures('started_daemon_client')
 def fork_worker_context(aiida_profile_tmp):
     """Runs daemon worker on a new process with redirected stdout and stderr streams."""
     import multiprocessing
 
-    from aiida.engine.daemon.client import get_daemon_client
     from aiida.brokers.rabbitmq.defaults import detect_rabbitmq_config
+    from aiida.engine.daemon.client import get_daemon_client
+
     broker_config = detect_rabbitmq_config()
     aiida_profile_tmp.set_process_controller(name='core.rabbitmq', config=broker_config)
-    from aiida.manage.configuration import create_profile, create_default_user
+    from aiida.manage.configuration import create_default_user
     from aiida.manage.manager import get_manager
-    user = create_default_user(aiida_profile_tmp, "")
+
+    user = create_default_user(aiida_profile_tmp, '')
     user.store()
     user.backend._default_user = user
     get_manager().get_config().set_default_profile(aiida_profile_tmp.name).store()
     get_daemon_client(aiida_profile_tmp).start_daemon()
 
-    #from aiida.manage.configuration import create_profile, create_default_user
+    # from aiida.manage.configuration import create_profile, create_default_user
 
-    #create_profile
-    #config: 'Config',
-    #*,
-    #storage_backend: str,
-    #storage_config: dict[str, Any],
-    #broker_backend: str | None = None,
-    #broker_config: dict[str, Any] | None = None,
-    #name: str,
-    #email: str,
-    #first_name: Optional[str] = None,
-    #last_name: Optional[str] = None,
-    #institution: Optional[str] = None,
-    #is_test_profile: bool = False,
-
+    # create_profile
+    # config: 'Config',
+    # *,
+    # storage_backend: str,
+    # storage_config: dict[str, Any],
+    # broker_backend: str | None = None,
+    # broker_config: dict[str, Any] | None = None,
+    # name: str,
+    # email: str,
+    # first_name: Optional[str] = None,
+    # last_name: Optional[str] = None,
+    # institution: Optional[str] = None,
+    # is_test_profile: bool = False,
 
     client = get_daemon_client(aiida_profile_tmp)
     nb_workers = client.get_number_of_workers()
@@ -109,9 +110,9 @@ def fork_worker_context(aiida_profile_tmp):
         process.join()
 
         # The queue might get deadlocked during the test so we reset the broker which enforces a that new queue to be created when a new worker is forked
-        #from aiida.manage.manager import get_manager
+        # from aiida.manage.manager import get_manager
 
-        #get_manager()._broker = None
+        # get_manager()._broker = None
 
     yield fork_worker
 
