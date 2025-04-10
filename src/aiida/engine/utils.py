@@ -194,8 +194,8 @@ async def exponential_backoff_retry(
     :return: result if the ``coro`` call completes within ``max_attempts`` retries without raising
     """
 
-    #from aiida.common.exceptions import TransportTaskException
-    #raise TransportTaskException
+    # from aiida.common.exceptions import TransportTaskException
+    # raise TransportTaskException
     if logger is None:
         logger = LOGGER
 

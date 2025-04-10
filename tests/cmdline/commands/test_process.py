@@ -54,8 +54,7 @@ def start_daemon_worker_in_foreground_and_redirect_streams(aiida_profile, log_di
             sys.stderr = original_stderr
 
 
-
-@pytest.fixture(scope="function")
+@pytest.fixture(scope='function')
 @pytest.mark.usefixtures('started_daemon_client')
 def fork_worker_context(aiida_profile):
     """Runs daemon worker on a new process with redirected stdout and stderr streams."""
@@ -63,14 +62,11 @@ def fork_worker_context(aiida_profile):
 
     from aiida.engine.daemon.client import get_daemon_client
 
-
-
-
     client = get_daemon_client(aiida_profile)
     nb_workers = client.get_number_of_workers()
     client.decrease_workers(nb_workers)
     daemon_log_dir = Path(client.daemon_log_file).parent
-    
+
     @contextmanager
     def fork_worker():
         ctx = multiprocessing.get_context('fork')
@@ -87,10 +83,10 @@ def fork_worker_context(aiida_profile):
 
         # The queue might get deadlocked during the test so we reset the broker which enforces a that new queue to be created when a new worker is forked
         from aiida.manage.manager import get_manager
+
         get_manager()._broker = None
 
     yield fork_worker
-
 
     client.increase_workers(nb_workers)
 
@@ -141,6 +137,7 @@ def test_process_kill_failing_transport_force_kill(
     # 7) *Force* kill a process that has stuck in EBM, something that *kill* cannot do.
     # `verdi process kill -F` --as the first attempt--
     import threading
+
     threads = [t.name for t in threading.enumerate()]
     with fork_worker_context():
         node = submit_and_await(make_a_builder(100), ProcessState.WAITING)
@@ -153,6 +150,7 @@ def test_process_kill_failing_transport_force_kill(
         await_condition(lambda: node.is_killed, timeout=kill_timeout)
         assert node.is_killed
         assert node.process_status == 'Force killed through `verdi process kill`'
+
 
 @pytest.mark.requires_rmq
 @pytest.mark.usefixtures('started_daemon_client')
@@ -211,7 +209,6 @@ def test_process_kill_failng_ebm(
     """9) Kill a process that is paused after EBM (5 times failed). It should be possible to kill it normally.
     # (e.g. in scenarios that transport is working again)
     """
-    from aiida.cmdline.utils.common import get_process_function_report
     from aiida.orm import Int
 
     code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
@@ -226,6 +223,7 @@ def test_process_kill_failng_ebm(
     kill_timeout = 10
 
     from aiida.common.exceptions import TransportTaskException
+
     async def mock_exponential_backoff_retry(*_, **__):
         raise TransportTaskException
 
@@ -241,6 +239,7 @@ def test_process_kill_failng_ebm(
 
         run_cli_command(cmd_process.process_kill, [str(node.pk), '--wait'])
         await_condition(lambda: node.is_killed, timeout=kill_timeout)
+
 
 class TestVerdiProcess:
     """Tests for `verdi process`."""
@@ -755,9 +754,8 @@ def test_process_kill_uni(submit_and_await, run_cli_command, aiida_code_installe
     assert result.exit_code == ExitCode.USAGE_ERROR
     assert len(result.output_lines) > 0
 
-
-    from aiida.calculations.arithmetic.add import ArithmeticAddCalculation
     from aiida.orm import Int
+
     code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
     builder = code.get_builder()
     builder.x = Int(2)

@@ -24,10 +24,10 @@ import plumpy.process_states
 from aiida.common.datastructures import CalcJobState
 from aiida.common.exceptions import FeatureNotAvailable, TransportTaskException
 from aiida.common.folders import SandboxFolder
+from aiida.engine import utils
 from aiida.engine.daemon import execmanager
 from aiida.engine.processes.exit_code import ExitCode
 from aiida.engine.transports import TransportQueue
-from aiida.engine import utils
 from aiida.engine.utils import InterruptableFuture, interruptable_task
 from aiida.manage.configuration import get_config_option
 from aiida.orm.nodes.process.calculation.calcjob import CalcJobNode
@@ -390,7 +390,9 @@ async def task_stash_job(node: CalcJobNode, transport_queue: TransportQueue, can
         return
 
 
-async def task_kill_job(node: CalcJobNode, transport_queue: TransportQueue, force_kill: bool, cancellable: InterruptableFuture):
+async def task_kill_job(
+    node: CalcJobNode, transport_queue: TransportQueue, force_kill: bool, cancellable: InterruptableFuture
+):
     """Transport task that will attempt to kill a job calculation.
 
     The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
@@ -405,7 +407,7 @@ async def task_kill_job(node: CalcJobNode, transport_queue: TransportQueue, forc
     :raises: TransportTaskException if after the maximum number of retries the transport task still excepted
     """
     initial_interval = get_config_option(RETRY_INTERVAL_OPTION)
-    max_attempts = get_config_option(MAX_ATTEMPTS_OPTION)# if not force_kill else 1
+    max_attempts = get_config_option(MAX_ATTEMPTS_OPTION)  # if not force_kill else 1
 
     if node.get_state() in [CalcJobState.UPLOADING, CalcJobState.SUBMITTING]:
         logger.warning(f'CalcJob<{node.pk}> killed, it was in the {node.get_state()} state')
