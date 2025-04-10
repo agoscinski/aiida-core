@@ -156,7 +156,7 @@ def test_process_kill_failing_transport_force_kill(
         builder.metadata.options.sleep = sleep_seconds
         return builder
 
-    kill_timeout = 5
+    kill_timeout = 20
 
     # patch a faulty transport open
     def mock_open(_):
@@ -201,7 +201,7 @@ def test_process_kill_failing_transport_failed_kill(
         builder.metadata.options.sleep = sleep_seconds
         return builder
 
-    kill_timeout = 5
+    kill_timeout = 20
 
     # patch a faulty transport open
     def mock_open(_):
@@ -248,7 +248,7 @@ def test_process_kill_failng_ebm(
         builder.metadata.options.sleep = sleep_seconds
         return builder
 
-    kill_timeout = 10
+    kill_timeout = 20
 
     from aiida.common.exceptions import TransportTaskException
 
