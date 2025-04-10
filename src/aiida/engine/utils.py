@@ -130,6 +130,7 @@ def interruptable_task(
     """
     loop = loop or asyncio.get_event_loop()
     future = InterruptableFuture()
+    breakpoint()
 
     async def execute_coroutine():
         """Coroutine that wraps the original coroutine and sets it result on the future only if not already set."""
@@ -193,6 +194,7 @@ async def exponential_backoff_retry(
     :param ignore_exceptions: exceptions to ignore, i.e. when caught do nothing and simply re-raise
     :return: result if the ``coro`` call completes within ``max_attempts`` retries without raising
     """
+    #breakpoint()
     if logger is None:
         logger = LOGGER
 

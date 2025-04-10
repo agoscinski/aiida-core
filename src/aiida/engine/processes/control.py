@@ -173,6 +173,7 @@ def kill_processes(
     processes: list[ProcessNode] | None = None,
     *,
     msg_text: str = 'Killed through `aiida.engine.processes.control.kill_processes`',
+    force_kill: bool = False,
     all_entries: bool = False,
     timeout: float = 5.0,
     wait: bool = False,
@@ -201,7 +202,7 @@ def kill_processes(
         return
 
     controller = get_manager().get_process_controller()
-    action = functools.partial(controller.kill_process, msg_text=msg_text)
+    action = functools.partial(controller.kill_process, msg_text=msg_text, force_kill=force_kill)
     _perform_actions(processes, action, 'kill', 'killing', timeout, wait)
 
 
@@ -282,7 +283,7 @@ def _resolve_futures(
             try:
                 # unwrap is need here since LoopCommunicator will also wrap a future
                 unwrapped = unwrap_kiwi_future(future)
-                result = unwrapped.result()
+                result = unwrapped.result()#timeout)
             except communications.TimeoutError:
                 LOGGER.error(f'call to {infinitive} Process<{process.pk}> timed out')
             except Exception as exception:
