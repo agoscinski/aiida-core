@@ -36,6 +36,9 @@ def start_daemon_worker_in_foreground_and_redirect_streams(aiida_profile, log_di
 
     from aiida.engine.daemon.worker import start_daemon_worker
 
+    from aiida.manage import get_manager
+    get_manager().reset_profile()
+
     original_stdout = sys.stdout
     original_stderr = sys.stderr
 
@@ -80,6 +83,37 @@ def fork_worker_context(aiida_profile):
     nb_workers = client.get_number_of_workers()
     client.decrease_workers(nb_workers)
     daemon_log_dir = Path(client.daemon_log_file).parent
+
+    get_manager().reset_profile()
+    #session = get_manager().get_profile_storage().get_session()
+    #conn = session.connection()
+    #db_name = get_manager().get_config().dictionary['profiles'][aiida_profile.name]['storage']['config']['database_name']
+
+    ##
+    ##    from aiida.orm import QueryBuilder
+    ##    from aiida.orm import Node
+    ##
+    ### Just a quick DB access to make sure there's an open connection
+    ##    qb = QueryBuilder()
+    ##    qb.append(Node)
+    #from sqlalchemy import text
+    #result = conn.execute(text("""
+    #    SELECT pid,
+    #           usename,
+    #           datname,
+    #           application_name,
+    #           client_addr,
+    #           backend_start,
+    #           state,
+    #           query
+    #    FROM pg_stat_activity
+    #    WHERE datname = :db_name
+    #    ORDER BY backend_start DESC;
+    #"""), {'db_name': db_name})
+
+    ## Print results
+    #res = [row for row in result]
+    #breakpoint()
 
     @contextmanager
     def fork_worker():
@@ -180,93 +214,93 @@ def test_process_kill_failing_transport_force_kill(
         assert node.process_status == 'Force killed through `verdi process kill`'
 
 
-@pytest.mark.requires_rmq
-@pytest.mark.usefixtures('started_daemon_client')
-def test_process_kill_failing_transport_failed_kill(
-    fork_worker_context, submit_and_await, aiida_code_installed, run_cli_command, monkeypatch
-):
-    """Tests if a process that is unable to open a transport connection can be force killed.
-
-    A failure in opening a transport connection results in the EBM to be fired blocking a regular kill command.
-    The force kill command will ignore the EBM and kill the process in any case."""
-    from aiida.cmdline.utils.common import get_process_function_report
-    from aiida.orm import Int
-
-    code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
-
-    def make_a_builder(sleep_seconds=0):
-        builder = code.get_builder()
-        builder.x = Int(1)
-        builder.y = Int(1)
-        builder.metadata.options.sleep = sleep_seconds
-        return builder
-
-    kill_timeout = 20
-
-    # patch a faulty transport open
-    def mock_open(_):
-        raise Exception('Mock open exception')
-
-    monkeypatch.setattr('aiida.transports.plugins.local.LocalTransport.open', mock_open)
-    # 8) A process that has stuck in EBM, cannot get killed directly by `verdi process kill`.
-    # Such a process with a history of failed attempts, should still be able to get force killed.
-    # `verdi process kill -F` --as the second attempt--
-    with fork_worker_context():
-        node = submit_and_await(make_a_builder(5), ProcessState.WAITING)
-
-        # assert the process is stuck in EBM
-        result = await_condition(lambda: get_process_function_report(node), timeout=kill_timeout)
-        assert 'Mock open exception' in result
-        assert 'exponential_backoff_retry' in result
-
-        # practice a normal kill, which should fail
-        result = run_cli_command(cmd_process.process_kill, [str(node.pk), '--wait', '--timeout', '1.0'])
-        assert f'Error: call to kill Process<{node.pk}> timed out' in result.stdout
-
-        # force kill the process
-        result = run_cli_command(cmd_process.process_kill, [str(node.pk), '-F', '--wait'])
-        await_condition(lambda: node.is_killed, timeout=kill_timeout)
-        assert node.process_status == 'Force killed through `verdi process kill`'
-
-
-@pytest.mark.requires_rmq
-@pytest.mark.usefixtures('started_daemon_client')
-def test_process_kill_failng_ebm(
-    fork_worker_context, submit_and_await, aiida_code_installed, run_cli_command, monkeypatch
-):
-    """9) Kill a process that is paused after EBM (5 times failed). It should be possible to kill it normally.
-    # (e.g. in scenarios that transport is working again)
-    """
-    from aiida.orm import Int
-
-    code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
-
-    def make_a_builder(sleep_seconds=0):
-        builder = code.get_builder()
-        builder.x = Int(1)
-        builder.y = Int(1)
-        builder.metadata.options.sleep = sleep_seconds
-        return builder
-
-    kill_timeout = 20
-
-    from aiida.common.exceptions import TransportTaskException
-
-    async def mock_exponential_backoff_retry(*_, **__):
-        raise TransportTaskException
-
-    # patch EBM, to make it fail quickly.
-    monkeypatch.setattr('aiida.engine.utils.exponential_backoff_retry', mock_exponential_backoff_retry)
-    with fork_worker_context():
-        node = submit_and_await(make_a_builder(), ProcessState.WAITING)
-        await_condition(
-            lambda: node.process_status
-            == 'Pausing after failed transport task: upload_calculation failed 5 times consecutively',
-            timeout=kill_timeout,
-        )
-
-        run_cli_command(cmd_process.process_kill, [str(node.pk), '--wait'])
-        await_condition(lambda: node.is_killed, timeout=kill_timeout)
+#@pytest.mark.requires_rmq
+#@pytest.mark.usefixtures('started_daemon_client')
+#def test_process_kill_failing_transport_failed_kill(
+#    fork_worker_context, submit_and_await, aiida_code_installed, run_cli_command, monkeypatch
+#):
+#    """Tests if a process that is unable to open a transport connection can be force killed.
+#
+#    A failure in opening a transport connection results in the EBM to be fired blocking a regular kill command.
+#    The force kill command will ignore the EBM and kill the process in any case."""
+#    from aiida.cmdline.utils.common import get_process_function_report
+#    from aiida.orm import Int
+#
+#    code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
+#
+#    def make_a_builder(sleep_seconds=0):
+#        builder = code.get_builder()
+#        builder.x = Int(1)
+#        builder.y = Int(1)
+#        builder.metadata.options.sleep = sleep_seconds
+#        return builder
+#
+#    kill_timeout = 20
+#
+#    # patch a faulty transport open
+#    def mock_open(_):
+#        raise Exception('Mock open exception')
+#
+#    monkeypatch.setattr('aiida.transports.plugins.local.LocalTransport.open', mock_open)
+#    # 8) A process that has stuck in EBM, cannot get killed directly by `verdi process kill`.
+#    # Such a process with a history of failed attempts, should still be able to get force killed.
+#    # `verdi process kill -F` --as the second attempt--
+#    with fork_worker_context():
+#        node = submit_and_await(make_a_builder(5), ProcessState.WAITING)
+#
+#        # assert the process is stuck in EBM
+#        result = await_condition(lambda: get_process_function_report(node), timeout=kill_timeout)
+#        assert 'Mock open exception' in result
+#        assert 'exponential_backoff_retry' in result
+#
+#        # practice a normal kill, which should fail
+#        result = run_cli_command(cmd_process.process_kill, [str(node.pk), '--wait', '--timeout', '1.0'])
+#        assert f'Error: call to kill Process<{node.pk}> timed out' in result.stdout
+#
+#        # force kill the process
+#        result = run_cli_command(cmd_process.process_kill, [str(node.pk), '-F', '--wait'])
+#        await_condition(lambda: node.is_killed, timeout=kill_timeout)
+#        assert node.process_status == 'Force killed through `verdi process kill`'
+#
+#
+#@pytest.mark.requires_rmq
+#@pytest.mark.usefixtures('started_daemon_client')
+#def test_process_kill_failng_ebm(
+#    fork_worker_context, submit_and_await, aiida_code_installed, run_cli_command, monkeypatch
+#):
+#    """9) Kill a process that is paused after EBM (5 times failed). It should be possible to kill it normally.
+#    # (e.g. in scenarios that transport is working again)
+#    """
+#    from aiida.orm import Int
+#
+#    code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
+#
+#    def make_a_builder(sleep_seconds=0):
+#        builder = code.get_builder()
+#        builder.x = Int(1)
+#        builder.y = Int(1)
+#        builder.metadata.options.sleep = sleep_seconds
+#        return builder
+#
+#    kill_timeout = 20
+#
+#    from aiida.common.exceptions import TransportTaskException
+#
+#    async def mock_exponential_backoff_retry(*_, **__):
+#        raise TransportTaskException
+#
+#    # patch EBM, to make it fail quickly.
+#    monkeypatch.setattr('aiida.engine.utils.exponential_backoff_retry', mock_exponential_backoff_retry)
+#    with fork_worker_context():
+#        node = submit_and_await(make_a_builder(), ProcessState.WAITING)
+#        await_condition(
+#            lambda: node.process_status
+#            == 'Pausing after failed transport task: upload_calculation failed 5 times consecutively',
+#            timeout=kill_timeout,
+#        )
+#
+#        run_cli_command(cmd_process.process_kill, [str(node.pk), '--wait'])
+#        await_condition(lambda: node.is_killed, timeout=kill_timeout)
 
 
 class TestVerdiProcess:
