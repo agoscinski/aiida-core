@@ -36,8 +36,8 @@ def start_daemon_worker_in_foreground_and_redirect_streams(aiida_profile_name, l
 
     from aiida.engine.daemon.worker import start_daemon_worker
 
-    #from aiida.manage import get_manager
-    #get_manager().reset_profile()
+    # from aiida.manage import get_manager
+    # get_manager().reset_profile()
     func(*func_args)
 
     original_stdout = sys.stdout
@@ -65,7 +65,6 @@ def fork_worker_context(aiida_profile):
     import multiprocessing
 
     from aiida.engine.daemon.client import get_daemon_client
-    from aiida.manage.manager import get_manager
 
     # from aiida.brokers.rabbitmq.defaults import detect_rabbitmq_config
 
@@ -85,10 +84,10 @@ def fork_worker_context(aiida_profile):
     client.decrease_workers(nb_workers)
     daemon_log_dir = Path(client.daemon_log_file).parent
 
-    #get_manager().reset_profile()
-    #session = get_manager().get_profile_storage().get_session()
-    #conn = session.connection()
-    #db_name = get_manager().get_config().dictionary['profiles'][aiida_profile.name]['storage']['config']['database_name']
+    # get_manager().reset_profile()
+    # session = get_manager().get_profile_storage().get_session()
+    # conn = session.connection()
+    # db_name = get_manager().get_config().dictionary['profiles'][aiida_profile.name]['storage']['config']['database_name']
 
     ##
     ##    from aiida.orm import QueryBuilder
@@ -97,8 +96,8 @@ def fork_worker_context(aiida_profile):
     ### Just a quick DB access to make sure there's an open connection
     ##    qb = QueryBuilder()
     ##    qb.append(Node)
-    #from sqlalchemy import text
-    #result = conn.execute(text("""
+    # from sqlalchemy import text
+    # result = conn.execute(text("""
     #    SELECT pid,
     #           usename,
     #           datname,
@@ -110,18 +109,19 @@ def fork_worker_context(aiida_profile):
     #    FROM pg_stat_activity
     #    WHERE datname = :db_name
     #    ORDER BY backend_start DESC;
-    #"""), {'db_name': db_name})
+    # """), {'db_name': db_name})
 
     ## Print results
-    #res = [row for row in result]
-    #breakpoint()
+    # res = [row for row in result]
+    # breakpoint()
 
     @contextmanager
     def fork_worker(func, func_args):
         ctx = multiprocessing.get_context('spawn')
         # we need to pass the aiida profile so it uses the same configuration
         process = ctx.Process(
-            target=start_daemon_worker_in_foreground_and_redirect_streams, args=(aiida_profile.name, daemon_log_dir, func, func_args)
+            target=start_daemon_worker_in_foreground_and_redirect_streams,
+            args=(aiida_profile.name, daemon_log_dir, func, func_args),
         )
         process.start()
 
@@ -138,8 +138,7 @@ def fork_worker_context(aiida_profile):
 
         # get_manager()._broker = None
 
-        from aiida.manage.manager import get_manager
-        #get_manager().reset_profile()
+        # get_manager().reset_profile()
         # from concurrent import futures
         # try:
         #    get_manager().get_broker().close()
@@ -170,12 +169,16 @@ def await_condition(condition: t.Callable, timeout: int = 1) -> t.Any:
 
     return result
 
+
 def mock_open(_):
     raise Exception('Mock open exception')
 
+
 async def mock_exponential_backoff_retry(*_, **__):
     from aiida.common.exceptions import TransportTaskException
+
     raise TransportTaskException
+
 
 @pytest.mark.requires_rmq
 @pytest.mark.usefixtures('started_daemon_client')
@@ -285,9 +288,10 @@ def test_process_kill_failng_ebm(
 
     kill_timeout = 20
 
-
     # patch EBM, to make it fail quickly.
-    with fork_worker_context(monkeypatch.setattr, ('aiida.engine.utils.exponential_backoff_retry', mock_exponential_backoff_retry)):
+    with fork_worker_context(
+        monkeypatch.setattr, ('aiida.engine.utils.exponential_backoff_retry', mock_exponential_backoff_retry)
+    ):
         node = submit_and_await(make_a_builder(), ProcessState.WAITING)
         await_condition(
             lambda: node.process_status
