@@ -108,17 +108,26 @@ class ProcessNodeLinks(NodeLinks):
         by the engine in one go. If a link is being added after the node is stored, it is most likely not by the engine
         and it should not be allowed.
 
+        Adding an input link from a unsealed `CalculationNode` is forbidden, because it would break the DAG.
+
         :param source: the node from which the link is coming
         :param link_type: the link type
         :param link_label: the link label
         :raise TypeError: if `source` is not a Node instance or `link_type` is not a `LinkType` enum
         :raise ValueError: if the proposed link is invalid
+        :raise aiida.common.ModificationNotAllowed: if the source node is not sealed
+            and the link type is not ``INPUT_CALC``.
         """
+        from aiida.orm.nodes.process.calculation.calcjob import CalcJobNode
+
         if self._node.is_sealed:
             raise exceptions.ModificationNotAllowed('Cannot add a link to a sealed node')
 
         if self._node.is_stored:
             raise ValueError('attempted to add an input link after the process node was already stored.')
+
+        if isinstance(source, CalcJobNode) and link_type is LinkType.INPUT_CALC and not source.is_sealed:
+            raise exceptions.ModificationNotAllowed('Cannot add a link from a `CalculationNode`, if not sealed.')
 
         super().validate_incoming(source, link_type, link_label)
 
@@ -126,13 +135,30 @@ class ProcessNodeLinks(NodeLinks):
         """Validate adding a link of the given type from ourself to a given node.
 
         Adding an outgoing link from a sealed node is forbidden.
+        We make an exception for the ``INPUT_CALC`` link type.
+        This will not break the DAG because the source ``CalculationNode`` will be already stored and sealed.
+        Therefore a loop scenario like this is not going to be possible:
+
+        .. code-block:: text
+
+            +-------------------+
+            | CalculationNode A |  <-----NOT POSSIBLE----
+            +-------------------+                       |
+                |                                       |
+                |                                       |
+                v                                       |
+            +-------------------+                    +------------------+
+            | CalculationNode B |  ----------->      |    DataNode B    |
+            +-------------------+                    +------------------+
 
         :param target: the node to which the link is going
         :param link_type: the link type
         :param link_label: the link label
         :raise aiida.common.ModificationNotAllowed: if the source node (self) is sealed
+            and the link type is not ``INPUT_CALC``.
         """
-        if self._node.is_sealed:
+
+        if self._node.is_sealed and link_type is not LinkType.INPUT_CALC:
             raise exceptions.ModificationNotAllowed('Cannot add a link from a sealed node')
 
         super().validate_outgoing(target, link_type=link_type, link_label=link_label)

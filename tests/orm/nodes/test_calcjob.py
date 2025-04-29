@@ -127,3 +127,27 @@ class TestCalcJobNode:
         else:
             node.set_retrieve_list(retrieve_list)
             assert node.get_retrieve_list() == retrieve_list
+
+    def test_link_validation(self):
+        """Test that a `CalcJobNode` can be input to another `CalcJobNode` if the source is sealed and
+        the target is not."""
+
+        from aiida.common.exceptions import ModificationNotAllowed
+
+        input_node = CalcJobNode(
+            computer=self.computer,
+        )
+
+        node = CalcJobNode(
+            computer=self.computer,
+        )
+
+        with pytest.raises(ModificationNotAllowed, match='Cannot add a link from a `CalculationNode`, if not sealed.'):
+            node.base.links.add_incoming(input_node, link_type=LinkType.INPUT_CALC, link_label='input_calculation')
+
+        input_node.store()
+        input_node.seal()
+
+        node.base.links.add_incoming(input_node, link_type=LinkType.INPUT_CALC, link_label='input_calculation')
+        node.store()
+        node.seal()
