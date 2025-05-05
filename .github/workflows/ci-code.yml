@@ -102,7 +102,7 @@ jobs:
     - name: Install aiida-core
       uses: ./.github/actions/install-aiida-core
       with:
-        python-version: '3.13'
+        python-version: '3.12'
 
     - name: Setup SSH on localhost
       run: .github/workflows/setup_ssh.sh
