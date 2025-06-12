@@ -70,6 +70,9 @@ jobs:
     - name: Setup environment
       run: .github/workflows/setup.sh
 
+    - name: Setup upterm session
+      uses: lhotari/action-upterm@v1
+
     - name: Run test suite
       env:
         AIIDA_TEST_PROFILE: test_aiida
