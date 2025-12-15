@@ -6,158 +6,53 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""This module contains the SQLAlchemy models for the SQLite backend.
+"""SQLite backend models - now uses unified models.
 
-These models are intended to be identical to those of the `psql_dos` backend,
-except for changes to the database specific types:
+This module previously contained complex logic to transform PostgreSQL models
+to SQLite-compatible ones. With the unified models in aiida.storage.models,
+this transformation is no longer needed as the models use TypeDecorators that
+automatically adapt to the database backend.
 
-- UUID -> CHAR(32)
-- DateTime -> TZDateTime
-- JSONB -> JSON
-
-Also, `varchar_pattern_ops` indexes are not possible in sqlite.
+The unified models handle:
+- UUID -> GUID (PostgreSQL UUID vs SQLite CHAR(32))
+- DateTime -> TZDateTime (timezone-aware handling)
+- JSONB -> JSONType (PostgreSQL JSONB vs SQLite JSON)
+- Automatic removal of PostgreSQL-specific indexes (varchar_pattern_ops)
 """
 
-import functools
-from datetime import datetime, timezone
-from typing import Any, Optional, Set, Tuple
+from functools import lru_cache
+from typing import Any, Set, Tuple
 
 import sqlalchemy as sa
-from sqlalchemy import ColumnDefault
-from sqlalchemy import orm as sa_orm
-from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.dialects.sqlite import JSON
 
 from aiida.orm.entities import EntityTypes
 
-# we need to import all models, to ensure they are loaded on the SQLA Metadata
-from aiida.storage.psql_dos.models import authinfo, base, comment, computer, group, log, node, user
+# Import all unified models
+from aiida.storage.models.base import Base as SqliteBase
+from aiida.storage.models.user import DbUser
+from aiida.storage.models.computer import DbComputer
+from aiida.storage.models.node import DbNode, DbLink
+from aiida.storage.models.authinfo import DbAuthInfo
+from aiida.storage.models.group import DbGroup, DbGroupNode as DbGroupNodes
+from aiida.storage.models.comment import DbComment
+from aiida.storage.models.log import DbLog
 
-
-class SqliteModel:
-    """Represent a row in an sqlite database table"""
-
-    def __repr__(self) -> str:
-        """Return a representation of the row columns"""
-        string = f'<{self.__class__.__name__}'
-        for col in self.__table__.columns:  # type: ignore[attr-defined]
-            col_name = col.name
-            if col_name == 'metadata':
-                col_name = '_metadata'
-            val = f'{getattr(self, col_name)!r}'
-            if len(val) > 10:  # truncate long values
-                val = val[:10] + '...'
-            string += f' {col_name}={val},'
-        return string + '>'
-
-
-class TZDateTime(sa.TypeDecorator):
-    """A timezone naive UTC ``DateTime`` implementation for SQLite.
-
-    see: https://docs.sqlalchemy.org/en/14/core/custom_types.html#store-timezone-aware-timestamps-as-timezone-naive-utc
-    """
-
-    impl = sa.DateTime
-    cache_ok = True
-
-    def process_bind_param(self, value: Optional[datetime], dialect):
-        """Process before writing to database."""
-        if value is None:
-            return value
-        if value.tzinfo is None:
-            value = value.astimezone(timezone.utc)
-        value = value.astimezone(timezone.utc).replace(tzinfo=None)
-        return value
-
-    def process_result_value(self, value: Optional[datetime], dialect):
-        """Process when returning from database."""
-        if value is None:
-            return value
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
-
-
-SqliteBase = sa.orm.declarative_base(
-    cls=SqliteModel, name='SqliteModel', metadata=sa.MetaData(naming_convention=dict(base.naming_convention))
-)
-sa.event.listen(SqliteBase, 'init', base.instant_defaults_listener, propagate=True)
-
-
-def pg_to_sqlite(pg_table: sa.Table):
-    """Convert a model intended for PostGreSQL to one compatible with SQLite"""
-    new = pg_table.to_metadata(SqliteBase.metadata)
-    for column in new.columns:
-        if isinstance(column.type, UUID):
-            column.type = sa.String(32)
-        elif isinstance(column.type, sa.DateTime):
-            column.type = TZDateTime()
-        elif isinstance(column.type, JSONB):
-            column.type = JSON()
-            column.default = ColumnDefault(dict)
-    # remove any postgresql specific indexes, e.g. varchar_pattern_ops
-    new.indexes.difference_update([idx for idx in new.indexes if idx.dialect_kwargs])
-    return new
-
-
-def create_orm_cls(klass: base.Base) -> SqliteBase:
-    """Create an ORM class from an existing table in the declarative meta"""
-    tbl = SqliteBase.metadata.tables[klass.__tablename__]
-    return type(  # type: ignore[return-value]
-        klass.__name__,
-        (SqliteBase,),
-        {
-            '__doc__': klass.__doc__,
-            '__tablename__': tbl.name,
-            '__table__': tbl,
-            **{col.name if col.name != 'metadata' else '_metadata': col for col in tbl.columns},
-        },
-    )
-
-
-for table in base.Base.metadata.sorted_tables:
-    pg_to_sqlite(table)
-
-DbUser = create_orm_cls(user.DbUser)
-DbComputer = create_orm_cls(computer.DbComputer)
-DbAuthInfo = create_orm_cls(authinfo.DbAuthInfo)
-DbGroup = create_orm_cls(group.DbGroup)
-DbNode = create_orm_cls(node.DbNode)
-DbGroupNodes = create_orm_cls(group.DbGroupNode)
-DbComment = create_orm_cls(comment.DbComment)
-DbLog = create_orm_cls(log.DbLog)
-DbLink = create_orm_cls(node.DbLink)
-
-# to-do ideally these relationships should be auto-generated in `create_orm_cls`, but this proved difficult
-DbAuthInfo.aiidauser = sa_orm.relationship(  # type: ignore[attr-defined]
-    'DbUser', backref=sa_orm.backref('authinfos', passive_deletes=True, cascade='all, delete')
-)
-DbAuthInfo.dbcomputer = sa_orm.relationship(  # type: ignore[attr-defined]
-    'DbComputer', backref=sa_orm.backref('authinfos', passive_deletes=True, cascade='all, delete')
-)
-DbComment.dbnode = sa_orm.relationship('DbNode', backref='dbcomments')  # type: ignore[attr-defined]
-DbComment.user = sa_orm.relationship('DbUser')  # type: ignore[attr-defined]
-DbGroup.user = sa_orm.relationship(  # type: ignore[attr-defined]
-    'DbUser', backref=sa_orm.backref('dbgroups', cascade='merge')
-)
-DbGroup.dbnodes = sa_orm.relationship(  # type: ignore[attr-defined]
-    'DbNode', secondary='db_dbgroup_dbnodes', backref='dbgroups', lazy='dynamic'
-)
-DbLog.dbnode = sa_orm.relationship(  # type: ignore[attr-defined]
-    'DbNode', backref=sa_orm.backref('dblogs', passive_deletes='all', cascade='merge')
-)
-DbNode.dbcomputer = sa_orm.relationship(  # type: ignore[attr-defined]
-    'DbComputer', backref=sa_orm.backref('dbnodes', passive_deletes='all', cascade='merge')
-)
-DbNode.user = sa_orm.relationship(
+__all__ = [
+    'SqliteBase',
     'DbUser',
-    backref=sa_orm.backref(  # type: ignore[attr-defined]
-        'dbnodes',
-        passive_deletes='all',
-        cascade='merge',
-    ),
-)
+    'DbComputer',
+    'DbNode',
+    'DbLink',
+    'DbAuthInfo',
+    'DbGroup',
+    'DbGroupNodes',
+    'DbComment',
+    'DbLog',
+    'MAP_ENTITY_TYPE_TO_MODEL',
+    'get_model_from_entity',
+]
 
+# Map entity types to their corresponding model classes
 MAP_ENTITY_TYPE_TO_MODEL = {
     EntityTypes.USER: DbUser,
     EntityTypes.AUTHINFO: DbAuthInfo,
@@ -171,9 +66,13 @@ MAP_ENTITY_TYPE_TO_MODEL = {
 }
 
 
-@functools.lru_cache(maxsize=10)
+@lru_cache(maxsize=10)
 def get_model_from_entity(entity_type: EntityTypes) -> Tuple[Any, Set[str]]:
-    """Return the Sqlalchemy model and column names corresponding to the given entity."""
+    """Return the SQLAlchemy model and column names corresponding to the given entity.
+
+    :param entity_type: The entity type to get the model for
+    :return: Tuple of (model class, set of column names)
+    """
     model = MAP_ENTITY_TYPE_TO_MODEL[entity_type]
     mapper = sa.inspect(model).mapper
     column_names = {col.name for col in mapper.c.values()}

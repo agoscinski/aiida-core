@@ -200,7 +200,7 @@ class PsqlDosBackend(StorageBackend):
         gc.collect()
 
     def _clear(self) -> None:
-        from aiida.storage.psql_dos.models.settings import DbSetting
+        from aiida.storage.psql_dos.models import DbSetting
 
         super()._clear()
 
@@ -293,13 +293,13 @@ class PsqlDosBackend(StorageBackend):
         """
         from sqlalchemy import inspect
 
-        from aiida.storage.psql_dos.models.authinfo import DbAuthInfo
-        from aiida.storage.psql_dos.models.comment import DbComment
-        from aiida.storage.psql_dos.models.computer import DbComputer
-        from aiida.storage.psql_dos.models.group import DbGroup, DbGroupNode
-        from aiida.storage.psql_dos.models.log import DbLog
-        from aiida.storage.psql_dos.models.node import DbLink, DbNode
-        from aiida.storage.psql_dos.models.user import DbUser
+        from aiida.storage.psql_dos.models import DbAuthInfo
+        from aiida.storage.psql_dos.models import DbComment
+        from aiida.storage.psql_dos.models import DbComputer
+        from aiida.storage.psql_dos.models import DbGroup, DbGroupNode
+        from aiida.storage.psql_dos.models import DbLog
+        from aiida.storage.psql_dos.models import DbLink, DbNode
+        from aiida.storage.psql_dos.models import DbUser
 
         model = {
             EntityTypes.AUTHINFO: DbAuthInfo,
@@ -380,8 +380,8 @@ class PsqlDosBackend(StorageBackend):
             LOGGER.report(f'Deleted database user `{config["database_username"]}`.')
 
     def delete_nodes_and_connections(self, pks_to_delete: Iterable[int]) -> None:
-        from aiida.storage.psql_dos.models.group import DbGroupNode
-        from aiida.storage.psql_dos.models.node import DbLink, DbNode
+        from aiida.storage.psql_dos.models import DbGroupNode
+        from aiida.storage.psql_dos.models import DbLink, DbNode
 
         if not self.in_transaction:
             raise AssertionError('Cannot delete nodes and links outside a transaction')
@@ -409,7 +409,7 @@ class PsqlDosBackend(StorageBackend):
     def set_global_variable(
         self, key: str, value: Union[None, str, int, float], description: Optional[str] = None, overwrite=True
     ) -> None:
-        from aiida.storage.psql_dos.models.settings import DbSetting
+        from aiida.storage.psql_dos.models import DbSetting
 
         session = self.get_session()
         with nullcontext() if self.in_transaction else self.transaction():
@@ -422,7 +422,7 @@ class PsqlDosBackend(StorageBackend):
                 session.add(DbSetting(key=key, val=value, description=description or ''))
 
     def get_global_variable(self, key: str) -> Union[None, str, int, float]:
-        from aiida.storage.psql_dos.models.settings import DbSetting
+        from aiida.storage.psql_dos.models import DbSetting
 
         session = self.get_session()
         with nullcontext() if self.in_transaction else self.transaction():

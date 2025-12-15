@@ -13,7 +13,7 @@ import logging
 from aiida.common.exceptions import UniquenessError
 from aiida.common.lang import type_check
 from aiida.orm.implementation.groups import BackendGroup, BackendGroupCollection
-from aiida.storage.psql_dos.models.group import DbGroup, DbGroupNode
+from aiida.storage.psql_dos.models import DbGroup, DbGroupNode
 
 from . import entities, users, utils
 from .extras_mixin import ExtrasMixin

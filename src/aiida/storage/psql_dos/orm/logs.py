@@ -12,15 +12,15 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from aiida.common import exceptions
 from aiida.orm.implementation import BackendLog, BackendLogCollection
-from aiida.storage.psql_dos.models import log as models
+from aiida.storage.psql_dos.models import DbLog
 
 from . import entities, utils
 
 
-class SqlaLog(entities.SqlaModelEntity[models.DbLog], BackendLog):
+class SqlaLog(entities.SqlaModelEntity[DbLog], BackendLog):
     """SQLA Log backend entity"""
 
-    MODEL_CLASS = models.DbLog
+    MODEL_CLASS = DbLog
 
     def __init__(self, backend, time, loggername, levelname, dbnode_id, message='', metadata=None):
         super().__init__(backend)

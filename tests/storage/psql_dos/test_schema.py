@@ -16,8 +16,8 @@ from aiida.common.links import LinkType
 from aiida.common.utils import get_new_uuid
 from aiida.manage import get_manager
 from aiida.orm import CalculationNode, Data
-from aiida.storage.psql_dos.models.node import DbNode
-from aiida.storage.psql_dos.models.user import DbUser
+from aiida.storage.models.node import DbNode
+from aiida.storage.models.user import DbUser
 
 
 class TestRelationshipsSQLA:

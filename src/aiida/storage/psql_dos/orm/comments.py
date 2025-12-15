@@ -14,15 +14,15 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from aiida.common import exceptions, lang
 from aiida.orm.implementation.comments import BackendComment, BackendCommentCollection
-from aiida.storage.psql_dos.models import comment as models
+from aiida.storage.psql_dos.models import DbComment
 
 from . import entities, users, utils
 
 
-class SqlaComment(entities.SqlaModelEntity[models.DbComment], BackendComment):
+class SqlaComment(entities.SqlaModelEntity[DbComment], BackendComment):
     """Comment implementation for Sqla."""
 
-    MODEL_CLASS = models.DbComment
+    MODEL_CLASS = DbComment
     USER_CLASS = users.SqlaUser
 
     def __init__(self, backend, node, user, content=None, ctime=None, mtime=None):

@@ -29,7 +29,7 @@ from aiida.manage.configuration.profile import Profile
 from aiida.manage.configuration.settings import AiiDAConfigDir
 from aiida.orm.implementation import BackendEntity
 from aiida.storage.log import MIGRATE_LOGGER
-from aiida.storage.psql_dos.models.settings import DbSetting
+from aiida.storage.psql_dos.models import DbSetting
 from aiida.storage.sqlite_zip import models, orm
 from aiida.storage.sqlite_zip.backend import validate_sqlite_version
 from aiida.storage.sqlite_zip.utils import create_sqla_engine

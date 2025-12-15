@@ -34,7 +34,7 @@ from aiida.common import exceptions
 from aiida.manage.configuration.profile import Profile
 from aiida.storage.log import MIGRATE_LOGGER
 from aiida.storage.migrations import TEMPLATE_INVALID_SCHEMA_VERSION
-from aiida.storage.psql_dos.models.settings import DbSetting
+from aiida.storage.psql_dos.models import DbSetting
 from aiida.storage.psql_dos.utils import create_sqlalchemy_engine
 
 if TYPE_CHECKING:
