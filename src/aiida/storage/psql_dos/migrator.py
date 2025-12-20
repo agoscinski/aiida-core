@@ -34,7 +34,7 @@ from aiida.common import exceptions
 from aiida.manage.configuration.profile import Profile
 from aiida.storage.log import MIGRATE_LOGGER
 from aiida.storage.migrations import TEMPLATE_INVALID_SCHEMA_VERSION
-from aiida.storage.psql_dos.models import DbSetting
+from aiida.storage.models import DbSetting
 from aiida.storage.psql_dos.utils import create_sqlalchemy_engine
 
 if TYPE_CHECKING:
@@ -285,7 +285,7 @@ class PsqlDosMigrator:
         This assumes that the database has no schema whatsoever and so the initial schema is created directly from the
         models at the current head version without migrating through all of them one by one.
         """
-        from aiida.storage.psql_dos.models.base import get_orm_metadata
+        from aiida.storage.models.base import get_orm_metadata
 
         # setup the database
         # see: https://alembic.sqlalchemy.org/en/latest/cookbook.html#building-an-up-to-date-database-from-scratch

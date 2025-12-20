@@ -20,7 +20,7 @@ class DbSetting(Base):
     This unified model works with both PostgreSQL and SQLite backends.
 
     Replaces:
-    - aiida.storage.psql_dos.models.settings.DbSetting
+    - aiida.storage.models.settings.DbSetting
     - Dynamic creation in aiida.storage.sqlite_zip.models
     """
 

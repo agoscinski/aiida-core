@@ -15,7 +15,7 @@ from sqlalchemy.orm.session import make_transient
 
 from aiida.common import exceptions
 from aiida.orm.implementation.computers import BackendComputer, BackendComputerCollection
-from aiida.storage.psql_dos.models import DbComputer
+from aiida.storage.models import DbComputer
 
 from . import entities, utils
 

@@ -16,7 +16,7 @@ class DbComputer(Base):
     This unified model works with both PostgreSQL and SQLite backends.
 
     Replaces:
-    - aiida.storage.psql_dos.models.computer.DbComputer
+    - aiida.storage.models.computer.DbComputer
     - aiida.storage.sqlite_zip.models.DbComputer
     """
 

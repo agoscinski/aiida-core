@@ -16,7 +16,7 @@ def run_migrations_online():
 
     The connection should have been passed to the config, which we use to configue the migration context.
     """
-    from aiida.storage.psql_dos.models.base import get_orm_metadata
+    from aiida.storage.models.base import get_orm_metadata
 
     config = context.config
 

@@ -75,7 +75,7 @@ class TestNodeBasicSQLA:
         It tests the fix for the issue #234
         """
         from aiida.common.utils import get_new_uuid
-        from aiida.storage.psql_dos.models.node import DbNode
+        from aiida.storage.models.node import DbNode
 
         # Get the automatic user
         dbuser = self.backend.users.create('user@aiida.net').store().bare_model

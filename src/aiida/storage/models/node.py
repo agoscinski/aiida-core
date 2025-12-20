@@ -29,7 +29,7 @@ class DbNode(Base):
     adapt to the dialect.
 
     Replaces:
-    - aiida.storage.psql_dos.models.node.DbNode
+    - aiida.storage.models.node.DbNode
     - aiida.storage.sqlite_zip.models.DbNode
     """
 
@@ -173,7 +173,7 @@ class DbLink(Base):
     This unified model works with both PostgreSQL and SQLite backends.
 
     Replaces:
-    - aiida.storage.psql_dos.models.node.DbLink
+    - aiida.storage.models.node.DbLink
     - aiida.storage.sqlite_zip.models.DbLink
     """
 

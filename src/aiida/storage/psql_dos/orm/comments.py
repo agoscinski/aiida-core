@@ -14,7 +14,7 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from aiida.common import exceptions, lang
 from aiida.orm.implementation.comments import BackendComment, BackendCommentCollection
-from aiida.storage.psql_dos.models import DbComment
+from aiida.storage.models import DbComment
 
 from . import entities, users, utils
 

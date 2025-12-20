@@ -10,13 +10,13 @@
 
 from functools import singledispatch
 
-from aiida.storage.psql_dos.models import DbAuthInfo
-from aiida.storage.psql_dos.models import DbComment
-from aiida.storage.psql_dos.models import DbComputer
-from aiida.storage.psql_dos.models import DbGroup
-from aiida.storage.psql_dos.models import DbLog
-from aiida.storage.psql_dos.models import DbLink, DbNode
-from aiida.storage.psql_dos.models import DbUser
+from aiida.storage.models import DbAuthInfo
+from aiida.storage.models import DbComment
+from aiida.storage.models import DbComputer
+from aiida.storage.models import DbGroup
+from aiida.storage.models import DbLog
+from aiida.storage.models import DbLink, DbNode
+from aiida.storage.models import DbUser
 
 
 #####################################################################

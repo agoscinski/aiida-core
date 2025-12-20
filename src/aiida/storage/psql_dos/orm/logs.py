@@ -12,7 +12,7 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from aiida.common import exceptions
 from aiida.orm.implementation import BackendLog, BackendLogCollection
-from aiida.storage.psql_dos.models import DbLog
+from aiida.storage.models import DbLog
 
 from . import entities, utils
 

@@ -21,7 +21,7 @@ class DbLog(Base):
     This unified model works with both PostgreSQL and SQLite backends.
 
     Replaces:
-    - aiida.storage.psql_dos.models.log.DbLog
+    - aiida.storage.models.log.DbLog
     - Dynamic creation in aiida.storage.sqlite_zip.models
     """
 

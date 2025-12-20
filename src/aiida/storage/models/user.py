@@ -12,7 +12,7 @@ class DbUser(Base):
     eliminating the need for separate model definitions.
 
     Replaces:
-    - aiida.storage.psql_dos.models.user.DbUser
+    - aiida.storage.models.user.DbUser
     - aiida.storage.sqlite_zip.models.DbUser (generated via pg_to_sqlite)
     """
 

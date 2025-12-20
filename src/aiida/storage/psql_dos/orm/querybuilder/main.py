@@ -129,57 +129,57 @@ class SqlaQueryBuilder(BackendQueryBuilder):
 
     @property
     def Node(self):
-        import aiida.storage.psql_dos.models.node
+        import aiida.storage.models.node
 
-        return aiida.storage.psql_dos.models.node.DbNode
+        return aiida.storage.models.node.DbNode
 
     @property
     def Link(self):
-        import aiida.storage.psql_dos.models.node
+        import aiida.storage.models.node
 
-        return aiida.storage.psql_dos.models.node.DbLink
+        return aiida.storage.models.node.DbLink
 
     @property
     def Computer(self):
-        import aiida.storage.psql_dos.models.computer
+        import aiida.storage.models.computer
 
-        return aiida.storage.psql_dos.models.computer.DbComputer
+        return aiida.storage.models.computer.DbComputer
 
     @property
     def User(self):
-        import aiida.storage.psql_dos.models.user
+        import aiida.storage.models.user
 
-        return aiida.storage.psql_dos.models.user.DbUser
+        return aiida.storage.models.user.DbUser
 
     @property
     def Group(self):
-        import aiida.storage.psql_dos.models.group
+        import aiida.storage.models.group
 
-        return aiida.storage.psql_dos.models.group.DbGroup
+        return aiida.storage.models.group.DbGroup
 
     @property
     def AuthInfo(self):
-        import aiida.storage.psql_dos.models.authinfo
+        import aiida.storage.models.authinfo
 
-        return aiida.storage.psql_dos.models.authinfo.DbAuthInfo
+        return aiida.storage.models.authinfo.DbAuthInfo
 
     @property
     def Comment(self):
-        import aiida.storage.psql_dos.models.comment
+        import aiida.storage.models.comment
 
-        return aiida.storage.psql_dos.models.comment.DbComment
+        return aiida.storage.models.comment.DbComment
 
     @property
     def Log(self):
-        import aiida.storage.psql_dos.models.log
+        import aiida.storage.models.log
 
-        return aiida.storage.psql_dos.models.log.DbLog
+        return aiida.storage.models.log.DbLog
 
     @property
     def table_groups_nodes(self):
-        import aiida.storage.psql_dos.models.group
+        import aiida.storage.models.group
 
-        return aiida.storage.psql_dos.models.group.table_groups_nodes
+        return aiida.storage.models.group.table_groups_nodes
 
     def get_session(self) -> Session:
         """Get the connection to the database"""

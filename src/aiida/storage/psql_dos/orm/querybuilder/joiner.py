@@ -22,7 +22,7 @@ from sqlalchemy.sql.schema import Table
 from sqlalchemy.types import Integer
 
 from aiida.common.links import LinkType
-from aiida.storage.psql_dos.models.base import Model
+from aiida.storage.models.base import Model
 
 
 class _EntityMapper(Protocol):

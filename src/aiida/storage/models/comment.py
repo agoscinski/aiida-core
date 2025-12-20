@@ -21,7 +21,7 @@ class DbComment(Base):
     This unified model works with both PostgreSQL and SQLite backends.
 
     Replaces:
-    - aiida.storage.psql_dos.models.comment.DbComment
+    - aiida.storage.models.comment.DbComment
     - Dynamic creation in aiida.storage.sqlite_zip.models
     """
 

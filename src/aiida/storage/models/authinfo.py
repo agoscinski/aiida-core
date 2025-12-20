@@ -19,7 +19,7 @@ class DbAuthInfo(Base):
     This unified model works with both PostgreSQL and SQLite backends.
 
     Replaces:
-    - aiida.storage.psql_dos.models.authinfo.DbAuthInfo
+    - aiida.storage.models.authinfo.DbAuthInfo
     - Dynamic creation in aiida.storage.sqlite_zip.models
     """
 

@@ -19,7 +19,7 @@ class DbGroupNode(Base):
     This unified model works with both PostgreSQL and SQLite backends.
 
     Replaces:
-    - aiida.storage.psql_dos.models.group.DbGroupNode
+    - aiida.storage.models.group.DbGroupNode
     - Dynamic creation in aiida.storage.sqlite_zip.models
     """
 
@@ -66,7 +66,7 @@ class DbGroup(Base):
     This unified model works with both PostgreSQL and SQLite backends.
 
     Replaces:
-    - aiida.storage.psql_dos.models.group.DbGroup
+    - aiida.storage.models.group.DbGroup
     - Dynamic creation in aiida.storage.sqlite_zip.models
     """
 

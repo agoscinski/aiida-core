@@ -11,7 +11,7 @@
 from typing import Generic, Set, TypeVar
 
 from aiida.common.lang import type_check
-from aiida.storage.psql_dos.models.base import Base
+from aiida.storage.models.base import Base
 
 from . import utils
 

@@ -4,7 +4,7 @@ This module contains database-agnostic model definitions that work with both
 PostgreSQL and SQLite using SQLAlchemy's TypeDecorator system.
 
 This replaces the duplicated models in:
-- aiida.storage.psql_dos.models (PostgreSQL-specific)
+- aiida.storage.models (PostgreSQL-specific)
 - aiida.storage.sqlite_zip.models (SQLite-specific)
 
 The unified models use custom types that automatically adapt to the database dialect,
