@@ -8,30 +8,11 @@
 ###########################################################################
 """Base SQLAlchemy models - now imports from unified models.
 
-This module provides backwards compatibility by re-exporting the Base class
-from the unified models and providing the get_orm_metadata() function needed
-by the migration system.
+This module provides backwards compatibility by re-exporting everything
+from the unified models.
 """
 
-from sqlalchemy import MetaData
-
-# Import unified Base class
-from aiida.storage.models.base import Base, Model, instant_defaults_listener, naming_convention
+# Re-export everything from unified base
+from aiida.storage.models.base import Base, Model, instant_defaults_listener, naming_convention, get_orm_metadata
 
 __all__ = ['Base', 'Model', 'instant_defaults_listener', 'naming_convention', 'get_orm_metadata']
-
-
-def get_orm_metadata() -> MetaData:
-    """Return the populated metadata object.
-
-    This function is used by Alembic migrations to access the SQLAlchemy
-    metadata containing all table definitions.
-    """
-    # Import all models to ensure they're registered in Base.metadata
-    from . import (
-        DbUser, DbComputer, DbNode, DbLink,
-        DbAuthInfo, DbGroup, DbGroupNode,
-        DbComment, DbLog, DbSetting
-    )
-
-    return Base.metadata

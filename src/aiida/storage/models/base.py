@@ -138,3 +138,25 @@ def create_indexes_for_dialect(dialect_name: str = None) -> dict:
             'postgresql_ops': {'label': 'varchar_pattern_ops'}
         }
     return {}
+
+
+def get_orm_metadata() -> MetaData:
+    """Return the populated metadata object for all AiiDA models.
+
+    This function ensures all models are imported and registered in Base.metadata,
+    then returns the metadata. This is used by Alembic migrations to access table
+    definitions for both PostgreSQL and SQLite backends.
+
+    :return: SQLAlchemy MetaData containing all table definitions
+    """
+    # Import all unified models to populate Base.metadata
+    from .user import DbUser
+    from .computer import DbComputer
+    from .node import DbNode, DbLink
+    from .authinfo import DbAuthInfo
+    from .group import DbGroup, DbGroupNode
+    from .comment import DbComment
+    from .log import DbLog
+    from .settings import DbSetting
+
+    return Base.metadata
