@@ -36,7 +36,7 @@ dependencies = [
   'click-spinner~=0.1.8',
   'click>=8.1.0,<8.3',
   'disk-objectstore~=1.4.0',
-  'pygit2~=1.19.0',
+  'pygit2~=1.18.0',
   'docstring-parser',
   'get-annotations~=0.1;python_version<"3.10"',
   'graphviz~=0.19',
@@ -69,7 +69,7 @@ keywords = ['aiida', 'workflows']
 license = {file = 'LICENSE.txt'}
 name = 'aiida-core'
 readme = 'README.md'
-requires-python = '>=3.9'
+requires-python = '>=3.10'
 
 [project.entry-points.'aiida.brokers']
 'core.rabbitmq' = 'aiida.brokers.rabbitmq.broker:RabbitmqBroker'
