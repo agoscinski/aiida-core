@@ -11,7 +11,7 @@ The unified models use custom types that automatically adapt to the database dia
 eliminating the need for manual conversion functions like pg_to_sqlite().
 """
 
-from .base import Base, naming_convention
+from .base import Base, naming_convention, get_orm_metadata
 from .types import GUID, TZDateTime, JSONType
 from .user import DbUser
 from .computer import DbComputer
@@ -25,6 +25,7 @@ from .settings import DbSetting
 __all__ = [
     'Base',
     'naming_convention',
+    'get_orm_metadata',
     'GUID',
     'TZDateTime',
     'JSONType',

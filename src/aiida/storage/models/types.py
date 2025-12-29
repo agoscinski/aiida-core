@@ -190,13 +190,15 @@ class JSONType(TypeDecorator):
     The type handles JSON serialization/deserialization automatically and
     uses the optimal JSON type for each database.
 
+    Supports JSON indexing operations like column['key'] for querying nested data.
+
     Examples:
         # PostgreSQL: Binary JSON with indexing support
         # SQLite: TEXT with JSON functions
         # Python: dict, list, or any JSON-serializable object
     """
 
-    impl = String  # Fallback for unsupported databases
+    impl = JSONB  # Use JSONB as base to get its comparator
     cache_ok = True
 
     def load_dialect_impl(self, dialect):

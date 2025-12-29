@@ -11,6 +11,9 @@ index:
 - - ix_db_dbcomment_db_dbcomment_user_id
   - db_dbcomment
   - - CREATE INDEX ix_db_dbcomment_db_dbcomment_user_id ON db_dbcomment (user_id)
+- - ix_db_dbcomputer_db_dbcomputer_label
+  - db_dbcomputer
+  - - CREATE UNIQUE INDEX ix_db_dbcomputer_db_dbcomputer_label ON db_dbcomputer (label)
 - - ix_db_dbgroup_db_dbgroup_label
   - db_dbgroup
   - - CREATE INDEX ix_db_dbgroup_db_dbgroup_label ON db_dbgroup (label)
@@ -82,9 +85,6 @@ index:
 - - sqlite_autoindex_db_dbcomputer_1
   - db_dbcomputer
   - []
-- - sqlite_autoindex_db_dbcomputer_2
-  - db_dbcomputer
-  - []
 - - sqlite_autoindex_db_dbgroup_1
   - db_dbgroup
   - []
@@ -136,9 +136,9 @@ table:
     - id INTEGER NOT NULL
     - uuid VARCHAR(32) NOT NULL
     - dbnode_id INTEGER NOT NULL
+    - user_id INTEGER NOT NULL
     - ctime DATETIME NOT NULL
     - mtime DATETIME NOT NULL
-    - user_id INTEGER NOT NULL
     - content TEXT NOT NULL
     - )
     - CONSTRAINT db_dbcomment_pkey PRIMARY KEY (id)
@@ -160,7 +160,6 @@ table:
     - metadata JSON NOT NULL
     - )
     - CONSTRAINT db_dbcomputer_pkey PRIMARY KEY (id)
-    - CONSTRAINT uq_db_dbcomputer_label UNIQUE (label)
     - CONSTRAINT uq_db_dbcomputer_uuid UNIQUE (uuid)
 - - db_dbgroup
   - db_dbgroup
@@ -233,8 +232,8 @@ table:
     - description TEXT NOT NULL
     - ctime DATETIME NOT NULL
     - mtime DATETIME NOT NULL
-    - attributes JSON
-    - extras JSON
+    - attributes JSON NOT NULL
+    - extras JSON NOT NULL
     - repository_metadata JSON NOT NULL
     - dbcomputer_id INTEGER
     - user_id INTEGER NOT NULL
