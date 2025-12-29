@@ -225,7 +225,7 @@ class GitRepositoryBackend(AbstractRepositoryBackend):
             blob = repo[oid]
 
             # Check that it's actually a blob
-            if blob.type != pygit2.GIT_OBJ_BLOB:
+            if blob.type != pygit2.GIT_OBJECT_BLOB:
                 raise OSError(f'object with key `{key}` is not a blob')
 
             # Return the data as a BytesIO stream
@@ -260,7 +260,7 @@ class GitRepositoryBackend(AbstractRepositoryBackend):
             # Only yield blobs (not trees, commits, tags)
             try:
                 obj = repo[oid]
-                if obj.type == pygit2.GIT_OBJ_BLOB:
+                if obj.type == pygit2.GIT_OBJECT_BLOB:
                     yield str(oid)
             except (KeyError, ValueError):
                 # Skip objects that can't be loaded
