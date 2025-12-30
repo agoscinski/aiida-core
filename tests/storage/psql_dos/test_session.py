@@ -141,8 +141,8 @@ class TestSessionSqla:
 
         Tests for bug #1372
         """
-        import aiida.storage.psql_dos as sa
         from aiida.common import timezone
+        from aiida.storage.models.node import DbNode
 
         session = sessionmaker(bind=self.backend.get_session().bind, future=True)
         custom_session = session()
@@ -154,7 +154,7 @@ class TestSessionSqla:
             assert master_session is not custom_session
 
             # Manually load the DbNode in a different session
-            dbnode_reloaded = custom_session.get(sa.models.node.DbNode, node.id)
+            dbnode_reloaded = custom_session.get(DbNode, node.id)
 
             # Now, go through one by one changing the possible attributes (of the model)
             # and check that they're updated when the user reads them from the aiida node
