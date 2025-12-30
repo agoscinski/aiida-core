@@ -46,11 +46,11 @@ class TestGUIDType:
 
         # Retrieve
         retrieved = sqlite_session.query(TestModel).first()
-        assert isinstance(retrieved.uuid_col, uuid.UUID)
-        assert retrieved.uuid_col == test_uuid
+        assert isinstance(retrieved.uuid_col, str)
+        assert retrieved.uuid_col == str(test_uuid)
 
-    def test_guid_stored_as_hex_in_sqlite(self, sqlite_session):
-        """Test that UUIDs are stored as hex strings in SQLite."""
+    def test_guid_stored_as_string_in_sqlite(self, sqlite_session):
+        """Test that UUIDs are stored as dash-formatted strings in SQLite."""
         test_uuid = uuid.uuid4()
         obj = TestModel(uuid_col=test_uuid)
         sqlite_session.add(obj)
@@ -62,9 +62,9 @@ class TestGUIDType:
             text('SELECT uuid_col FROM test_model')
         ).fetchone()
 
-        # Should be 32-character hex string (no dashes)
-        assert len(result[0]) == 32
-        assert result[0] == test_uuid.hex
+        # Should be 36-character string with dashes (standard UUID format)
+        assert len(result[0]) == 36
+        assert result[0] == str(test_uuid)
 
     def test_guid_from_string(self, sqlite_session):
         """Test creating GUID from string."""
@@ -74,7 +74,7 @@ class TestGUIDType:
         sqlite_session.commit()
 
         retrieved = sqlite_session.query(TestModel).first()
-        assert retrieved.uuid_col == uuid.UUID(uuid_str)
+        assert retrieved.uuid_col == uuid_str
 
 
 class TestTZDateTimeType:
@@ -211,8 +211,9 @@ class TestTypesMultiBackend:
         multi_session.commit()
 
         retrieved = multi_session.query(TestModel).first()
-        assert retrieved.uuid_col == test_uuid
-        assert isinstance(retrieved.uuid_col, uuid.UUID)
+        # Both backends now return strings
+        assert retrieved.uuid_col == str(test_uuid)
+        assert isinstance(retrieved.uuid_col, str)
 
     def test_datetime_consistency(self, multi_session):
         """Test datetime handling is consistent across backends."""
