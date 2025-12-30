@@ -118,6 +118,12 @@ def diff_schemas(psql_insp: Inspector, sqlite_insp: Inspector):
         # compare unique constraints
         psql_uq_constraints = [c['name'] for c in psql_insp.get_unique_constraints(table_name)]
         sqlite_uq_constraints = [c['name'] for c in sqlite_insp.get_unique_constraints(table_name)]
+
+        # Filter out known differences:
+        # - db_dbcomputer.label: PostgreSQL uses unique index, SQLite uses unique constraint
+        if table_name == 'db_dbcomputer':
+            sqlite_uq_constraints = [c for c in sqlite_uq_constraints if c != 'uq_db_dbcomputer_label']
+
         for uq_constraint in psql_uq_constraints:
             if uq_constraint not in sqlite_uq_constraints:
                 diffs.setdefault(table_name, {}).setdefault('uq_constraints', {})[uq_constraint] = 'missing'

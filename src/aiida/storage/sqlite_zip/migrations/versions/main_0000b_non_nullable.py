@@ -66,6 +66,8 @@ def upgrade():
         batch_op.alter_column('description', existing_type=sa.TEXT(), nullable=False)
         batch_op.alter_column('label', existing_type=sa.String(255), nullable=False)
         batch_op.alter_column('mtime', existing_type=sa.DateTime(timezone=True), nullable=False)
+        batch_op.alter_column('attributes', existing_type=sa.JSON(), nullable=False)
+        batch_op.alter_column('extras', existing_type=sa.JSON(), nullable=False)
 
     with op.batch_alter_table('db_dbuser') as batch_op:
         batch_op.alter_column('first_name', existing_type=sa.String(254), nullable=False)
