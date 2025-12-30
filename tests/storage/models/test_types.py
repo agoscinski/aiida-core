@@ -49,8 +49,8 @@ class TestGUIDType:
         assert isinstance(retrieved.uuid_col, str)
         assert retrieved.uuid_col == str(test_uuid)
 
-    def test_guid_stored_as_string_in_sqlite(self, sqlite_session):
-        """Test that UUIDs are stored as dash-formatted strings in SQLite."""
+    def test_guid_stored_as_hex_in_sqlite(self, sqlite_session):
+        """Test that UUIDs are stored as hex strings in SQLite."""
         test_uuid = uuid.uuid4()
         obj = TestModel(uuid_col=test_uuid)
         sqlite_session.add(obj)
@@ -62,9 +62,9 @@ class TestGUIDType:
             text('SELECT uuid_col FROM test_model')
         ).fetchone()
 
-        # Should be 36-character string with dashes (standard UUID format)
-        assert len(result[0]) == 36
-        assert result[0] == str(test_uuid)
+        # Should be 32-character hex string (no dashes)
+        assert len(result[0]) == 32
+        assert result[0] == test_uuid.hex
 
     def test_guid_from_string(self, sqlite_session):
         """Test creating GUID from string."""
@@ -75,6 +75,26 @@ class TestGUIDType:
 
         retrieved = sqlite_session.query(TestModel).first()
         assert retrieved.uuid_col == uuid_str
+
+    def test_guid_query_with_dashes_and_hex(self, sqlite_session):
+        """Test querying with both dashed and hex UUID formats."""
+        test_uuid = uuid.uuid4()
+        obj = TestModel(uuid_col=test_uuid)
+        sqlite_session.add(obj)
+        sqlite_session.commit()
+
+        # Query with dashed format
+        result1 = sqlite_session.query(TestModel).filter_by(uuid_col=str(test_uuid)).first()
+        assert result1 is not None
+        assert result1.uuid_col == str(test_uuid)
+
+        # Query with hex format
+        result2 = sqlite_session.query(TestModel).filter_by(uuid_col=test_uuid.hex).first()
+        assert result2 is not None
+        assert result2.uuid_col == str(test_uuid)
+
+        # Both should return same object
+        assert result1.id == result2.id
 
 
 class TestTZDateTimeType:

@@ -25,22 +25,26 @@ class GUID(TypeDecorator):
     """Platform-independent GUID type.
 
     PostgreSQL: Uses native UUID type
-    SQLite: Uses String to store UUID as text
+    SQLite: Uses String(32) to store UUID as hex string (no dashes)
 
     Usage:
         uuid_col = Column(GUID, default=uuid.uuid4, nullable=False)
 
     The type automatically handles conversion between Python's uuid.UUID objects
-    and the appropriate database representation. On SQLite, UUIDs are stored as
-    strings to allow flexible comparison with different UUID formats (with or without dashes).
+    and the appropriate database representation. Queries accept both dashed and hex
+    formats, which are normalized to hex for SQLite comparison.
+
+    Storage format: hex (32 chars) - e.g., 'a0eebc999c0b4ef8bb6d6bb9bd380a11'
+    Query format: accepts both dashed and hex - normalized to hex
+    Return format: dashed string (36 chars) - e.g., 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 
     Examples:
-        # PostgreSQL: native UUID type
-        # SQLite: TEXT (flexible string comparison)
-        # Python: str (UUID string with dashes)
+        # PostgreSQL: stored as native UUID
+        # SQLite: stored as 'a0eebc999c0b4ef8bb6d6bb9bd380a11'
+        # Python: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
     """
 
-    impl = String
+    impl = String(32)
     cache_ok = True
 
     def load_dialect_impl(self, dialect):
@@ -52,59 +56,62 @@ class GUID(TypeDecorator):
         if dialect.name == 'postgresql':
             return dialect.type_descriptor(UUID(as_uuid=True))
         else:
-            # SQLite: use TEXT for flexible UUID string storage
-            return dialect.type_descriptor(String)
+            # SQLite: use VARCHAR(32) for hex string storage
+            return dialect.type_descriptor(String(32))
 
     def process_bind_param(self, value: Optional[uuid.UUID | str], dialect) -> Optional[uuid.UUID | str]:
         """Process value going INTO the database.
 
-        Converts Python UUID to database format.
+        Normalizes incoming UUIDs to appropriate format for each backend.
+        Accepts both dashed and hex UUID strings for SQLite queries.
 
-        :param value: Python uuid.UUID object or string
+        :param value: Python uuid.UUID object or string (dashed or hex)
         :param dialect: SQLAlchemy dialect
         :return: Database-appropriate representation
         """
         if value is None:
             return value
 
-        # Ensure we have a string representation
+        # Convert to UUID object first (handles both dashed and hex inputs)
         if isinstance(value, uuid.UUID):
-            value_str = str(value)
+            uuid_obj = value
         elif isinstance(value, str):
-            # Validate and normalize the UUID string
             try:
-                value_str = str(uuid.UUID(value))
-            except (ValueError, AttributeError):
-                # Invalid UUID string - pass through as-is
-                # Query will just not match anything in the database
+                # Try parsing as standard UUID (with or without dashes)
+                uuid_obj = uuid.UUID(value)
+            except ValueError:
+                # Invalid UUID - pass through (will fail comparison)
                 return value
         else:
             return str(value)
 
         if dialect.name == 'postgresql':
-            # PostgreSQL: convert back to UUID object
-            return uuid.UUID(value_str)
+            # PostgreSQL uses native UUID type
+            return uuid_obj
         else:
-            # SQLite: store as string
-            return value_str
+            # SQLite: convert to hex (32 chars, no dashes)
+            return uuid_obj.hex
 
     def process_result_value(self, value: Optional[str | uuid.UUID], dialect) -> Optional[str]:
         """Process value coming FROM the database.
 
-        Converts database format to Python string.
+        Converts database format to Python dashed string format.
 
-        :param value: Database value
+        :param value: Database value (UUID object for PostgreSQL, hex string for SQLite)
         :param dialect: SQLAlchemy dialect
-        :return: UUID string
+        :return: UUID string in dashed format
         """
         if value is None:
             return value
 
         if dialect.name == 'postgresql':
-            # PostgreSQL returns UUID object - convert to string
+            # PostgreSQL returns UUID object - convert to dashed string
             return str(value)
         else:
-            # SQLite: return string as-is
+            # SQLite: hex string -> UUID object -> dashed string
+            if isinstance(value, str) and len(value) == 32:
+                # Convert hex to dashed format
+                return str(uuid.UUID(hex=value))
             return value
 
 

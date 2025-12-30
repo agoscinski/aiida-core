@@ -134,7 +134,7 @@ table:
   - db_dbcomment
   - - CREATE TABLE db_dbcomment (
     - id INTEGER NOT NULL
-    - uuid VARCHAR NOT NULL
+    - uuid VARCHAR(32) NOT NULL
     - dbnode_id INTEGER NOT NULL
     - user_id INTEGER NOT NULL
     - ctime DATETIME NOT NULL
@@ -151,7 +151,7 @@ table:
   - db_dbcomputer
   - - CREATE TABLE db_dbcomputer (
     - id INTEGER NOT NULL
-    - uuid VARCHAR NOT NULL
+    - uuid VARCHAR(32) NOT NULL
     - label VARCHAR(255) NOT NULL
     - hostname VARCHAR(255) NOT NULL
     - description TEXT NOT NULL
@@ -165,7 +165,7 @@ table:
   - db_dbgroup
   - - CREATE TABLE db_dbgroup (
     - id INTEGER NOT NULL
-    - uuid VARCHAR NOT NULL
+    - uuid VARCHAR(32) NOT NULL
     - label VARCHAR(255) NOT NULL
     - type_string VARCHAR(255) NOT NULL
     - time DATETIME NOT NULL
@@ -209,7 +209,7 @@ table:
   - db_dblog
   - - CREATE TABLE db_dblog (
     - id INTEGER NOT NULL
-    - uuid VARCHAR NOT NULL
+    - uuid VARCHAR(32) NOT NULL
     - time DATETIME NOT NULL
     - loggername VARCHAR(255) NOT NULL
     - levelname VARCHAR(50) NOT NULL
@@ -225,7 +225,7 @@ table:
   - db_dbnode
   - - CREATE TABLE db_dbnode (
     - id INTEGER NOT NULL
-    - uuid VARCHAR NOT NULL
+    - uuid VARCHAR(32) NOT NULL
     - node_type VARCHAR(255) NOT NULL
     - process_type VARCHAR(255)
     - label VARCHAR(255) NOT NULL
