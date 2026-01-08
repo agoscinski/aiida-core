@@ -21,7 +21,7 @@ __all__ = ('PipeCommunicator',)
 LOGGER = logging.getLogger(__name__)
 
 
-class PipeCommunicator(communications.CommunicatorHelper):
+class PipeCommunicator(kiwipy.Communicator):
     """Named pipe-based communicator using selectors for event-driven I/O.
 
     This implementation uses named pipes for inter-process communication with
@@ -44,7 +44,11 @@ class PipeCommunicator(communications.CommunicatorHelper):
         :param encoder: Optional custom message encoder.
         :param decoder: Optional custom message decoder.
         """
-        super().__init__()
+        # Initialize subscriber dictionaries
+        self._task_subscribers: dict[str, communications.TaskSubscriber] = {}
+        self._rpc_subscribers: dict[str, communications.RpcSubscriber] = {}
+        self._broadcast_subscribers: dict[str, communications.BroadcastSubscriber] = {}
+        self._closed = False
 
         self._profile_name = profile_name
         self._config_path = Path(config_path)
@@ -182,10 +186,28 @@ class PipeCommunicator(communications.CommunicatorHelper):
         data = messages.serialize(message, encoder=self._encoder)
         utils.write_to_pipe(pipe_path, data, non_blocking=False)
 
+    def is_closed(self) -> bool:
+        """Check if the communicator is closed.
+
+        :return: True if closed, False otherwise.
+        """
+        return self._closed
+
+    def _ensure_open(self) -> None:
+        """Ensure the communicator is open.
+
+        :raises kiwipy.CommunicatorClosed: If the communicator is closed.
+        """
+        if self._closed:
+            raise kiwipy.CommunicatorClosed('Communicator is closed')
+
     def close(self) -> None:
         """Close the communicator and clean up resources."""
         if self.is_closed():
             return
+
+        # Mark as closed first
+        self._closed = True
 
         # Stop selector thread
         self._selector_running = False
@@ -224,7 +246,10 @@ class PipeCommunicator(communications.CommunicatorHelper):
                     future.set_exception(kiwipy.CommunicatorClosed('Communicator closed'))
             self._pending_futures.clear()
 
-        super().close()
+        # Clear all subscribers
+        self._task_subscribers.clear()
+        self._rpc_subscribers.clear()
+        self._broadcast_subscribers.clear()
 
     def task_send(self, task, no_reply=False) -> futures.Future | None:
         """Send a task message to the coordinator.
@@ -340,14 +365,66 @@ class PipeCommunicator(communications.CommunicatorHelper):
         :param identifier: Optional subscriber identifier.
         :return: Subscriber identifier.
         """
-        # Use parent class to register subscriber
-        identifier = super().add_task_subscriber(subscriber, identifier)
+        self._ensure_open()
+
+        # Generate identifier if not provided
+        if identifier is None:
+            identifier = str(uuid.uuid4())
+
+        # Register subscriber
+        self._task_subscribers[identifier] = subscriber
 
         # Create task pipe if first subscriber
         if len(self._task_subscribers) == 1:
             self._init_task_pipe()
 
         return identifier
+
+    def remove_task_subscriber(self, identifier) -> None:
+        """Remove a task subscriber.
+
+        :param identifier: The subscriber identifier to remove.
+        """
+        self._task_subscribers.pop(identifier, None)
+
+    def fire_task(self, msg, no_reply=False) -> futures.Future | None:
+        """Fire a task to all task subscribers.
+
+        :param msg: The task message.
+        :param no_reply: If True, do not return a future.
+        :return: Future with the result, or None if no_reply=True.
+        """
+        self._ensure_open()
+
+        # Task subscribers should process the message and return a result
+        # For simplicity, we call the first subscriber (typically there's only one per worker)
+        if not self._task_subscribers:
+            raise kiwipy.UnroutableError('No task subscribers registered')
+
+        subscriber = next(iter(self._task_subscribers.values()))
+
+        # Call subscriber and wrap result in a future
+        try:
+            result = subscriber(self, msg)
+
+            if no_reply:
+                return None
+
+            # If subscriber returns a future, return it directly
+            if isinstance(result, futures.Future):
+                return result
+
+            # Otherwise, wrap result in a completed future
+            future = futures.Future()
+            future.set_result(result)
+            return future
+
+        except Exception as exc:
+            if no_reply:
+                return None
+            future = futures.Future()
+            future.set_exception(exc)
+            return future
 
     def _init_task_pipe(self) -> None:
         """Initialize the task pipe for receiving task messages."""
@@ -408,6 +485,9 @@ class PipeCommunicator(communications.CommunicatorHelper):
                     response = {'correlation_id': correlation_id, 'result': result_future.result()}
 
                 self._send_message(reply_pipe, response)
+            except (BrokenPipeError, FileNotFoundError, OSError) as exc:
+                # Client's reply pipe is gone (likely the client died) - this is expected
+                LOGGER.debug(f'Reply pipe unavailable ({type(exc).__name__}), client may have disconnected: {reply_pipe}')
             except Exception as exc:
                 LOGGER.exception(f'Error sending task reply: {exc}')
 
@@ -420,14 +500,61 @@ class PipeCommunicator(communications.CommunicatorHelper):
         :param identifier: Optional subscriber identifier.
         :return: Subscriber identifier.
         """
-        # Use parent class to register subscriber
-        identifier = super().add_rpc_subscriber(subscriber, identifier)
+        self._ensure_open()
+
+        # Generate identifier if not provided
+        if identifier is None:
+            identifier = str(uuid.uuid4())
+
+        # Register subscriber
+        self._rpc_subscribers[identifier] = subscriber
 
         # Create RPC pipe if first subscriber
         if len(self._rpc_subscribers) == 1:
             self._init_rpc_pipe()
 
         return identifier
+
+    def remove_rpc_subscriber(self, identifier) -> None:
+        """Remove an RPC subscriber.
+
+        :param identifier: The subscriber identifier to remove.
+        """
+        self._rpc_subscribers.pop(identifier, None)
+
+    def fire_rpc(self, recipient_id, msg) -> futures.Future:
+        """Fire an RPC call to the appropriate subscriber.
+
+        :param recipient_id: The recipient identifier (used to route to correct subscriber).
+        :param msg: The RPC message.
+        :return: Future with the result.
+        """
+        self._ensure_open()
+
+        # RPC subscribers should process the message and return a result
+        # For direct pipe communication, we typically have one RPC subscriber per worker
+        if not self._rpc_subscribers:
+            raise kiwipy.UnroutableError(f'No RPC subscribers registered for recipient: {recipient_id}')
+
+        subscriber = next(iter(self._rpc_subscribers.values()))
+
+        # Call subscriber and wrap result in a future
+        try:
+            result = subscriber(self, msg)
+
+            # If subscriber returns a future, return it directly
+            if isinstance(result, futures.Future):
+                return result
+
+            # Otherwise, wrap result in a completed future
+            future = futures.Future()
+            future.set_result(result)
+            return future
+
+        except Exception as exc:
+            future = futures.Future()
+            future.set_exception(exc)
+            return future
 
     def _init_rpc_pipe(self) -> None:
         """Initialize the RPC pipe for receiving RPC messages."""
@@ -490,6 +617,9 @@ class PipeCommunicator(communications.CommunicatorHelper):
                     response = {'correlation_id': correlation_id, 'result': result_future.result()}
 
                 self._send_message(reply_pipe, response)
+            except (BrokenPipeError, FileNotFoundError, OSError) as exc:
+                # Client's reply pipe is gone (likely the client died) - this is expected
+                LOGGER.debug(f'Reply pipe unavailable ({type(exc).__name__}), client may have disconnected: {reply_pipe}')
             except Exception as exc:
                 LOGGER.exception(f'Error sending RPC reply: {exc}')
 
@@ -502,14 +632,27 @@ class PipeCommunicator(communications.CommunicatorHelper):
         :param identifier: Optional subscriber identifier.
         :return: Subscriber identifier.
         """
-        # Use parent class to register subscriber
-        identifier = super().add_broadcast_subscriber(subscriber, identifier)
+        self._ensure_open()
+
+        # Generate identifier if not provided
+        if identifier is None:
+            identifier = str(uuid.uuid4())
+
+        # Register subscriber
+        self._broadcast_subscribers[identifier] = subscriber
 
         # Create broadcast pipe if first subscriber
         if len(self._broadcast_subscribers) == 1:
             self._init_broadcast_pipe()
 
         return identifier
+
+    def remove_broadcast_subscriber(self, identifier) -> None:
+        """Remove a broadcast subscriber.
+
+        :param identifier: The subscriber identifier to remove.
+        """
+        self._broadcast_subscribers.pop(identifier, None)
 
     def _init_broadcast_pipe(self) -> None:
         """Initialize the broadcast pipe for receiving broadcast messages."""

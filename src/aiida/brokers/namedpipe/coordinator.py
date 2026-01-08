@@ -265,6 +265,9 @@ class PipeCoordinator:
         worker = workers[self._worker_index % len(workers)]
         self._worker_index += 1
 
+        # Sanitize reply pipe - if original client is dead, update to worker's reply pipe
+        self._sanitize_reply_pipe(message, worker)
+
         try:
             # Send task to worker
             utils.write_to_pipe(worker['task_pipe'], messages.serialize(message, encoder=self._encoder), non_blocking=True)
@@ -274,9 +277,32 @@ class PipeCoordinator:
 
             LOGGER.debug(f'Distributed task {task_id} to worker {worker["process_id"]}')
 
-        except BrokenPipeError:
-            LOGGER.warning(f'Worker {worker["process_id"]} pipe unavailable, requeueing task {task_id}')
+        except (BrokenPipeError, FileNotFoundError, OSError) as exc:
+            LOGGER.warning(f'Worker {worker["process_id"]} pipe unavailable ({type(exc).__name__}), requeueing task {task_id}')
             # Task remains in pending state for next distribution attempt
+
+    def _sanitize_reply_pipe(self, message: dict, worker: dict) -> None:
+        """Update reply_pipe in message if original no longer exists.
+
+        If the original reply pipe is gone (client died), update it to point to
+        the worker's reply pipe so the result can still be delivered.
+
+        :param message: The task message to sanitize (modified in place).
+        :param worker: The worker info dict that will process this task.
+        """
+        reply_pipe = message.get('reply_pipe')
+        if reply_pipe:
+            # Check if original reply pipe still exists
+            from pathlib import Path
+
+            if not Path(reply_pipe).exists():
+                # Original client is dead, update to worker's reply pipe
+                worker_reply_pipe = worker.get('reply_pipe')
+                LOGGER.debug(
+                    f'Reply pipe no longer exists: {reply_pipe}, '
+                    f'updating to worker reply pipe: {worker_reply_pipe}'
+                )
+                message['reply_pipe'] = worker_reply_pipe
 
     def _handle_broadcast(self, fd: int) -> None:
         """Handle incoming broadcast message.
