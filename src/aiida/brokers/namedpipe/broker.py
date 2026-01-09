@@ -68,11 +68,17 @@ class PipeBroker(Broker):
 
         :return: PipeCommunicator instance.
         """
+        import os
+
         from aiida.orm.utils import serialize
+
+        # Read worker_id from environment if set (for executor-managed workers)
+        worker_id = os.environ.get('AIIDA_WORKER_ID')
 
         return PipeCommunicator(
             profile_name=self._profile.name,
             config_path=self._get_config_path(),
+            worker_id=worker_id,
             encoder=functools.partial(serialize.serialize, encoding='utf-8'),
             decoder=serialize.deserialize_unsafe,
         )

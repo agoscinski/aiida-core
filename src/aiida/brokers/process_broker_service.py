@@ -17,6 +17,7 @@ from pathlib import Path
 from aiida.brokers.namedpipe import discovery
 from aiida.brokers.namedpipe.broker_communicator import PipeBrokerCommunicator
 from aiida.brokers.process_broker import ProcessBroker, ProcessBrokerConfig
+from aiida.brokers.subprocess_executor import SubprocessWorkerExecutor
 
 __all__ = ('ProcessBrokerService',)
 
@@ -63,17 +64,34 @@ class ProcessBrokerService:
             # Read from config file (used by verdi broker start)
             config = ProcessBrokerConfig.from_file(self._config_path)
 
+        # Create executor for worker lifecycle management
+        self._executor = SubprocessWorkerExecutor(
+            profile_name=profile_name,
+            config_path=self._config_path,
+            environment=self._get_worker_environment(),
+        )
+        self._executor.start()
+
         # Create communicator
         self._communicator = PipeBrokerCommunicator(profile_name=profile_name, broker_id=self._broker_id)
 
-        # Create broker with working directory
+        # Create broker with working directory and executor
         broker_working_dir = self._config_path / 'broker'
         self._broker = ProcessBroker(
             communicator=self._communicator,
             profile_name=profile_name,
             working_dir=broker_working_dir,
             config=config,
+            executor=self._executor,
         )
+
+        # Start initial workers if configured
+        if config.initial_worker_count > 0:
+            LOGGER.info(f'Starting {config.initial_worker_count} initial workers')
+            try:
+                self._executor.scale_workers(config.initial_worker_count)
+            except Exception as exc:
+                LOGGER.error(f'Failed to start initial workers: {exc}')
 
         # Register in discovery
         broker_pipes = self._communicator.get_broker_pipes()
@@ -85,6 +103,21 @@ class ProcessBrokerService:
         atexit.register(self.close)
 
         LOGGER.info(f'ProcessBrokerService started for profile: {profile_name} (scheduling={config.scheduling_enabled})')
+
+    def _get_worker_environment(self) -> dict[str, str]:
+        """Get environment variables for worker processes.
+
+        :return: Dict of environment variables
+        """
+        import os
+
+        env = {}
+
+        # Pass through important AiiDA environment variables
+        if 'AIIDA_PATH' in os.environ:
+            env['AIIDA_PATH'] = os.environ['AIIDA_PATH']
+
+        return env
 
     def run_maintenance(self) -> None:
         """Run periodic maintenance tasks.
@@ -107,6 +140,12 @@ class ProcessBrokerService:
 
         # Close broker (which closes communicator)
         self._broker.close()
+
+        # Close executor (stops all workers)
+        try:
+            self._executor.close()
+        except Exception as exc:
+            LOGGER.warning(f'Error closing executor: {exc}')
 
         # Unregister from discovery
         try:

@@ -34,16 +34,34 @@ class ProcessBrokerConfig:
         scheduling_enabled: bool = False,
         computer_limits: dict[str, int] | None = None,
         default_limit: int = 10,
+        # Worker management options
+        auto_spawn_workers: bool = False,
+        initial_worker_count: int = 0,
+        auto_respawn_workers: bool = False,
+        min_worker_count: int = 0,
+        max_worker_count: int = 10,
     ):
         """Initialize broker configuration.
 
         :param scheduling_enabled: Enable per-computer scheduling
         :param computer_limits: Dict mapping computer labels to concurrency limits
         :param default_limit: Default limit for computers without explicit config
+        :param auto_spawn_workers: Auto-spawn workers when needed
+        :param initial_worker_count: Number of workers to spawn at startup
+        :param auto_respawn_workers: Auto-respawn dead workers
+        :param min_worker_count: Minimum number of workers to maintain
+        :param max_worker_count: Maximum number of workers allowed
         """
         self.scheduling_enabled = scheduling_enabled
         self.computer_limits = computer_limits or {}
         self.default_limit = default_limit
+
+        # Worker management
+        self.auto_spawn_workers = auto_spawn_workers
+        self.initial_worker_count = initial_worker_count
+        self.auto_respawn_workers = auto_respawn_workers
+        self.min_worker_count = min_worker_count
+        self.max_worker_count = max_worker_count
 
     @classmethod
     def from_file(cls, config_path: Path) -> 'ProcessBrokerConfig':
@@ -62,14 +80,27 @@ class ProcessBrokerConfig:
             with open(config_file) as f:
                 data = json.load(f)
 
-            # Check for scheduling_enabled flag
+            # Extract metadata fields (keys starting with _)
             scheduling_enabled = data.pop('_scheduling_enabled', True)
             default_limit = data.pop('_default_limit', 10)
 
+            # Worker management options
+            auto_spawn_workers = data.pop('_auto_spawn_workers', False)
+            initial_worker_count = data.pop('_initial_worker_count', 0)
+            auto_respawn_workers = data.pop('_auto_respawn_workers', False)
+            min_worker_count = data.pop('_min_worker_count', 0)
+            max_worker_count = data.pop('_max_worker_count', 10)
+
+            # Remaining keys are computer limits
             return cls(
                 scheduling_enabled=scheduling_enabled,
                 computer_limits=data,
                 default_limit=default_limit,
+                auto_spawn_workers=auto_spawn_workers,
+                initial_worker_count=initial_worker_count,
+                auto_respawn_workers=auto_respawn_workers,
+                min_worker_count=min_worker_count,
+                max_worker_count=max_worker_count,
             )
         except (json.JSONDecodeError, OSError) as exc:
             LOGGER.warning(f'Failed to load config: {exc}, using defaults')
@@ -96,6 +127,7 @@ class ProcessBroker:
         profile_name: str,
         working_dir: Path | str,
         config: ProcessBrokerConfig | None = None,
+        executor: 'WorkerExecutor | None' = None,  # noqa: F821
     ):
         """Initialize the process broker.
 
@@ -103,11 +135,13 @@ class ProcessBroker:
         :param profile_name: AiiDA profile name
         :param working_dir: Working directory for queue files
         :param config: Broker configuration (None = scheduling disabled)
+        :param executor: Optional worker executor for lifecycle management
         """
         self._communicator = communicator
         self._profile_name = profile_name
         self._working_dir = Path(working_dir)
         self._config = config or ProcessBrokerConfig(scheduling_enabled=False)
+        self._executor = executor
 
         # Task queue for persistence
         self._task_queue = TaskQueue(self._working_dir / 'tasks')
@@ -176,8 +210,11 @@ class ProcessBroker:
         :param task_id: Task ID
         :param message: Task message
         """
-        # Get available workers
-        workers = discovery.discover_workers(self._profile_name, check_alive=True)
+        # Get available workers (from executor if available, otherwise discovery)
+        if self._executor:
+            workers = self._executor.get_workers()
+        else:
+            workers = discovery.discover_workers(self._profile_name, check_alive=True)
 
         if not workers:
             LOGGER.warning(f'No workers available for task {task_id}')
@@ -187,6 +224,9 @@ class ProcessBroker:
         worker = workers[self._worker_index % len(workers)]
         self._worker_index += 1
 
+        # Get worker identifier (worker_id for executor, process_id for discovery)
+        worker_id = worker.get('worker_id', worker.get('process_id', 'unknown'))
+
         # Sanitize reply pipe
         self._sanitize_reply_pipe(message, worker)
 
@@ -195,14 +235,13 @@ class ProcessBroker:
             self._communicator.task_send(worker['task_pipe'], message, non_blocking=True)
 
             # Mark as assigned
-            self._task_queue.mark_assigned(task_id, worker['process_id'])
+            self._task_queue.mark_assigned(task_id, worker_id)
 
-            LOGGER.debug(f'Distributed task {task_id} to worker {worker["process_id"]}')
+            LOGGER.debug(f'Distributed task {task_id} to worker {worker_id}')
 
         except (BrokenPipeError, FileNotFoundError, OSError) as exc:
             LOGGER.warning(
-                f'Worker {worker["process_id"]} pipe unavailable ({type(exc).__name__}), '
-                f'requeueing task {task_id}'
+                f'Worker {worker_id} pipe unavailable ({type(exc).__name__}), ' f'requeueing task {task_id}'
             )
 
     def _sanitize_reply_pipe(self, message: dict, worker: dict) -> None:
@@ -358,7 +397,7 @@ class ProcessBroker:
 
         This should be called periodically (e.g., every second) to perform:
         - Cleanup of old completed tasks
-        - Cleanup of dead worker entries
+        - Cleanup of dead worker entries (or executor health checks)
         - Requeue tasks assigned to dead workers
         - Poll for missed completions (if scheduling enabled)
         """
@@ -368,10 +407,17 @@ class ProcessBroker:
             if cleaned:
                 LOGGER.debug(f'Cleaned up {cleaned} old tasks')
 
-            # Cleanup dead worker entries
-            cleaned = discovery.cleanup_dead_processes(self._profile_name)
-            if cleaned:
-                LOGGER.debug(f'Cleaned up {cleaned} dead worker entries')
+            # Worker health checks
+            if self._executor:
+                # Use executor health checks if available
+                dead_workers = self._executor.check_workers_health()
+                if dead_workers:
+                    LOGGER.warning(f'Executor cleaned up {len(dead_workers)} dead/hung workers')
+            else:
+                # Fallback to discovery-based cleanup
+                cleaned = discovery.cleanup_dead_processes(self._profile_name)
+                if cleaned:
+                    LOGGER.debug(f'Cleaned up {cleaned} dead worker entries')
 
             # Requeue tasks assigned to dead workers
             self._requeue_orphaned_tasks()
@@ -386,8 +432,14 @@ class ProcessBroker:
     def _requeue_orphaned_tasks(self) -> None:
         """Requeue tasks assigned to dead workers."""
         pending_tasks = self._task_queue.get_pending_tasks()
-        workers = discovery.discover_workers(self._profile_name, check_alive=True)
-        worker_ids = {w['process_id'] for w in workers}
+
+        # Get worker IDs from executor or discovery
+        if self._executor:
+            workers = self._executor.get_workers()
+            worker_ids = {w['worker_id'] for w in workers}
+        else:
+            workers = discovery.discover_workers(self._profile_name, check_alive=True)
+            worker_ids = {w['process_id'] for w in workers}
 
         for task_data in pending_tasks:
             if task_data.get('status') == 'assigned':
@@ -424,9 +476,15 @@ class ProcessBroker:
 
         :return: Status dict with scheduling info if enabled
         """
+        # Get worker count from executor or discovery
+        if self._executor:
+            worker_count = self._executor.get_worker_count()
+        else:
+            worker_count = len(discovery.discover_workers(self._profile_name, check_alive=True))
+
         status = {
             'scheduling_enabled': self._config.scheduling_enabled,
-            'worker_count': len(discovery.discover_workers(self._profile_name, check_alive=True)),
+            'worker_count': worker_count,
         }
 
         if self._config.scheduling_enabled:
