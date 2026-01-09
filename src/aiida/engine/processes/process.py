@@ -611,6 +611,17 @@ class Process(PlumpyProcess):
 
         return orm.load_node(pk=self._parent_pid)  # type: ignore[return-value]
 
+    def get_computer_label(self) -> str:
+        """Get the computer label for this process.
+
+        Returns "localhost" by default for processes without a computer.
+        CalcJob overrides this to return the actual Computer.label.
+
+        :return: computer label string
+
+        """
+        return "localhost"
+
     @classmethod
     def build_process_type(cls) -> str:
         """The process type.

@@ -7,19 +7,49 @@ import os
 import typing as t
 from pathlib import Path
 
-__all__ = ('create_pipe', 'cleanup_pipe', 'write_to_pipe', 'open_pipe_read', 'open_pipe_write', 'get_pipe_dir')
+__all__ = (
+    'create_pipe',
+    'cleanup_pipe',
+    'write_to_pipe',
+    'open_pipe_read',
+    'open_pipe_write',
+    'get_pipes_base_dir',
+    'get_broker_pipes_dir',
+    'get_worker_pipes_dir',
+)
 
 
-def get_pipe_dir(profile_name: str) -> Path:
-    """Get the directory for storing named pipes for a profile.
+def get_pipes_base_dir(profile_name: str) -> Path:
+    """Get the base pipes directory for a profile.
 
-    :param profile_name: The profile name.
-    :return: Path to the pipe directory.
+    :param profile_name: Profile name.
+    :return: Base pipes directory: /tmp/aiida-scheduler/{profile}/pipes/
     """
-    # Use /tmp for named pipes (more reliable than home directory)
-    pipe_dir = Path('/tmp') / f'aiida_{profile_name}_pipes'
-    pipe_dir.mkdir(parents=True, exist_ok=True)
-    return pipe_dir
+    pipes_dir = Path('/tmp') / 'aiida-scheduler' / profile_name / 'pipes'
+    pipes_dir.mkdir(parents=True, exist_ok=True)
+    return pipes_dir
+
+
+def get_broker_pipes_dir(profile_name: str) -> Path:
+    """Get broker pipes directory.
+
+    :param profile_name: Profile name.
+    :return: Broker pipes directory: /tmp/aiida-scheduler/{profile}/pipes/broker/
+    """
+    broker_dir = get_pipes_base_dir(profile_name) / 'broker'
+    broker_dir.mkdir(parents=True, exist_ok=True)
+    return broker_dir
+
+
+def get_worker_pipes_dir(profile_name: str) -> Path:
+    """Get worker pipes directory.
+
+    :param profile_name: Profile name.
+    :return: Worker pipes directory: /tmp/aiida-scheduler/{profile}/pipes/worker/
+    """
+    worker_dir = get_pipes_base_dir(profile_name) / 'worker'
+    worker_dir.mkdir(parents=True, exist_ok=True)
+    return worker_dir
 
 
 def create_pipe(pipe_path: str | Path, mode: int = 0o600) -> None:

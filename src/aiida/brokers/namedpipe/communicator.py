@@ -56,8 +56,8 @@ class PipeCommunicator(kiwipy.Communicator):
         self._encoder = encoder
         self._decoder = decoder
 
-        # Pipe directory
-        self._pipe_dir = utils.get_pipe_dir(profile_name)
+        # Worker pipes directory
+        self._pipe_dir = utils.get_worker_pipes_dir(profile_name)
 
         # Reply pipe for receiving responses
         self._reply_pipe_path = self._pipe_dir / f'reply_{os.getpid()}_{uuid.uuid4().hex}'
@@ -83,8 +83,8 @@ class PipeCommunicator(kiwipy.Communicator):
         self._pending_futures: dict[str, futures.Future] = {}
         self._futures_lock = threading.Lock()
 
-        # Coordinator discovery cache
-        self._coordinator_info: discovery.ProcessInfo | None = None
+        # Broker discovery cache
+        self._broker_info: discovery.ProcessInfo | None = None
 
         # Initialize reply pipe
         self._init_reply_pipe()
@@ -162,19 +162,19 @@ class PipeCommunicator(kiwipy.Communicator):
         except Exception as exc:
             LOGGER.exception(f'Error handling reply: {exc}')
 
-    def _discover_coordinator(self) -> discovery.ProcessInfo:
-        """Discover the coordinator process.
+    def _discover_broker(self) -> discovery.ProcessInfo:
+        """Discover the broker process.
 
-        :return: Coordinator process information.
-        :raises ConnectionError: If coordinator is not found.
+        :return: Broker process information.
+        :raises ConnectionError: If broker is not found.
         """
-        if self._coordinator_info is None or not discovery._is_process_alive(self._coordinator_info['pid']):
-            self._coordinator_info = discovery.discover_coordinator(self._config_path)
+        if self._broker_info is None or not discovery._is_process_alive(self._broker_info['pid']):
+            self._broker_info = discovery.discover_broker(self._profile_name)
 
-        if self._coordinator_info is None:
-            raise ConnectionError('Coordinator not found. Make sure the coordinator is running.')
+        if self._broker_info is None:
+            raise ConnectionError('Broker not found. Make sure the broker is running.')
 
-        return self._coordinator_info
+        return self._broker_info
 
     def _send_message(self, pipe_path: str, message: dict) -> None:
         """Send a message to a pipe.
@@ -235,7 +235,7 @@ class PipeCommunicator(kiwipy.Communicator):
 
         # Unregister from discovery
         try:
-            discovery.unregister_worker(self._config_path, self._worker_id)
+            discovery.unregister_worker(self._profile_name, self._worker_id)
         except Exception as exc:
             LOGGER.warning(f'Error unregistering worker: {exc}')
 
@@ -252,7 +252,7 @@ class PipeCommunicator(kiwipy.Communicator):
         self._broadcast_subscribers.clear()
 
     def task_send(self, task, no_reply=False) -> futures.Future | None:
-        """Send a task message to the coordinator.
+        """Send a task message to the broker.
 
         :param task: The task message.
         :param no_reply: If True, do not expect a reply.
@@ -268,9 +268,9 @@ class PipeCommunicator(kiwipy.Communicator):
             'body': task,
         }
 
-        # Discover coordinator and send message
-        coordinator = self._discover_coordinator()
-        self._send_message(coordinator['task_pipe'], message)
+        # Discover broker and send message
+        broker = self._discover_broker()
+        self._send_message(broker['task_pipe'], message)
 
         if no_reply:
             return None
@@ -292,7 +292,7 @@ class PipeCommunicator(kiwipy.Communicator):
         self._ensure_open()
 
         # Discover recipient's RPC pipe
-        workers = discovery.discover_workers(self._config_path)
+        workers = discovery.discover_workers(self._profile_name)
         recipient = next((w for w in workers if w['process_id'] == recipient_id), None)
 
         if recipient is None:
@@ -316,7 +316,7 @@ class PipeCommunicator(kiwipy.Communicator):
         return future
 
     def broadcast_send(self, body, sender=None, subject=None, correlation_id=None) -> bool:
-        """Broadcast a message to all subscribers via coordinator.
+        """Broadcast a message to all subscribers via broker.
 
         :param body: The message body.
         :param sender: Optional sender identifier.
@@ -334,9 +334,9 @@ class PipeCommunicator(kiwipy.Communicator):
             'correlation_id': correlation_id or str(uuid.uuid4()),
         }
 
-        # Send to coordinator for distribution
-        coordinator = self._discover_coordinator()
-        self._send_message(coordinator['broadcast_pipe'], message)
+        # Send to broker for distribution
+        broker = self._discover_broker()
+        self._send_message(broker['broadcast_pipe'], message)
 
         return True
 
@@ -436,7 +436,7 @@ class PipeCommunicator(kiwipy.Communicator):
 
         # Register worker in discovery
         discovery.register_worker(
-            self._config_path,
+            self._profile_name,
             self._worker_id,
             task_pipe=str(self._task_pipe_path),
             rpc_pipe=str(self._rpc_pipe_path),
@@ -566,7 +566,7 @@ class PipeCommunicator(kiwipy.Communicator):
 
         # Update discovery registration
         discovery.register_worker(
-            self._config_path,
+            self._profile_name,
             self._worker_id,
             task_pipe=str(self._task_pipe_path),
             rpc_pipe=str(self._rpc_pipe_path),
@@ -664,7 +664,7 @@ class PipeCommunicator(kiwipy.Communicator):
 
         # Update discovery registration
         discovery.register_worker(
-            self._config_path,
+            self._profile_name,
             self._worker_id,
             task_pipe=str(self._task_pipe_path),
             rpc_pipe=str(self._rpc_pipe_path),

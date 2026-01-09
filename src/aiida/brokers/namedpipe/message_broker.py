@@ -1,166 +1,58 @@
-"""Coordinator process for managing task queue and broadcast distribution."""
+"""Core message broker logic for task distribution and broadcast fanout."""
 
 from __future__ import annotations
 
-import atexit
-import json
 import logging
 import os
 import selectors
 import threading
-import time
 import typing as t
-import uuid
 from pathlib import Path
 
 from . import discovery, messages, utils
+from .task_queue import TaskQueue
 
-__all__ = ('PipeCoordinator',)
+__all__ = ('MessageBroker',)
 
 LOGGER = logging.getLogger(__name__)
 
+class MessageBroker:
+    """Core message broker logic without daemon management.
 
-class TaskQueue:
-    """Simple file-based task queue for persistence."""
-
-    def __init__(self, queue_dir: Path):
-        """Initialize the task queue.
-
-        :param queue_dir: Directory for storing task queue files.
-        """
-        self.queue_dir = queue_dir
-        self.queue_dir.mkdir(parents=True, exist_ok=True)
-        self._task_counter = 0
-        self._lock = threading.Lock()
-
-    def enqueue(self, task_message: dict) -> str:
-        """Add a task to the queue.
-
-        :param task_message: The task message to enqueue.
-        :return: Task ID.
-        """
-        with self._lock:
-            task_id = f'task_{int(time.time() * 1000)}_{self._task_counter}'
-            self._task_counter += 1
-
-            task_file = self.queue_dir / f'{task_id}.json'
-            task_data = {'id': task_id, 'message': task_message, 'status': 'pending', 'assigned_to': None}
-
-            with open(task_file, 'w') as f:
-                json.dump(task_data, f)
-
-            return task_id
-
-    def get_pending_tasks(self) -> list[dict]:
-        """Get all pending tasks.
-
-        :return: List of pending task data.
-        """
-        pending = []
-        with self._lock:
-            for task_file in self.queue_dir.glob('task_*.json'):
-                try:
-                    with open(task_file) as f:
-                        task_data = json.load(f)
-                        if task_data.get('status') == 'pending':
-                            pending.append(task_data)
-                except (json.JSONDecodeError, OSError):
-                    pass
-        return pending
-
-    def mark_assigned(self, task_id: str, worker_id: str) -> None:
-        """Mark a task as assigned to a worker.
-
-        :param task_id: The task ID.
-        :param worker_id: The worker ID.
-        """
-        with self._lock:
-            task_file = self.queue_dir / f'{task_id}.json'
-            if not task_file.exists():
-                return
-
-            try:
-                with open(task_file) as f:
-                    task_data = json.load(f)
-
-                task_data['status'] = 'assigned'
-                task_data['assigned_to'] = worker_id
-
-                with open(task_file, 'w') as f:
-                    json.dump(task_data, f)
-            except (json.JSONDecodeError, OSError):
-                pass
-
-    def mark_completed(self, task_id: str) -> None:
-        """Mark a task as completed and remove it.
-
-        :param task_id: The task ID.
-        """
-        with self._lock:
-            task_file = self.queue_dir / f'{task_id}.json'
-            try:
-                task_file.unlink()
-            except FileNotFoundError:
-                pass
-
-    def cleanup_old_tasks(self, max_age_seconds: int = 86400) -> int:
-        """Clean up old task files.
-
-        :param max_age_seconds: Maximum age in seconds (default: 1 day).
-        :return: Number of tasks cleaned up.
-        """
-        count = 0
-        with self._lock:
-            current_time = time.time()
-            for task_file in self.queue_dir.glob('task_*.json'):
-                try:
-                    mtime = task_file.stat().st_mtime
-                    if current_time - mtime > max_age_seconds:
-                        task_file.unlink()
-                        count += 1
-                except OSError:
-                    pass
-        return count
-
-
-class PipeCoordinator:
-    """Coordinator for managing task distribution and broadcast fanout."""
+    This class contains the pure business logic for task distribution,
+    broadcast fanout, and worker management. It does NOT handle discovery
+    registration or daemon lifecycle management.
+    """
 
     def __init__(
         self,
         profile_name: str,
-        config_path: Path | str,
-        encoder: t.Callable | None = None,
-        decoder: t.Callable | None = None,
+        working_dir: Path | str,
+        create_pipes: bool = True,
     ):
-        """Initialize the coordinator.
+        """Initialize message broker core.
 
-        :param profile_name: The AiiDA profile name.
-        :param config_path: Path to the AiiDA config directory.
-        :param encoder: Optional custom message encoder.
-        :param decoder: Optional custom message decoder.
+        :param profile_name: Profile name (used to locate pipes directory).
+        :param working_dir: Working directory for broker files.
+                           Pipe names are derived from this path.
+        :param create_pipes: If True, create and own pipes. If False, pipes must be provided externally.
         """
         self._profile_name = profile_name
-        self._config_path = Path(config_path)
-        self._encoder = encoder
-        self._decoder = decoder
+        self._working_dir = Path(working_dir)
+        self._broker_id = 'broker'
+        self._create_pipes = create_pipes
 
-        # Coordinator ID
-        self._coordinator_id = 'coordinator'
+        # Broker pipes go in broker subdirectory
+        broker_pipes_dir = utils.get_broker_pipes_dir(profile_name)
+        self._task_pipe_path = broker_pipes_dir / 'broker_tasks'
+        self._broadcast_pipe_path = broker_pipes_dir / 'broker_broadcast'
 
-        # Pipe directory
-        self._pipe_dir = utils.get_pipe_dir(profile_name)
-
-        # Coordinator pipes
-        self._task_pipe_path = self._pipe_dir / 'coordinator_tasks'
+        # File descriptors
         self._task_fd: int | None = None
-
-        self._broadcast_pipe_path = self._pipe_dir / 'coordinator_broadcast'
         self._broadcast_fd: int | None = None
 
-        # Task queue
-        queue_dir = self._config_path / 'coordinator'
-        self._task_queue = TaskQueue(queue_dir)
+        # Task queue uses working_dir
+        self._task_queue = TaskQueue(self._working_dir)
 
         # Worker selection (round-robin)
         self._worker_index = 0
@@ -174,24 +66,18 @@ class PipeCoordinator:
         # Running flag
         self._closed = False
 
-        # Initialize pipes
-        self._init_pipes()
+        # Initialize pipes only if requested
+        if self._create_pipes:
+            self._init_pipes()
 
-        # Register coordinator in discovery
-        discovery.register_coordinator(
-            self._config_path, self._coordinator_id, task_pipe=str(self._task_pipe_path), broadcast_pipe=str(self._broadcast_pipe_path)
-        )
+        # Start selector thread only if we created pipes
+        if self._create_pipes:
+            self._start_selector_thread()
 
-        # Start selector thread
-        self._start_selector_thread()
-
-        # Register cleanup
-        atexit.register(self.close)
-
-        LOGGER.info(f'PipeCoordinator started for profile: {profile_name}')
+        LOGGER.info(f'MessageBroker started for profile: {profile_name} (create_pipes={create_pipes})')
 
     def _init_pipes(self) -> None:
-        """Initialize coordinator pipes."""
+        """Initialize message broker pipes."""
         # Task pipe
         utils.create_pipe(self._task_pipe_path)
         self._task_fd = utils.open_pipe_read(self._task_pipe_path, non_blocking=True)
@@ -230,23 +116,30 @@ class PipeCoordinator:
                     LOGGER.exception(f'Error in selector loop: {exc}')
 
     def _handle_task(self, fd: int) -> None:
-        """Handle incoming task message.
+        """Handle incoming task message from pipe.
 
         :param fd: File descriptor of the task pipe.
         """
         try:
-            message = messages.deserialize_from_fd(fd, decoder=self._decoder)
+            message = messages.deserialize_from_fd(fd)
             if message is None:
                 return
 
-            # Persist task
-            task_id = self._task_queue.enqueue(message)
-
-            # Distribute to available worker
-            self._distribute_task(task_id, message)
+            self.handle_task_message(message)
 
         except Exception as exc:
             LOGGER.exception(f'Error handling task: {exc}')
+
+    def handle_task_message(self, message: dict) -> None:
+        """Public method to handle a task message (called by Scheduler or internal handler).
+
+        :param message: Task message dict.
+        """
+        # Persist task
+        task_id = self._task_queue.enqueue(message)
+
+        # Distribute to available worker
+        self._distribute_task(task_id, message)
 
     def _distribute_task(self, task_id: str, message: dict) -> None:
         """Distribute a task to an available worker.
@@ -255,7 +148,7 @@ class PipeCoordinator:
         :param message: The task message.
         """
         # Get available workers
-        workers = discovery.discover_workers(self._config_path, check_alive=True)
+        workers = discovery.discover_workers(self._profile_name, check_alive=True)
 
         if not workers:
             LOGGER.warning(f'No workers available for task {task_id}')
@@ -270,7 +163,7 @@ class PipeCoordinator:
 
         try:
             # Send task to worker
-            utils.write_to_pipe(worker['task_pipe'], messages.serialize(message, encoder=self._encoder), non_blocking=True)
+            utils.write_to_pipe(worker['task_pipe'], messages.serialize(message), non_blocking=True)
 
             # Mark as assigned
             self._task_queue.mark_assigned(task_id, worker['process_id'])
@@ -310,7 +203,7 @@ class PipeCoordinator:
         :param fd: File descriptor of the broadcast pipe.
         """
         try:
-            message = messages.deserialize_from_fd(fd, decoder=self._decoder)
+            message = messages.deserialize_from_fd(fd)
             if message is None:
                 return
 
@@ -326,9 +219,9 @@ class PipeCoordinator:
         :param message: The broadcast message.
         """
         # Get all workers
-        workers = discovery.discover_workers(self._config_path, check_alive=True)
+        workers = discovery.discover_workers(self._profile_name, check_alive=True)
 
-        data = messages.serialize(message, encoder=self._encoder)
+        data = messages.serialize(message)
 
         for worker in workers:
             try:
@@ -348,7 +241,7 @@ class PipeCoordinator:
                 LOGGER.debug(f'Cleaned up {cleaned} old tasks')
 
             # Cleanup dead worker entries
-            cleaned = discovery.cleanup_dead_processes(self._config_path)
+            cleaned = discovery.cleanup_dead_processes(self._profile_name)
             if cleaned:
                 LOGGER.debug(f'Cleaned up {cleaned} dead worker entries')
 
@@ -361,7 +254,7 @@ class PipeCoordinator:
     def _requeue_orphaned_tasks(self) -> None:
         """Requeue tasks that were assigned to dead workers."""
         pending_tasks = self._task_queue.get_pending_tasks()
-        workers = discovery.discover_workers(self._config_path, check_alive=True)
+        workers = discovery.discover_workers(self._profile_name, check_alive=True)
         worker_ids = {w['process_id'] for w in workers}
 
         for task_data in pending_tasks:
@@ -374,46 +267,42 @@ class PipeCoordinator:
                     self._distribute_task(task_id, task_data['message'])
 
     def close(self) -> None:
-        """Close the coordinator and clean up resources."""
+        """Close the message broker core and clean up resources."""
         if self._closed:
             return
 
         self._closed = True
 
-        # Stop selector thread
+        # Stop selector thread (only if we started one)
         self._selector_running = False
         if self._selector_thread and self._selector_thread.is_alive():
             self._selector_thread.join(timeout=1.0)
 
-        # Close and unregister all file descriptors
+        # Close selector (always, since we always create it)
         with self._selector_lock:
             try:
                 self._selector.close()
             except Exception as exc:
                 LOGGER.warning(f'Error closing selector: {exc}')
 
-        # Close file descriptors
-        for fd in [self._task_fd, self._broadcast_fd]:
-            if fd is not None:
-                try:
-                    os.close(fd)
-                except OSError:
-                    pass
+        # Close file descriptors and pipes only if we created them
+        if self._create_pipes:
+            # Close file descriptors
+            for fd in [self._task_fd, self._broadcast_fd]:
+                if fd is not None:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
 
-        # Clean up pipes
-        utils.cleanup_pipe(self._task_pipe_path)
-        utils.cleanup_pipe(self._broadcast_pipe_path)
+            # Clean up pipes
+            utils.cleanup_pipe(self._task_pipe_path)
+            utils.cleanup_pipe(self._broadcast_pipe_path)
 
-        # Unregister from discovery
-        try:
-            discovery.unregister_coordinator(self._config_path, self._coordinator_id)
-        except Exception as exc:
-            LOGGER.warning(f'Error unregistering coordinator: {exc}')
-
-        LOGGER.info('PipeCoordinator stopped')
+        LOGGER.info('MessageBroker stopped')
 
     def is_closed(self) -> bool:
-        """Check if coordinator is closed.
+        """Check if message broker core is closed.
 
         :return: True if closed, False otherwise.
         """

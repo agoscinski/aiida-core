@@ -582,6 +582,19 @@ class CalcJob(Process):
         return super().node  # type: ignore[return-value]
 
     @override
+    def get_computer_label(self) -> str:
+        """Get the computer label from the CalcJob's computer.
+
+        :return: computer label string, defaults to "localhost" if no computer is set
+
+        """
+        computer = self.node.computer
+        if computer is None:
+            # Fallback for local code without explicit computer
+            return "localhost"
+        return computer.label
+
+    @override
     def on_terminated(self) -> None:
         """Cleanup the node by deleting the calulation job state.
 

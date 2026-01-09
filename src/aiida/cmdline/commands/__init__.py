@@ -14,11 +14,11 @@ The commands need to be imported here for them to be registered with the top-lev
 
 from aiida.cmdline.commands import (
     cmd_archive,
+    cmd_broker,
     cmd_calcjob,
     cmd_code,
     cmd_computer,
     cmd_config,
-    cmd_coordinator,
     cmd_daemon,
     cmd_data,
     cmd_devel,
@@ -32,6 +32,7 @@ from aiida.cmdline.commands import (
     cmd_rabbitmq,
     cmd_restapi,
     cmd_run,
+    cmd_scheduler,
     cmd_setup,
     cmd_shell,
     cmd_status,

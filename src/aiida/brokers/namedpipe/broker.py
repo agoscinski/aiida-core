@@ -8,7 +8,7 @@ import typing as t
 from aiida.brokers.broker import Broker
 
 from .communicator import PipeCommunicator
-from .discovery import discover_coordinator, get_discovery_dir
+from .discovery import discover_broker, get_discovery_dir
 
 if t.TYPE_CHECKING:
     from pathlib import Path
@@ -30,10 +30,10 @@ class PipeBroker(Broker):
         self._communicator: PipeCommunicator | None = None
 
     def __str__(self):
-        coordinator = discover_coordinator(self._get_config_path())
-        if coordinator:
-            return f'NamedPipe Coordinator @ {coordinator["task_pipe"]}'
-        return 'NamedPipe Coordinator <Not running>'
+        broker = discover_broker(self._profile.name)
+        if broker:
+            return f'NamedPipe Broker @ {broker["task_pipe"]}'
+        return 'NamedPipe Broker <Not running>'
 
     def close(self):
         """Close the broker."""
@@ -45,21 +45,21 @@ class PipeBroker(Broker):
         """Return an iterator over the tasks in the launch queue.
 
         Note: For named pipe implementation, we don't have direct access to the queue.
-        This would require additional coordinator API.
+        This would require additional broker API.
         """
-        # TODO: Implement task iteration via coordinator API
+        # TODO: Implement task iteration via broker API
         return iter([])
 
     def get_communicator(self) -> PipeCommunicator:
         """Get or create the communicator instance.
 
         :return: PipeCommunicator instance.
-        :raises ConnectionError: If coordinator is not running.
+        :raises ConnectionError: If broker is not running.
         """
         if self._communicator is None:
             self._communicator = self._create_communicator()
-            # Verify coordinator is running
-            self._check_coordinator()
+            # Verify broker is running
+            self._check_broker()
 
         return self._communicator
 
@@ -90,25 +90,25 @@ class PipeBroker(Broker):
         # Profile-specific config directory
         return Path(config.dirpath) / 'profiles' / self._profile.name
 
-    def _check_coordinator(self) -> None:
-        """Check if the coordinator is running.
+    def _check_broker(self) -> None:
+        """Check if the broker is running.
 
-        :raises ConnectionError: If coordinator is not running.
+        :raises ConnectionError: If broker is not running.
         """
-        coordinator = discover_coordinator(self._get_config_path())
-        if coordinator is None:
+        broker = discover_broker(self._profile.name)
+        if broker is None:
             raise ConnectionError(
-                'Named pipe coordinator is not running. '
-                'Please start it with: verdi coordinator start'
+                'Named pipe broker is not running. '
+                'Please start it with: verdi broker start'
             )
 
-    def is_coordinator_running(self) -> bool:
-        """Check if the coordinator is running.
+    def is_broker_running(self) -> bool:
+        """Check if the broker is running.
 
-        :return: True if coordinator is running, False otherwise.
+        :return: True if broker is running, False otherwise.
         """
         try:
-            coordinator = discover_coordinator(self._get_config_path())
-            return coordinator is not None
+            broker = discover_broker(self._profile.name)
+            return broker is not None
         except Exception:
             return False

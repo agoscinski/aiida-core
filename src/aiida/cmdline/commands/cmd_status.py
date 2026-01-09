@@ -131,7 +131,7 @@ def verdi_status(print_traceback, no_rmq):
     try:
         broker = manager.get_broker()
     except ConnectionError as exc:
-        # Named pipe broker coordinator not running
+        # Named pipe broker not running
         print_status(ServiceStatus.ERROR, 'broker', str(exc), print_traceback=print_traceback)
         exit_code = ExitCode.CRITICAL
         broker = None

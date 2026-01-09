@@ -1,4 +1,4 @@
-"""Worker and coordinator discovery system using config folder."""
+"""Worker and broker discovery system using config folder."""
 
 from __future__ import annotations
 
@@ -13,10 +13,10 @@ __all__ = (
     'get_discovery_dir',
     'register_worker',
     'unregister_worker',
-    'register_coordinator',
-    'unregister_coordinator',
+    'register_broker',
+    'unregister_broker',
     'discover_workers',
-    'discover_coordinator',
+    'discover_broker',
     'cleanup_dead_processes',
     'ProcessInfo',
 )
@@ -26,7 +26,7 @@ class ProcessInfo(t.TypedDict):
     """Information about a registered process."""
 
     process_id: str
-    process_type: str  # 'worker' or 'coordinator'
+    process_type: str  # 'worker' or 'broker'
     task_pipe: str
     rpc_pipe: str
     broadcast_pipe: str
@@ -36,16 +36,16 @@ class ProcessInfo(t.TypedDict):
     timestamp: str
 
 
-def get_discovery_dir(config_path: Path | str) -> Path:
+def get_discovery_dir(profile_name: str) -> Path:
     """Get the discovery directory for a profile.
 
-    :param config_path: Path to the AiiDA config directory.
+    Discovery files are stored in the worker pipes directory.
+
+    :param profile_name: Profile name.
     :return: Path to the discovery directory.
     """
-    config_path = Path(config_path)
-    discovery_dir = config_path / 'pipes'
-    discovery_dir.mkdir(parents=True, exist_ok=True)
-    return discovery_dir
+    from . import utils
+    return utils.get_worker_pipes_dir(profile_name)
 
 
 def _write_process_info(discovery_dir: Path, process_id: str, info: ProcessInfo) -> None:
@@ -88,7 +88,7 @@ def _is_process_alive(pid: int) -> bool:
 
 
 def register_worker(
-    config_path: Path | str,
+    profile_name: str,
     worker_id: str,
     task_pipe: str,
     rpc_pipe: str,
@@ -97,14 +97,14 @@ def register_worker(
 ) -> None:
     """Register a worker in the discovery system.
 
-    :param config_path: Path to the AiiDA config directory.
+    :param profile_name: Profile name.
     :param worker_id: Worker identifier.
     :param task_pipe: Path to worker's task pipe.
     :param rpc_pipe: Path to worker's RPC pipe.
     :param broadcast_pipe: Path to worker's broadcast pipe.
     :param reply_pipe: Path to worker's reply pipe (optional).
     """
-    discovery_dir = get_discovery_dir(config_path)
+    discovery_dir = get_discovery_dir(profile_name)
 
     info: ProcessInfo = {
         'process_id': worker_id,
@@ -121,13 +121,13 @@ def register_worker(
     _write_process_info(discovery_dir, worker_id, info)
 
 
-def unregister_worker(config_path: Path | str, worker_id: str) -> None:
+def unregister_worker(profile_name: str, worker_id: str) -> None:
     """Unregister a worker from the discovery system.
 
-    :param config_path: Path to the AiiDA config directory.
+    :param profile_name: Profile name.
     :param worker_id: Worker identifier.
     """
-    discovery_dir = get_discovery_dir(config_path)
+    discovery_dir = get_discovery_dir(profile_name)
     file_path = discovery_dir / f'{worker_id}.json'
 
     try:
@@ -136,26 +136,26 @@ def unregister_worker(config_path: Path | str, worker_id: str) -> None:
         pass
 
 
-def register_coordinator(
-    config_path: Path | str,
-    coordinator_id: str,
+def register_broker(
+    profile_name: str,
+    broker_id: str,
     task_pipe: str,
     broadcast_pipe: str,
 ) -> None:
-    """Register the coordinator in the discovery system.
+    """Register the broker in the discovery system.
 
-    :param config_path: Path to the AiiDA config directory.
-    :param coordinator_id: Coordinator identifier (usually 'coordinator').
-    :param task_pipe: Path to coordinator's task pipe.
-    :param broadcast_pipe: Path to coordinator's broadcast pipe.
+    :param profile_name: Profile name.
+    :param broker_id: Broker identifier (usually 'broker').
+    :param task_pipe: Path to broker's task pipe.
+    :param broadcast_pipe: Path to broker's broadcast pipe.
     """
-    discovery_dir = get_discovery_dir(config_path)
+    discovery_dir = get_discovery_dir(profile_name)
 
     info: ProcessInfo = {
-        'process_id': coordinator_id,
-        'process_type': 'coordinator',
+        'process_id': broker_id,
+        'process_type': 'broker',
         'task_pipe': task_pipe,
-        'rpc_pipe': '',  # Coordinator doesn't have RPC pipe
+        'rpc_pipe': '',  # Broker doesn't have RPC pipe
         'broadcast_pipe': broadcast_pipe,
         'reply_pipe': None,
         'pid': os.getpid(),
@@ -163,17 +163,17 @@ def register_coordinator(
         'timestamp': datetime.now().isoformat(),
     }
 
-    _write_process_info(discovery_dir, coordinator_id, info)
+    _write_process_info(discovery_dir, broker_id, info)
 
 
-def unregister_coordinator(config_path: Path | str, coordinator_id: str = 'coordinator') -> None:
-    """Unregister the coordinator from the discovery system.
+def unregister_broker(profile_name: str, broker_id: str = 'broker') -> None:
+    """Unregister the broker from the discovery system.
 
-    :param config_path: Path to the AiiDA config directory.
-    :param coordinator_id: Coordinator identifier (default: 'coordinator').
+    :param profile_name: Profile name.
+    :param broker_id: Broker identifier (default: 'broker').
     """
-    discovery_dir = get_discovery_dir(config_path)
-    file_path = discovery_dir / f'{coordinator_id}.json'
+    discovery_dir = get_discovery_dir(profile_name)
+    file_path = discovery_dir / f'{broker_id}.json'
 
     try:
         file_path.unlink()
@@ -181,14 +181,14 @@ def unregister_coordinator(config_path: Path | str, coordinator_id: str = 'coord
         pass
 
 
-def discover_workers(config_path: Path | str, check_alive: bool = True) -> list[ProcessInfo]:
+def discover_workers(profile_name: str, check_alive: bool = True) -> list[ProcessInfo]:
     """Discover all registered workers.
 
-    :param config_path: Path to the AiiDA config directory.
+    :param profile_name: Profile name.
     :param check_alive: If True, verify processes are actually alive.
     :return: List of worker process information.
     """
-    discovery_dir = get_discovery_dir(config_path)
+    discovery_dir = get_discovery_dir(profile_name)
     workers = []
 
     for file_path in discovery_dir.glob('*.json'):
@@ -216,15 +216,15 @@ def discover_workers(config_path: Path | str, check_alive: bool = True) -> list[
     return workers
 
 
-def discover_coordinator(config_path: Path | str, coordinator_id: str = 'coordinator') -> ProcessInfo | None:
-    """Discover the coordinator.
+def discover_broker(profile_name: str, broker_id: str = 'broker') -> ProcessInfo | None:
+    """Discover the broker.
 
-    :param config_path: Path to the AiiDA config directory.
-    :param coordinator_id: Coordinator identifier (default: 'coordinator').
-    :return: Coordinator process information or None if not found/dead.
+    :param profile_name: Profile name.
+    :param broker_id: Broker identifier (default: 'broker').
+    :return: Broker process information or None if not found/dead.
     """
-    discovery_dir = get_discovery_dir(config_path)
-    file_path = discovery_dir / f'{coordinator_id}.json'
+    discovery_dir = get_discovery_dir(profile_name)
+    file_path = discovery_dir / f'{broker_id}.json'
 
     if not file_path.exists():
         return None
@@ -233,10 +233,10 @@ def discover_coordinator(config_path: Path | str, coordinator_id: str = 'coordin
     if info is None:
         return None
 
-    if info['process_type'] != 'coordinator':
+    if info['process_type'] != 'broker':
         return None
 
-    # Check if coordinator is alive
+    # Check if broker is alive
     alive = _is_process_alive(info['pid'])
     info['alive'] = alive
 
@@ -251,13 +251,13 @@ def discover_coordinator(config_path: Path | str, coordinator_id: str = 'coordin
     return info
 
 
-def cleanup_dead_processes(config_path: Path | str) -> int:
+def cleanup_dead_processes(profile_name: str) -> int:
     """Clean up discovery entries for dead processes.
 
-    :param config_path: Path to the AiiDA config directory.
+    :param profile_name: Profile name.
     :return: Number of entries cleaned up.
     """
-    discovery_dir = get_discovery_dir(config_path)
+    discovery_dir = get_discovery_dir(profile_name)
     count = 0
 
     for file_path in discovery_dir.glob('*.json'):
