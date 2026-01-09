@@ -79,6 +79,66 @@ def run_get_pk(process: TYPE_RUN_PROCESS, inputs: dict[str, t.Any] | None = None
 
     return runner.run_get_pk(process, inputs, **kwargs)
 
+def _auto_start_daemon_python_api():
+    """Auto-start coordinator and daemon using direct API calls."""
+    from aiida.engine.daemon.client import get_daemon_client
+    from aiida.cmdline.commands.cmd_coordinator import _start_coordinator, _get_coordinator_status
+    from aiida.manage import manager as mgr
+
+    manager_inst = mgr.get_manager()
+    profile = manager_inst.get_profile()
+
+    # For named pipe broker, start coordinator first
+    if profile.process_control_backend == 'core.namedpipe':
+        status = _get_coordinator_status(profile)
+        if not status['running']:
+            _start_coordinator(profile, foreground=False)
+
+    # Start daemon
+    client = get_daemon_client()
+    if not client.is_daemon_running:
+        default_workers = manager_inst.get_config().get_option('daemon.default_workers', profile.name)
+        client.start_daemon(number_workers=default_workers, foreground=False)
+
+
+def _auto_start_daemon():
+    """Auto-start coordinator and daemon using detached subprocess with verdi commands."""
+    from aiida.engine.daemon.client import get_daemon_client
+    from aiida.cmdline.commands.cmd_coordinator import _get_coordinator_status
+    import subprocess
+    import sys
+
+    from aiida.manage.manager import get_manager
+
+    manager_inst = get_manager()
+    profile = manager_inst.get_profile()
+
+    if profile.process_control_backend == 'core.namedpipe':
+        status = _get_coordinator_status(profile)
+        if not status['running'] and profile.process_control_backend == 'core.namedpipe':
+            # Start coordinator using detached subprocess
+            subprocess.Popen(
+                [sys.executable, '-m', 'aiida', '-p', profile.name, 'coordinator', 'start'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,  # Detach from parent process session
+                close_fds=True,  # Close inherited file descriptors
+            )
+
+    client = get_daemon_client()
+    if not client.is_daemon_running:
+        # Start daemon using detached subprocess
+        subprocess.Popen(
+            [sys.executable, '-m', 'aiida', '-p', profile.name, 'daemon', 'start'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,  # Detach from parent process session
+            close_fds=True,  # Close inherited file descriptors
+        )
+
+
 
 def submit(
     process: TYPE_SUBMIT_PROCESS,
@@ -111,6 +171,10 @@ def submit(
     # current process in the scope should be an instance of ``FunctionProcess``.
     if is_process_scoped() and not isinstance(Process.current(), FunctionProcess):
         raise InvalidOperation('Cannot use top-level `submit` from within another process, use `self.submit` instead')
+
+
+    _auto_start_daemon()
+    time.sleep(5)
 
     runner = manager.get_manager().get_runner()
 
