@@ -45,5 +45,5 @@ def ensure_broker_running(profile: 'Profile') -> None:
     if broker_info is None:
         raise ConnectionError(
             f'Named pipe message broker for profile {profile.name} is not running. '
-            'Please start it with: verdi broker start'
+            'Please start it with: verdi scheduler start'
         )

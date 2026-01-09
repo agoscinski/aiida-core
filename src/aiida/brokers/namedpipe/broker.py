@@ -105,7 +105,7 @@ class PipeBroker(Broker):
         if broker is None:
             raise ConnectionError(
                 'Named pipe broker is not running. '
-                'Please start it with: verdi broker start'
+                'Please start it with: verdi scheduler start'
             )
 
     def is_broker_running(self) -> bool:

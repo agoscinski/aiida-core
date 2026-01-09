@@ -75,7 +75,7 @@ def command_create_profile(
             broker_config = detect_rabbitmq_config()
         except ConnectionError as exception:
             echo.echo_warning(f'RabbitMQ server not reachable: {exception}.')
-            echo.echo_report('Profile will use named pipe broker. Start broker with: verdi broker start')
+            echo.echo_report('Profile will use named pipe broker. Start scheduler with: verdi scheduler start')
             broker_backend = 'core.namedpipe'
         else:
             echo.echo_success(f'RabbitMQ server detected with connection parameters: {broker_config}')
@@ -84,7 +84,7 @@ def command_create_profile(
         echo.echo_report('RabbitMQ can be reconfigured with `verdi profile configure-rabbitmq`.')
     else:
         echo.echo_report('Creating profile without RabbitMQ.')
-        echo.echo_report('Profile will use named pipe broker. Start broker with: verdi broker start')
+        echo.echo_report('Profile will use named pipe broker. Start scheduler with: verdi scheduler start')
         echo.echo_report('RabbitMQ can be configured later with `verdi profile configure-rabbitmq`.')
         broker_backend = 'core.namedpipe'
 

@@ -14,6 +14,7 @@ from .subprocess_executor import *
 __all__ = (
     'Broker',
     'BrokerCommunicator',
+    'ComputerQueue',
     'PipeBroker',
     'PipeBrokerCommunicator',
     'ProcessBroker',

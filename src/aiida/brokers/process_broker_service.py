@@ -61,7 +61,7 @@ class ProcessBrokerService:
                 config.computer_limits = file_config.computer_limits
                 config.default_limit = file_config.default_limit
         else:
-            # Read from config file (used by verdi broker start)
+            # Read from config file (used by verdi scheduler start with scheduling disabled)
             config = ProcessBrokerConfig.from_file(self._config_path)
 
         # Create executor for worker lifecycle management
