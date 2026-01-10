@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from kiwipy.rmq import RmqThreadCommunicator
     from plumpy.process_comms import RemoteProcessThreadController
 
-    from aiida.brokers.broker import Broker
+    from aiida.brokers.broker import BrokerCommunicator
     from aiida.engine.daemon.client import DaemonClient
     from aiida.engine.persistence import AiiDAPersister
     from aiida.engine.runners import Runner
@@ -71,7 +71,7 @@ class Manager:
         from aiida.common.log import AIIDA_LOGGER
 
         # note: the config currently references the global variables
-        self._broker: Optional['Broker'] = None
+        self._broker: Optional['BrokerCommunicator'] = None
         self._profile: Optional['Profile'] = None
         self._profile_storage: Optional['StorageBackend'] = None
         self._daemon_client: Optional['DaemonClient'] = None
@@ -285,8 +285,8 @@ class Manager:
 
         return self._profile_storage
 
-    def get_broker(self) -> 'Broker' | None:
-        """Return an instance of :class:`aiida.brokers.broker.Broker` if the profile defines a broker.
+    def get_broker(self) -> 'BrokerCommunicator' | None:
+        """Return an instance of :class:`aiida.brokers.broker.BrokerCommunicator` if the profile defines a broker.
 
         :returns: The broker of the profile, or ``None`` if the profile doesn't define one.
         """

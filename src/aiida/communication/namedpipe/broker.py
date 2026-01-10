@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import functools
 import typing as t
+from typing import Callable
 
-from aiida.brokers.broker import Broker
-
+from .broker_communicator import PipeBrokerCommunicator
 from .communicator import PipeCommunicator
 from .discovery import discover_broker, get_discovery_dir
 
@@ -18,7 +18,7 @@ if t.TYPE_CHECKING:
 __all__ = ('PipeBroker',)
 
 
-class PipeBroker(Broker):
+class PipeBroker:
     """Implementation of the message broker interface using named pipes."""
 
     def __init__(self, profile: 'Profile') -> None:
@@ -26,8 +26,9 @@ class PipeBroker(Broker):
 
         :param profile: The profile.
         """
-        super().__init__(profile)
+        self._profile = profile
         self._communicator: PipeCommunicator | None = None
+        self._broker_communicator: PipeBrokerCommunicator | None = None
 
     def __str__(self):
         broker = discover_broker(self._profile.name)
@@ -36,10 +37,13 @@ class PipeBroker(Broker):
         return 'NamedPipe Broker <Not running>'
 
     def close(self):
-        """Close the broker."""
+        """Close the broker and cleanup resources."""
         if self._communicator is not None:
             self._communicator.close()
             self._communicator = None
+        if self._broker_communicator is not None:
+            self._broker_communicator.close()
+            self._broker_communicator = None
 
     def iterate_tasks(self):
         """Return an iterator over the tasks in the launch queue.
@@ -118,3 +122,116 @@ class PipeBroker(Broker):
             return broker is not None
         except Exception:
             return False
+
+    # Implementation of BrokerCommunicator methods (delegate to _broker_communicator)
+
+    def start(self) -> None:
+        """Start the broker and initialize transport resources."""
+        if self._broker_communicator is None:
+            self._broker_communicator = PipeBrokerCommunicator(
+                profile_name=self._profile.name,
+                broker_id='broker'
+            )
+            self._broker_communicator.start()
+
+    def is_closed(self) -> bool:
+        """Check if broker is closed.
+
+        :return: True if closed, False otherwise.
+        """
+        if self._broker_communicator is None:
+            return True
+        return self._broker_communicator.is_closed()
+
+    def add_task_subscriber(
+        self,
+        callback: Callable[[dict], None],
+        identifier: str | None = None,
+    ) -> str:
+        """Register callback for incoming task messages.
+
+        :param callback: Function to call with task message dict
+        :param identifier: Optional subscriber identifier
+        :return: Subscriber identifier
+        """
+        self._ensure_broker_communicator()
+        return self._broker_communicator.add_task_subscriber(callback, identifier)
+
+    def add_broadcast_subscriber(
+        self,
+        callback: Callable[[dict], None],
+        identifier: str | None = None,
+    ) -> str:
+        """Register callback for incoming broadcast messages.
+
+        :param callback: Function to call with broadcast message dict
+        :param identifier: Optional subscriber identifier
+        :return: Subscriber identifier
+        """
+        self._ensure_broker_communicator()
+        return self._broker_communicator.add_broadcast_subscriber(callback, identifier)
+
+    def remove_task_subscriber(self, identifier: str) -> None:
+        """Remove a task subscriber by identifier.
+
+        :param identifier: Subscriber identifier to remove
+        """
+        if self._broker_communicator:
+            self._broker_communicator.remove_task_subscriber(identifier)
+
+    def remove_broadcast_subscriber(self, identifier: str) -> None:
+        """Remove a broadcast subscriber by identifier.
+
+        :param identifier: Subscriber identifier to remove
+        """
+        if self._broker_communicator:
+            self._broker_communicator.remove_broadcast_subscriber(identifier)
+
+    def task_send(
+        self,
+        worker_pipe: str,
+        message: dict,
+        non_blocking: bool = True,
+    ) -> None:
+        """Send a task message to a specific worker.
+
+        :param worker_pipe: Worker's task pipe path
+        :param message: Task message dict to send
+        :param non_blocking: Use non-blocking write
+        """
+        self._ensure_broker_communicator()
+        self._broker_communicator.task_send(worker_pipe, message, non_blocking)
+
+    def broadcast_send(
+        self,
+        worker_pipes: list[str],
+        message: dict,
+        non_blocking: bool = True,
+    ) -> int:
+        """Send broadcast message to multiple workers.
+
+        :param worker_pipes: List of worker broadcast pipe paths
+        :param message: Broadcast message dict to send
+        :param non_blocking: Use non-blocking write
+        :return: Number of successful sends
+        """
+        self._ensure_broker_communicator()
+        return self._broker_communicator.broadcast_send(worker_pipes, message, non_blocking)
+
+    def get_broker_pipes(self) -> dict[str, str]:
+        """Get broker pipe paths for discovery registration.
+
+        :return: Dict with 'task_pipe' and 'broadcast_pipe' keys
+        """
+        self._ensure_broker_communicator()
+        return self._broker_communicator.get_broker_pipes()
+
+    def _ensure_broker_communicator(self) -> None:
+        """Ensure broker communicator is started.
+
+        :raises RuntimeError: If broker not started.
+        """
+        if self._broker_communicator is None or self._broker_communicator.is_closed():
+            raise RuntimeError(
+                'Broker not started. Call start() first or use verdi scheduler start to start the broker daemon.'
+            )
