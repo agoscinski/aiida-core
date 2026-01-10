@@ -74,10 +74,10 @@ def _daemonize_scheduler(profile_name: str, config_path: Path) -> None:
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-    # Create and run scheduler (ProcessBrokerService with scheduling enabled)
-    from aiida.brokers.process_broker_service import ProcessBrokerService
+    # Create and run scheduler (ProcessSchedulerService with scheduling enabled)
+    from aiida.engine.scheduler.process_scheduler_service import ProcessSchedulerService
 
-    scheduler = ProcessBrokerService(
+    scheduler = ProcessSchedulerService(
         profile_name=profile_name,
         config_path=config_path,
         enable_scheduling=True,
@@ -118,7 +118,7 @@ def scheduler_start(foreground):
         verdi scheduler start
         verdi scheduler start --foreground
     """
-    from aiida.brokers.namedpipe import discovery
+    from aiida.communication.namedpipe import discovery
     from aiida.manage import manager
 
     mgr = manager.get_manager()
@@ -133,14 +133,14 @@ def scheduler_start(foreground):
 
     if foreground:
         # Run in foreground
-        from aiida.brokers.process_broker_service import ProcessBrokerService
+        from aiida.engine.scheduler.process_scheduler_service import ProcessSchedulerService
 
         echo.echo_info('Starting scheduler in foreground mode...')
         echo.echo_info('Press Ctrl+C to stop')
 
         scheduler = None
         try:
-            scheduler = ProcessBrokerService(
+            scheduler = ProcessSchedulerService(
                 profile_name=profile.name,
                 config_path=config_path,
                 enable_scheduling=True,
@@ -178,7 +178,7 @@ def scheduler_stop():
     Examples:
         verdi scheduler stop
     """
-    from aiida.brokers.namedpipe import discovery
+    from aiida.communication.namedpipe import discovery
     from aiida.manage import manager
 
     mgr = manager.get_manager()
@@ -241,7 +241,7 @@ def scheduler_restart(ctx):
     echo.echo_info('Restarting scheduler...')
 
     # Stop if running
-    from aiida.brokers.namedpipe import discovery
+    from aiida.communication.namedpipe import discovery
     from aiida.manage import manager
 
     mgr = manager.get_manager()
@@ -274,7 +274,7 @@ def scheduler_status():
     Examples:
         verdi scheduler status
     """
-    from aiida.brokers.namedpipe import discovery
+    from aiida.communication.namedpipe import discovery
     from aiida.manage import manager
 
     mgr = manager.get_manager()

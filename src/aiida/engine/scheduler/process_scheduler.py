@@ -14,10 +14,10 @@ import json
 import logging
 from pathlib import Path
 
-from aiida.brokers.namedpipe import discovery
-from aiida.brokers.namedpipe.task_queue import TaskQueue
+from aiida.communication.namedpipe import discovery
+from aiida.engine.scheduler.task_queue import TaskQueue
 
-__all__ = ('ProcessBroker', 'ProcessBrokerConfig', 'ComputerQueue')
+__all__ = ('ProcessScheduler', 'ProcessSchedulerConfig', 'ComputerQueue')
 
 LOGGER = logging.getLogger(__name__)
 
@@ -164,8 +164,8 @@ class ComputerQueue:
                     pass
 
 
-class ProcessBrokerConfig:
-    """Configuration for ProcessBroker.
+class ProcessSchedulerConfig:
+    """Configuration for ProcessScheduler.
 
     Encapsulates all configuration options in a single object.
     """
@@ -205,11 +205,11 @@ class ProcessBrokerConfig:
         self.max_worker_count = max_worker_count
 
     @classmethod
-    def from_file(cls, config_path: Path) -> 'ProcessBrokerConfig':
+    def from_file(cls, config_path: Path) -> 'ProcessSchedulerConfig':
         """Load configuration from file.
 
         :param config_path: Path to config directory (contains scheduler/)
-        :return: ProcessBrokerConfig instance
+        :return: ProcessSchedulerConfig instance
         """
         config_file = config_path / 'scheduler' / 'computer_limits.json'
 
@@ -248,8 +248,8 @@ class ProcessBrokerConfig:
             return cls(scheduling_enabled=False)
 
 
-class ProcessBroker:
-    """Unified broker that merges MessageBroker and Scheduler logic.
+class ProcessScheduler:
+    """Unified scheduler for task distribution and worker management.
 
     This class handles:
     - Task queue persistence
@@ -267,7 +267,7 @@ class ProcessBroker:
         communicator: 'BrokerCommunicator',  # noqa: F821
         profile_name: str,
         working_dir: Path | str,
-        config: ProcessBrokerConfig | None = None,
+        config: ProcessSchedulerConfig | None = None,
         executor: 'WorkerExecutor | None' = None,  # noqa: F821
     ):
         """Initialize the process broker.
@@ -281,7 +281,7 @@ class ProcessBroker:
         self._communicator = communicator
         self._profile_name = profile_name
         self._working_dir = Path(working_dir)
-        self._config = config or ProcessBrokerConfig(scheduling_enabled=False)
+        self._config = config or ProcessSchedulerConfig(scheduling_enabled=False)
         self._executor = executor
 
         # Task queue for persistence
@@ -302,7 +302,7 @@ class ProcessBroker:
         self._communicator.start()
 
         LOGGER.info(
-            f'ProcessBroker started for profile: {profile_name} '
+            f'ProcessScheduler started for profile: {profile_name} '
             f'(scheduling={"enabled" if self._config.scheduling_enabled else "disabled"})'
         )
 
@@ -651,7 +651,7 @@ class ProcessBroker:
     def close(self) -> None:
         """Close the broker and cleanup resources."""
         self._communicator.close()
-        LOGGER.info('ProcessBroker stopped')
+        LOGGER.info('ProcessScheduler stopped')
 
     def is_closed(self) -> bool:
         """Check if broker is closed.

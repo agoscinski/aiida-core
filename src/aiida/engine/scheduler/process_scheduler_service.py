@@ -14,22 +14,22 @@ import atexit
 import logging
 from pathlib import Path
 
-from aiida.brokers.namedpipe import discovery
-from aiida.brokers.namedpipe.broker_communicator import PipeBrokerCommunicator
-from aiida.brokers.process_broker import ProcessBroker, ProcessBrokerConfig
-from aiida.brokers.subprocess_executor import SubprocessWorkerExecutor
+from aiida.communication.namedpipe import discovery
+from aiida.communication.namedpipe.broker_communicator import PipeBrokerCommunicator
+from aiida.engine.scheduler.process_scheduler import ProcessScheduler, ProcessSchedulerConfig
+from aiida.engine.scheduler.executor import SubprocessWorkerExecutor
 
-__all__ = ('ProcessBrokerService',)
+__all__ = ('ProcessSchedulerService',)
 
 LOGGER = logging.getLogger(__name__)
 
 
-class ProcessBrokerService:
-    """Daemon service wrapper for ProcessBroker.
+class ProcessSchedulerService:
+    """Daemon service wrapper for ProcessScheduler.
 
     This class provides daemon management features:
     - Creates and owns PipeBrokerCommunicator
-    - Creates ProcessBroker with communicator
+    - Creates ProcessScheduler with communicator
     - Registers in discovery system
     - Handles cleanup on shutdown
     - Provides maintenance loop interface
@@ -54,15 +54,15 @@ class ProcessBrokerService:
         # Load or override config
         if enable_scheduling is not None:
             # Explicit override (used by verdi scheduler start)
-            config = ProcessBrokerConfig(scheduling_enabled=enable_scheduling)
+            config = ProcessSchedulerConfig(scheduling_enabled=enable_scheduling)
             if enable_scheduling:
                 # Load limits from file if scheduling is enabled
-                file_config = ProcessBrokerConfig.from_file(self._config_path)
+                file_config = ProcessSchedulerConfig.from_file(self._config_path)
                 config.computer_limits = file_config.computer_limits
                 config.default_limit = file_config.default_limit
         else:
             # Read from config file (used by verdi scheduler start with scheduling disabled)
-            config = ProcessBrokerConfig.from_file(self._config_path)
+            config = ProcessSchedulerConfig.from_file(self._config_path)
 
         # Create executor for worker lifecycle management
         self._executor = SubprocessWorkerExecutor(
@@ -77,7 +77,7 @@ class ProcessBrokerService:
 
         # Create broker with working directory and executor
         broker_working_dir = self._config_path / 'broker'
-        self._broker = ProcessBroker(
+        self._broker = ProcessScheduler(
             communicator=self._communicator,
             profile_name=profile_name,
             working_dir=broker_working_dir,
@@ -102,7 +102,7 @@ class ProcessBrokerService:
         # Register cleanup
         atexit.register(self.close)
 
-        LOGGER.info(f'ProcessBrokerService started for profile: {profile_name} (scheduling={config.scheduling_enabled})')
+        LOGGER.info(f'ProcessSchedulerService started for profile: {profile_name} (scheduling={config.scheduling_enabled})')
 
     def _get_worker_environment(self) -> dict[str, str]:
         """Get environment variables for worker processes.
@@ -122,7 +122,7 @@ class ProcessBrokerService:
     def run_maintenance(self) -> None:
         """Run periodic maintenance tasks.
 
-        Delegate to ProcessBroker's maintenance method.
+        Delegate to ProcessScheduler's maintenance method.
         """
         self._broker.run_maintenance()
 
@@ -153,7 +153,7 @@ class ProcessBrokerService:
         except Exception as exc:
             LOGGER.warning(f'Error unregistering broker: {exc}')
 
-        LOGGER.info('ProcessBrokerService stopped')
+        LOGGER.info('ProcessSchedulerService stopped')
 
     def is_closed(self) -> bool:
         """Check if service is closed.

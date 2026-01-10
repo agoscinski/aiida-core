@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .executor_protocol import WorkerInfo
+from .protocol import WorkerInfo
 
 if TYPE_CHECKING:
     pass
