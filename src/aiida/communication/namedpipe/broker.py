@@ -84,7 +84,8 @@ class PipeBroker:
             config_path=self._get_config_path(),
             worker_id=worker_id,
             encoder=functools.partial(serialize.serialize, encoding='utf-8'),
-            decoder=serialize.deserialize_unsafe,
+            # Decoder wrapper: deserialize_unsafe expects string, but we receive bytes
+            decoder=lambda data: serialize.deserialize_unsafe(data.decode('utf-8')),
         )
 
     def _get_config_path(self) -> 'Path':

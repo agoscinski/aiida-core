@@ -176,15 +176,16 @@ class PipeCommunicator(kiwipy.Communicator):
 
         return self._broker_info
 
-    def _send_message(self, pipe_path: str, message: dict) -> None:
+    def _send_message(self, pipe_path: str, message: dict, use_lock: bool = False) -> None:
         """Send a message to a pipe.
 
         :param pipe_path: Path to the target pipe.
         :param message: Message dictionary to send.
+        :param use_lock: If True, acquire exclusive lock (for multi-writer pipes like broker pipes).
         :raises BrokenPipeError: If pipe has no reader.
         """
         data = messages.serialize(message, encoder=self._encoder)
-        utils.write_to_pipe(pipe_path, data, non_blocking=False)
+        utils.write_to_pipe(pipe_path, data, non_blocking=False, use_lock=use_lock)
 
     def is_closed(self) -> bool:
         """Check if the communicator is closed.
@@ -268,9 +269,9 @@ class PipeCommunicator(kiwipy.Communicator):
             'body': task,
         }
 
-        # Discover broker and send message
+        # Discover broker and send message (use lock for multi-writer broker pipe)
         broker = self._discover_broker()
-        self._send_message(broker['task_pipe'], message)
+        self._send_message(broker['task_pipe'], message, use_lock=True)
 
         if no_reply:
             return None
@@ -334,9 +335,9 @@ class PipeCommunicator(kiwipy.Communicator):
             'correlation_id': correlation_id or str(uuid.uuid4()),
         }
 
-        # Send to broker for distribution
+        # Send to broker for distribution (use lock for multi-writer broker pipe)
         broker = self._discover_broker()
-        self._send_message(broker['broadcast_pipe'], message)
+        self._send_message(broker['broadcast_pipe'], message, use_lock=True)
 
         return True
 

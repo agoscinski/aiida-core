@@ -67,7 +67,6 @@ def scheduler_start(foreground):
             scheduler = ProcessSchedulerService(
                 profile_name=profile.name,
                 config_path=config_path,
-                enable_scheduling=True,
             )
 
             # Run maintenance loop
@@ -88,7 +87,7 @@ def scheduler_start(foreground):
         try:
             from aiida.engine.scheduler.process_scheduler_service import start_daemon
 
-            start_daemon(profile_name=profile.name, config_path=config_path, enable_scheduling=True)
+            start_daemon(profile_name=profile.name, config_path=config_path)
             echo.echo_success('Scheduler daemon started')
             echo.echo_info('Use "verdi scheduler status" to check status')
         except Exception as exc:
@@ -193,13 +192,15 @@ def scheduler_status():
 
     Displays:
     - Whether the scheduler daemon is running
+    - Worker status and configuration
     - Per-computer limits and queue status
-    - Running and queued process counts
 
     \\b
     Examples:
         verdi scheduler status
     """
+    import datetime
+
     from aiida.communication.namedpipe import discovery
     from aiida.manage import manager
 
@@ -211,57 +212,93 @@ def scheduler_status():
     # Check if scheduler is running (registered as broker)
     existing = discovery.discover_broker(profile.name)
 
-    echo.echo_info('Scheduler daemon status:')
+    # Load config
+    data = _load_scheduler_config(config_path)
+    workers_config = data.get('workers', {})
+
+    echo.echo('')
+    echo.echo('=' * 60)
+    echo.echo('  SCHEDULER STATUS')
+    echo.echo('=' * 60)
     echo.echo('')
 
-    if existing:
-        echo.echo(f'  Status: Running (PID: {existing["pid"]})')
-    else:
-        echo.echo('  Status: Not running')
+    if not existing:
+        echo.echo('  Status:    Not running')
         echo.echo('')
         echo.echo_info('Start the scheduler with: verdi scheduler start')
         return
 
-    echo.echo('')
-    echo.echo_info('Per-computer queue status:')
+    # Scheduler is running
+    echo.echo(f'  Status:    Running')
+    echo.echo(f'  PID:       {existing["pid"]}')
+
+    # Show uptime if available
+    if 'timestamp' in existing:
+        started = datetime.datetime.fromisoformat(existing['timestamp'])
+        uptime = datetime.datetime.now() - started
+        hours, remainder = divmod(int(uptime.total_seconds()), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        echo.echo(f'  Uptime:    {hours}h {minutes}m {seconds}s')
+
     echo.echo('')
 
-    # Read queue status from broker/scheduler directory
+    # Worker status
+    echo.echo('-' * 60)
+    echo.echo('  WORKERS')
+    echo.echo('-' * 60)
+    echo.echo('')
+
+    workers = discovery.discover_workers(profile.name)
+    configured_count = workers_config.get('initial_count', 0)
+    min_count = workers_config.get('min_count', 0)
+    max_count = workers_config.get('max_count', 10)
+
+    echo.echo(f'  Running:       {len(workers):<5} (configured: {configured_count}, min: {min_count}, max: {max_count})')
+    echo.echo(f'  Auto-spawn:    {workers_config.get("auto_spawn", False)}')
+    echo.echo(f'  Auto-respawn:  {workers_config.get("auto_respawn", False)}')
+
+    if workers:
+        echo.echo('')
+        echo.echo(f'  {"Worker ID":<24} {"PID":>8}')
+        echo.echo('  ' + '-' * 34)
+        for worker in workers:
+            echo.echo(f'  {worker["process_id"]:<24} {worker["pid"]:>8}')
+
+    echo.echo('')
+
+    # Queue status
+    echo.echo('-' * 60)
+    echo.echo('  QUEUES')
+    echo.echo('-' * 60)
+    echo.echo('')
+
     broker_dir = config_path / 'broker' / 'scheduler'
-
-    # Load limits
-    limits_file = config_path / 'scheduler' / 'computer_limits.json'
-    limits = {}
-    if limits_file.exists():
-        try:
-            with open(limits_file) as f:
-                data = json.load(f)
-                # Extract limits, skip metadata keys
-                limits = {k: v for k, v in data.items() if not k.startswith('_')}
-        except (json.JSONDecodeError, OSError):
-            pass
+    limits = data.get('computers', {})
+    default_limit = data.get('default_limit', 10)
 
     # Check for queue directories
     if not broker_dir.exists():
-        echo.echo_info('No queues found.')
+        echo.echo('  No queues found.')
+        echo.echo('')
         return
 
     computer_dirs = [d for d in broker_dir.iterdir() if d.is_dir() and d.name != '__pycache__']
 
     if not computer_dirs and not limits:
-        echo.echo_info('No queues or limits configured.')
+        echo.echo(f'  Default limit: {default_limit} processes per computer')
+        echo.echo('  No computer-specific limits configured.')
         echo.echo('')
-        echo.echo_info('Configure limits with: verdi scheduler set-limit <computer_label> <limit>')
         return
 
     # Display all computers (from limits or queues)
     all_computers = set(limits.keys()) | {d.name for d in computer_dirs}
 
-    echo.echo(f'{"Computer":<30} {"Limit":>8} {"Queued":>8}')
-    echo.echo('-' * 50)
+    echo.echo(f'  {"Computer":<28} {"Limit":>8} {"Queued":>8}')
+    echo.echo('  ' + '-' * 46)
 
+    total_queued = 0
     for computer_label in sorted(all_computers):
-        limit = limits.get(computer_label, 10)
+        limit = limits.get(computer_label, default_limit)
 
         # Count queued processes
         computer_dir = broker_dir / computer_label
@@ -271,11 +308,12 @@ def scheduler_status():
         else:
             queued_count = 0
 
-        echo.echo(f'{computer_label:<30} {limit:>8} {queued_count:>8}')
+        total_queued += queued_count
+        echo.echo(f'  {computer_label:<28} {limit:>8} {queued_count:>8}')
 
+    echo.echo('  ' + '-' * 46)
+    echo.echo(f'  {"Total":<28} {"":>8} {total_queued:>8}')
     echo.echo('')
-    echo.echo_info('Note: "Queued" shows processes waiting to run.')
-    echo.echo_info('      Running process counts are maintained by the scheduler daemon.')
 
 
 @verdi_scheduler.command('set-limit')
@@ -305,31 +343,19 @@ def scheduler_set_limit(computer_label, limit):
     profile = mgr.get_profile()
     config_path = Path(config.dirpath) / 'profiles' / profile.name
 
-    # Update computer_limits.json
-    scheduler_dir = config_path / 'scheduler'
-    scheduler_dir.mkdir(parents=True, exist_ok=True)
-    limits_file = scheduler_dir / 'computer_limits.json'
+    data = _load_scheduler_config(config_path)
 
-    # Load existing limits
-    if limits_file.exists():
-        try:
-            with open(limits_file) as f:
-                limits = json.load(f)
-        except (json.JSONDecodeError, OSError) as exc:
-            echo.echo_warning(f'Could not read limits file: {exc}. Creating new file.')
-            limits = {}
-    else:
-        limits = {}
+    # Ensure computers section exists
+    if 'computers' not in data:
+        data['computers'] = {}
 
     # Update limit
-    limits[computer_label] = limit
+    data['computers'][computer_label] = limit
 
-    # Save limits
     try:
-        with open(limits_file, 'w') as f:
-            json.dump(limits, f, indent=2)
+        _save_scheduler_config(config_path, data)
     except OSError as exc:
-        echo.echo_critical(f'Failed to write limits file: {exc}')
+        echo.echo_critical(f'Failed to write config file: {exc}')
 
     echo.echo_success(f'Set concurrency limit for "{computer_label}" to {limit}')
     echo.echo_info('Restart the scheduler for changes to take effect: verdi scheduler restart')
@@ -340,7 +366,7 @@ def scheduler_set_limit(computer_label, limit):
 def scheduler_show_limits():
     """Show concurrency limits for all computers.
 
-    Displays the configured concurrency limits from computer_limits.json.
+    Displays the configured concurrency limits.
     If no limits are configured, shows the default limit.
 
     \\b
@@ -354,28 +380,145 @@ def scheduler_show_limits():
     profile = mgr.get_profile()
     config_path = Path(config.dirpath) / 'profiles' / profile.name
 
-    scheduler_dir = config_path / 'scheduler'
-    limits_file = scheduler_dir / 'computer_limits.json'
+    data = _load_scheduler_config(config_path)
+    computers = data.get('computers', {})
+    default_limit = data.get('default_limit', 10)
 
-    if not limits_file.exists():
-        echo.echo_info('No limits configured.')
-        echo.echo_info('Default limit: 10 processes per computer')
-        echo.echo('')
+    echo.echo_info(f'Default limit: {default_limit} processes per computer')
+    echo.echo('')
+
+    if not computers:
+        echo.echo_info('No computer-specific limits configured.')
         echo.echo_info('Configure limits with: verdi scheduler set-limit <computer_label> <limit>')
-        return
-
-    try:
-        with open(limits_file) as f:
-            limits = json.load(f)
-    except (json.JSONDecodeError, OSError) as exc:
-        echo.echo_critical(f'Failed to read limits file: {exc}')
-
-    if not limits:
-        echo.echo_info('No limits configured.')
         return
 
     echo.echo_info('Computer concurrency limits:')
     echo.echo('')
-    for computer_label in sorted(limits.keys()):
-        limit = limits[computer_label]
+    for computer_label in sorted(computers.keys()):
+        limit = computers[computer_label]
         echo.echo(f'  {computer_label:<30} {limit:>5}')
+
+
+def _load_scheduler_config(config_path: Path) -> dict:
+    """Load scheduler config from file."""
+    config_file = config_path / 'scheduler' / 'config.json'
+    if config_file.exists():
+        try:
+            with open(config_file) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def _save_scheduler_config(config_path: Path, data: dict) -> None:
+    """Save scheduler config to file."""
+    scheduler_dir = config_path / 'scheduler'
+    scheduler_dir.mkdir(parents=True, exist_ok=True)
+    config_file = scheduler_dir / 'config.json'
+    with open(config_file, 'w') as f:
+        json.dump(data, f, indent=2)
+
+
+@verdi_scheduler.command('set-workers')
+@click.argument('count', type=int)
+@click.option('--min', 'min_workers', type=int, default=None, help='Minimum workers to maintain')
+@click.option('--max', 'max_workers', type=int, default=None, help='Maximum workers allowed')
+@click.option('--auto-spawn/--no-auto-spawn', default=None, help='Auto-spawn workers when tasks arrive')
+@click.option('--auto-respawn/--no-auto-respawn', default=None, help='Auto-respawn dead workers')
+@decorators.with_dbenv()
+def scheduler_set_workers(count, min_workers, max_workers, auto_spawn, auto_respawn):
+    """Set the number of workers for the scheduler.
+
+    COUNT: Number of workers to start initially.
+
+    The scheduler must be restarted for changes to take effect.
+
+    \\b
+    Examples:
+        verdi scheduler set-workers 4
+        verdi scheduler set-workers 4 --min 1 --max 10
+        verdi scheduler set-workers 4 --auto-spawn --auto-respawn
+    """
+    if count < 0:
+        echo.echo_critical('Worker count must be non-negative')
+
+    from aiida.manage import manager
+
+    mgr = manager.get_manager()
+    config = mgr.get_config()
+    profile = mgr.get_profile()
+    config_path = Path(config.dirpath) / 'profiles' / profile.name
+
+    data = _load_scheduler_config(config_path)
+
+    # Ensure workers section exists
+    if 'workers' not in data:
+        data['workers'] = {}
+
+    # Update worker settings
+    data['workers']['initial_count'] = count
+
+    if min_workers is not None:
+        data['workers']['min_count'] = min_workers
+    if max_workers is not None:
+        data['workers']['max_count'] = max_workers
+    if auto_spawn is not None:
+        data['workers']['auto_spawn'] = auto_spawn
+    if auto_respawn is not None:
+        data['workers']['auto_respawn'] = auto_respawn
+
+    try:
+        _save_scheduler_config(config_path, data)
+    except OSError as exc:
+        echo.echo_critical(f'Failed to write config file: {exc}')
+
+    echo.echo_success(f'Set initial worker count to {count}')
+    if min_workers is not None:
+        echo.echo_info(f'  Min workers: {min_workers}')
+    if max_workers is not None:
+        echo.echo_info(f'  Max workers: {max_workers}')
+    if auto_spawn is not None:
+        echo.echo_info(f'  Auto-spawn: {auto_spawn}')
+    if auto_respawn is not None:
+        echo.echo_info(f'  Auto-respawn: {auto_respawn}')
+    echo.echo_info('Restart the scheduler for changes to take effect: verdi scheduler restart')
+
+
+@verdi_scheduler.command('show-workers')
+@decorators.with_dbenv()
+def scheduler_show_workers():
+    """Show worker configuration and status.
+
+    \\b
+    Examples:
+        verdi scheduler show-workers
+    """
+    from aiida.communication.namedpipe import discovery
+    from aiida.manage import manager
+
+    mgr = manager.get_manager()
+    config = mgr.get_config()
+    profile = mgr.get_profile()
+    config_path = Path(config.dirpath) / 'profiles' / profile.name
+
+    data = _load_scheduler_config(config_path)
+    workers_config = data.get('workers', {})
+
+    echo.echo_info('Worker configuration:')
+    echo.echo(f'  Initial count:  {workers_config.get("initial_count", 0)}')
+    echo.echo(f'  Min workers:    {workers_config.get("min_count", 0)}')
+    echo.echo(f'  Max workers:    {workers_config.get("max_count", 10)}')
+    echo.echo(f'  Auto-spawn:     {workers_config.get("auto_spawn", False)}')
+    echo.echo(f'  Auto-respawn:   {workers_config.get("auto_respawn", False)}')
+    echo.echo('')
+
+    # Show running workers
+    workers = discovery.discover_workers(profile.name)
+    echo.echo_info(f'Running workers: {len(workers)}')
+    if workers:
+        echo.echo('')
+        echo.echo(f'  {"Worker ID":<20} {"PID":>8}')
+        echo.echo('  ' + '-' * 30)
+        for worker in workers:
+            echo.echo(f'  {worker["process_id"]:<20} {worker["pid"]:>8}')

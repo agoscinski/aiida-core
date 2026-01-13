@@ -208,10 +208,27 @@ class ProcessSchedulerConfig:
     def from_file(cls, config_path: Path) -> 'ProcessSchedulerConfig':
         """Load configuration from file.
 
+        Config file format (scheduler/config.json):
+        {
+            "scheduling_enabled": true,
+            "default_limit": 10,
+            "workers": {
+                "initial_count": 4,
+                "min_count": 1,
+                "max_count": 10,
+                "auto_spawn": false,
+                "auto_respawn": true
+            },
+            "computers": {
+                "localhost": 20,
+                "frontier": 50
+            }
+        }
+
         :param config_path: Path to config directory (contains scheduler/)
         :return: ProcessSchedulerConfig instance
         """
-        config_file = config_path / 'scheduler' / 'computer_limits.json'
+        config_file = config_path / 'scheduler' / 'config.json'
 
         # If file doesn't exist, scheduling is disabled
         if not config_file.exists():
@@ -221,21 +238,24 @@ class ProcessSchedulerConfig:
             with open(config_file) as f:
                 data = json.load(f)
 
-            # Extract metadata fields (keys starting with _)
-            scheduling_enabled = data.pop('_scheduling_enabled', True)
-            default_limit = data.pop('_default_limit', 10)
+            # Top-level options
+            scheduling_enabled = data.get('scheduling_enabled', True)
+            default_limit = data.get('default_limit', 10)
 
             # Worker management options
-            auto_spawn_workers = data.pop('_auto_spawn_workers', False)
-            initial_worker_count = data.pop('_initial_worker_count', 0)
-            auto_respawn_workers = data.pop('_auto_respawn_workers', False)
-            min_worker_count = data.pop('_min_worker_count', 0)
-            max_worker_count = data.pop('_max_worker_count', 10)
+            workers = data.get('workers', {})
+            auto_spawn_workers = workers.get('auto_spawn', False)
+            initial_worker_count = workers.get('initial_count', 0)
+            auto_respawn_workers = workers.get('auto_respawn', False)
+            min_worker_count = workers.get('min_count', 0)
+            max_worker_count = workers.get('max_count', 10)
 
-            # Remaining keys are computer limits
+            # Computer limits
+            computer_limits = data.get('computers', {})
+
             return cls(
                 scheduling_enabled=scheduling_enabled,
-                computer_limits=data,
+                computer_limits=computer_limits,
                 default_limit=default_limit,
                 auto_spawn_workers=auto_spawn_workers,
                 initial_worker_count=initial_worker_count,
@@ -318,7 +338,8 @@ class ProcessScheduler:
             # Check if this is a continue_process task requiring scheduling
             task_type = message.get('body', {}).get('task')
             if task_type == 'continue':
-                pid = message['body']['process_id']
+                # plumpy sends: {'task': 'continue', 'args': {'pid': 123, ...}}
+                pid = message['body']['args']['pid']
                 self._schedule_process(pid, message)
                 return
 

@@ -24,7 +24,7 @@ __all__ = ('ProcessSchedulerService', 'start_daemon')
 LOGGER = logging.getLogger(__name__)
 
 
-def start_daemon(profile_name: str, config_path: Path | str, enable_scheduling: bool = True) -> None:
+def start_daemon(profile_name: str, config_path: Path | str) -> None:
     """Start the scheduler as a daemon process.
 
     This function forks and daemonizes, then runs ProcessSchedulerService
@@ -32,7 +32,6 @@ def start_daemon(profile_name: str, config_path: Path | str, enable_scheduling: 
 
     :param profile_name: The AiiDA profile name
     :param config_path: Path to the AiiDA config directory
-    :param enable_scheduling: Whether to enable per-computer scheduling
     """
     import os
     import sys
@@ -89,7 +88,6 @@ def start_daemon(profile_name: str, config_path: Path | str, enable_scheduling: 
     scheduler = ProcessSchedulerService(
         profile_name=profile_name,
         config_path=config_path,
-        enable_scheduling=enable_scheduling,
     )
 
     # Run maintenance loop
@@ -119,30 +117,21 @@ class ProcessSchedulerService:
         self,
         profile_name: str,
         config_path: Path | str,
-        enable_scheduling: bool | None = None,
     ):
         """Initialize the process broker service.
 
         :param profile_name: The AiiDA profile name
         :param config_path: Path to the AiiDA config directory
-        :param enable_scheduling: Override scheduling config (None = read from file)
         """
         self._profile_name = profile_name
         self._config_path = Path(config_path)
         self._broker_id = 'broker'
 
-        # Load or override config
-        if enable_scheduling is not None:
-            # Explicit override (used by verdi scheduler start)
-            config = ProcessSchedulerConfig(scheduling_enabled=enable_scheduling)
-            if enable_scheduling:
-                # Load limits from file if scheduling is enabled
-                file_config = ProcessSchedulerConfig.from_file(self._config_path)
-                config.computer_limits = file_config.computer_limits
-                config.default_limit = file_config.default_limit
-        else:
-            # Read from config file (used by verdi scheduler start with scheduling disabled)
-            config = ProcessSchedulerConfig.from_file(self._config_path)
+        # Load config from file
+        config = ProcessSchedulerConfig.from_file(self._config_path)
+
+        # Clean up orphaned workers from previous runs
+        self._cleanup_orphaned_workers(profile_name)
 
         # Create executor for worker lifecycle management
         self._executor = SubprocessWorkerExecutor(
@@ -165,15 +154,8 @@ class ProcessSchedulerService:
             executor=self._executor,
         )
 
-        # Start initial workers if configured
-        if config.initial_worker_count > 0:
-            LOGGER.info(f'Starting {config.initial_worker_count} initial workers')
-            try:
-                self._executor.scale_workers(config.initial_worker_count)
-            except Exception as exc:
-                LOGGER.error(f'Failed to start initial workers: {exc}')
-
-        # Register in discovery
+        # Register in discovery BEFORE spawning workers
+        # (workers check if broker is running via discovery)
         broker_pipes = self._communicator.get_broker_pipes()
         discovery.register_broker(
             profile_name, self._broker_id, task_pipe=broker_pipes['task_pipe'], broadcast_pipe=broker_pipes['broadcast_pipe']
@@ -183,6 +165,14 @@ class ProcessSchedulerService:
         atexit.register(self.close)
 
         LOGGER.info(f'ProcessSchedulerService started for profile: {profile_name} (scheduling={config.scheduling_enabled})')
+
+        # Start initial workers if configured (after broker is registered)
+        if config.initial_worker_count > 0:
+            LOGGER.info(f'Starting {config.initial_worker_count} initial workers')
+            try:
+                self._executor.scale_workers(config.initial_worker_count)
+            except Exception as exc:
+                LOGGER.error(f'Failed to start initial workers: {exc}')
 
     def _get_worker_environment(self) -> dict[str, str]:
         """Get environment variables for worker processes.
@@ -198,6 +188,36 @@ class ProcessSchedulerService:
             env['AIIDA_PATH'] = os.environ['AIIDA_PATH']
 
         return env
+
+    def _cleanup_orphaned_workers(self, profile_name: str) -> None:
+        """Clean up workers from previous scheduler runs.
+
+        When the scheduler starts fresh, any existing workers are orphaned
+        and should be terminated.
+
+        :param profile_name: The AiiDA profile name
+        """
+        import os
+        import signal
+
+        # Find all registered workers (including dead ones)
+        workers = discovery.discover_workers(profile_name, check_alive=False)
+
+        for worker in workers:
+            pid = worker['pid']
+            worker_id = worker['process_id']
+
+            # Try to kill the process if it's still alive
+            try:
+                os.kill(pid, signal.SIGTERM)
+                LOGGER.info(f'Terminated orphaned worker {worker_id} (PID: {pid})')
+            except ProcessLookupError:
+                pass  # Process already dead
+            except PermissionError:
+                LOGGER.warning(f'Cannot terminate worker {worker_id} (PID: {pid}): permission denied')
+
+            # Remove discovery entry
+            discovery.unregister_worker(profile_name, worker_id)
 
     def run_maintenance(self) -> None:
         """Run periodic maintenance tasks.

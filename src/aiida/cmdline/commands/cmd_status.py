@@ -127,49 +127,59 @@ def verdi_status(print_traceback, no_rmq):
             version=3,
         )
 
-    # Getting the broker status
-    try:
-        broker = manager.get_broker()
-    except ConnectionError as exc:
-        # Named pipe broker not running
-        print_status(ServiceStatus.ERROR, 'broker', str(exc), print_traceback=print_traceback)
-        exit_code = ExitCode.CRITICAL
-        broker = None
-    except Exception as exc:
-        message = 'Unable to get broker'
-        print_status(ServiceStatus.ERROR, 'broker', message, exception=exc, print_traceback=print_traceback)
-        exit_code = ExitCode.CRITICAL
-        broker = None
+    # Getting the scheduler status
+    if profile.process_control_backend == 'core.namedpipe':
+        # Use discovery to get scheduler status
+        from aiida.communication.namedpipe import discovery
 
-    if broker:
+        scheduler_info = discovery.discover_broker(profile.name)
+        if scheduler_info:
+            workers = discovery.discover_workers(profile.name)
+            worker_count = len(workers)
+            message = f'Scheduler is running with PID {scheduler_info["pid"]} | {worker_count} workers'
+            print_status(ServiceStatus.UP, 'scheduler', message)
+        else:
+            print_status(ServiceStatus.WARNING, 'scheduler', 'Scheduler is not running')
+    else:
+        # RabbitMQ or other broker
         try:
-            broker.get_communicator()
+            broker = manager.get_broker()
         except Exception as exc:
-            message = f'Unable to connect to broker: {broker}'
-            print_status(ServiceStatus.ERROR, 'broker', message, exception=exc, print_traceback=print_traceback)
+            message = 'Unable to get scheduler'
+            print_status(ServiceStatus.ERROR, 'scheduler', message, exception=exc, print_traceback=print_traceback)
+            exit_code = ExitCode.CRITICAL
+            broker = None
+
+        if broker:
+            try:
+                broker.get_communicator()
+            except Exception as exc:
+                message = f'Unable to connect to scheduler: {broker}'
+                print_status(ServiceStatus.ERROR, 'scheduler', message, exception=exc, print_traceback=print_traceback)
+                exit_code = ExitCode.CRITICAL
+            else:
+                print_status(ServiceStatus.UP, 'scheduler', broker)
+
+    # Getting the daemon status (only for non-namedpipe profiles)
+    if profile.process_control_backend != 'core.namedpipe':
+        try:
+            status = manager.get_daemon_client().get_status()
+        except ConfigurationError as exc:
+            print_status(
+                ServiceStatus.WARNING,
+                'daemon',
+                f'Daemon not available: {exc}',
+            )
+        except DaemonNotRunningException as exception:
+            print_status(ServiceStatus.WARNING, 'daemon', str(exception))
+        except DaemonException as exception:
+            print_status(ServiceStatus.ERROR, 'daemon', str(exception))
+        except Exception as exception:
+            message = 'Error getting daemon status'
+            print_status(ServiceStatus.ERROR, 'daemon', message, exception=exception, print_traceback=print_traceback)
             exit_code = ExitCode.CRITICAL
         else:
-            print_status(ServiceStatus.UP, 'broker', broker)
-
-    # Getting the daemon status
-    try:
-        status = manager.get_daemon_client().get_status()
-    except ConfigurationError as exc:
-        print_status(
-            ServiceStatus.WARNING,
-            'daemon',
-            f'Daemon not available: {exc}',
-        )
-    except DaemonNotRunningException as exception:
-        print_status(ServiceStatus.WARNING, 'daemon', str(exception))
-    except DaemonException as exception:
-        print_status(ServiceStatus.ERROR, 'daemon', str(exception))
-    except Exception as exception:
-        message = 'Error getting daemon status'
-        print_status(ServiceStatus.ERROR, 'daemon', message, exception=exception, print_traceback=print_traceback)
-        exit_code = ExitCode.CRITICAL
-    else:
-        print_status(ServiceStatus.UP, 'daemon', f'Daemon is running with PID {status["pid"]}')
+            print_status(ServiceStatus.UP, 'daemon', f'Daemon is running with PID {status["pid"]}')
 
     # Note: click does not forward return values to the exit code, see https://github.com/pallets/click/issues/747
     if exit_code != ExitCode.SUCCESS:

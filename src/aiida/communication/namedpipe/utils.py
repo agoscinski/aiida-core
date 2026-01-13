@@ -94,13 +94,17 @@ def cleanup_pipe(pipe_path: str | Path) -> None:
 def open_pipe_read(pipe_path: str | Path, non_blocking: bool = True) -> int:
     """Open a named pipe for reading.
 
+    Uses O_RDWR instead of O_RDONLY to prevent EOF when all writers disconnect.
+    This keeps the pipe open and ready for new writers.
+
     :param pipe_path: Path to the pipe.
     :param non_blocking: If True, open in non-blocking mode (default: True).
     :return: File descriptor.
     :raises FileNotFoundError: If pipe doesn't exist.
     :raises OSError: If open fails.
     """
-    flags = os.O_RDONLY
+    # Use O_RDWR to prevent EOF when writers disconnect
+    flags = os.O_RDWR
     if non_blocking:
         flags |= os.O_NONBLOCK
 
@@ -134,7 +138,7 @@ def open_pipe_write(pipe_path: str | Path, non_blocking: bool = False) -> int:
 
 
 def write_to_pipe(
-    pipe_path: str | Path, data: bytes, non_blocking: bool = False, timeout: float | None = None
+    pipe_path: str | Path, data: bytes, non_blocking: bool = False, timeout: float | None = None, use_lock: bool = False
 ) -> None:
     """Write data to a named pipe.
 
@@ -142,12 +146,22 @@ def write_to_pipe(
     :param data: Bytes to write.
     :param non_blocking: If True, use non-blocking write (default: False).
     :param timeout: Optional timeout in seconds (only used if non_blocking=False).
+    :param use_lock: If True, acquire exclusive lock before writing (for multi-writer pipes).
     :raises BrokenPipeError: If no reader is available.
     :raises TimeoutError: If write times out.
     :raises OSError: If write fails.
     """
+    import fcntl
+
+    lock_fd = None
     fd = None
     try:
+        # Acquire lock if requested (for pipes with multiple writers)
+        if use_lock:
+            lock_path = Path(str(pipe_path) + '.lock')
+            lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
         fd = open_pipe_write(pipe_path, non_blocking=non_blocking)
 
         # Write all data
@@ -169,6 +183,9 @@ def write_to_pipe(
     finally:
         if fd is not None:
             os.close(fd)
+        if lock_fd is not None:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            os.close(lock_fd)
 
 
 def read_from_pipe(pipe_path: str | Path, size: int = 4096) -> bytes:

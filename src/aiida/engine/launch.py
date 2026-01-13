@@ -104,7 +104,7 @@ def _auto_start_scheduler():
     # Start scheduler daemon
     config = manager_inst.get_config()
     config_path = Path(config.dirpath) / 'profiles' / profile.name
-    start_daemon(profile_name=profile.name, config_path=config_path, enable_scheduling=True)
+    start_daemon(profile_name=profile.name, config_path=config_path)
 
 
 

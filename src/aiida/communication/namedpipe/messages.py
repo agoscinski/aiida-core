@@ -55,16 +55,18 @@ def deserialize(data: bytes, decoder: t.Callable | None = None) -> dict:
     return json.loads(message_data.decode('utf-8'))
 
 
-def deserialize_from_fd(fd: int, decoder: t.Callable | None = None) -> dict | None:
+def deserialize_from_fd(fd: int, decoder: t.Callable | None = None, timeout: float = 30.0) -> dict | None:
     """Read and deserialize a framed message from a file descriptor.
 
     :param fd: File descriptor to read from (should be non-blocking).
     :param decoder: Optional custom decoder function. If not provided, uses JSON.
+    :param timeout: Timeout in seconds for waiting on partial data.
     :return: Deserialized message dictionary, or None if no complete message available.
-    :raises ValueError: If message is malformed.
+    :raises ValueError: If message is malformed or timeout waiting for data.
     :raises OSError: If read operation fails.
     """
     import os
+    import select
 
     # Read 4-byte length prefix
     length_bytes = b''
@@ -80,16 +82,22 @@ def deserialize_from_fd(fd: int, decoder: t.Callable | None = None) -> dict | No
         except BlockingIOError:
             # No data available on non-blocking fd
             if length_bytes:
-                raise ValueError('Incomplete message: partial length prefix read')
+                # Partial length prefix read - wait for more data
+                ready, _, _ = select.select([fd], [], [], timeout)
+                if not ready:
+                    raise ValueError('Incomplete message: timeout reading length prefix')
+                continue
             return None
 
     length = struct.unpack('!I', length_bytes)[0]
 
-    # Validate length (prevent memory exhaustion)
+    # Validate length
+    if length == 0:
+        raise ValueError('Invalid zero-length message')
     if length > 100 * 1024 * 1024:  # 100 MB max
         raise ValueError(f'Message too large: {length} bytes')
 
-    # Read message data
+    # Read message data - wait for complete message since we know the length
     data = b''
     while len(data) < length:
         try:
@@ -98,8 +106,11 @@ def deserialize_from_fd(fd: int, decoder: t.Callable | None = None) -> dict | No
                 raise ValueError('Incomplete message: EOF while reading data')
             data += chunk
         except BlockingIOError:
-            # This shouldn't happen if we successfully read length prefix
-            raise ValueError('Incomplete message: partial data read')
+            # Wait for more data to arrive
+            ready, _, _ = select.select([fd], [], [], timeout)
+            if not ready:
+                raise ValueError(f'Incomplete message: timeout waiting for data ({len(data)}/{length} bytes)')
+            continue
 
     if decoder is not None:
         return decoder(data)

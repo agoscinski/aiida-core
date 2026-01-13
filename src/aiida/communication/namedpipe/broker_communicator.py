@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import selectors
@@ -17,6 +18,8 @@ import threading
 import typing as t
 import uuid
 from pathlib import Path
+
+from aiida.orm.utils import serialize
 
 from . import messages, utils
 
@@ -51,6 +54,11 @@ class PipeBrokerCommunicator:
         self._profile_name = profile_name
         self._broker_id = broker_id
         self._closed = False
+
+        # Encoder/decoder for YAML serialization (must match PipeCommunicator)
+        self._encoder = functools.partial(serialize.serialize, encoding='utf-8')
+        # Decoder wrapper: deserialize_unsafe expects string, but we receive bytes
+        self._decoder = lambda data: serialize.deserialize_unsafe(data.decode('utf-8'))
 
         # Pipe paths (in broker pipes directory)
         broker_pipes_dir = utils.get_broker_pipes_dir(profile_name)
@@ -122,7 +130,7 @@ class PipeBrokerCommunicator:
         :param fd: File descriptor of the task pipe
         """
         try:
-            message = messages.deserialize_from_fd(fd)
+            message = messages.deserialize_from_fd(fd, decoder=self._decoder)
             if message is None:
                 return
 
@@ -144,7 +152,7 @@ class PipeBrokerCommunicator:
         :param fd: File descriptor of the broadcast pipe
         """
         try:
-            message = messages.deserialize_from_fd(fd)
+            message = messages.deserialize_from_fd(fd, decoder=self._decoder)
             if message is None:
                 return
 
@@ -218,7 +226,7 @@ class PipeBrokerCommunicator:
         :raises BrokenPipeError: If worker pipe unavailable
         :raises OSError: If send fails
         """
-        data = messages.serialize(message)
+        data = messages.serialize(message, encoder=self._encoder)
         utils.write_to_pipe(worker_pipe, data, non_blocking=non_blocking)
 
     def broadcast_send(
@@ -234,7 +242,7 @@ class PipeBrokerCommunicator:
         :param non_blocking: Use non-blocking write
         :return: Number of successful sends
         """
-        data = messages.serialize(message)
+        data = messages.serialize(message, encoder=self._encoder)
         success_count = 0
 
         for pipe_path in worker_pipes:

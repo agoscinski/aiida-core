@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import os
-import selectors
 import subprocess
 import sys
 import time
@@ -20,12 +19,8 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from .protocol import WorkerInfo
-
-if TYPE_CHECKING:
-    pass
 
 __all__ = ('SubprocessWorkerExecutor',)
 
@@ -55,7 +50,7 @@ class SubprocessWorkerExecutor:
     Features:
     - Process spawning with correct environment
     - Worker registration in discovery system
-    - Health monitoring via heartbeats
+    - Health monitoring via process aliveness check
     - Graceful shutdown with fallback to force kill
     """
 
@@ -66,7 +61,6 @@ class SubprocessWorkerExecutor:
         verdi_path: str | None = None,
         python_path: str | None = None,
         environment: dict[str, str] | None = None,
-        heartbeat_timeout: float = 15.0,
     ):
         """Initialize subprocess executor.
 
@@ -75,23 +69,15 @@ class SubprocessWorkerExecutor:
         :param verdi_path: Path to verdi executable (auto-detect if None)
         :param python_path: Python interpreter path (sys.executable if None)
         :param environment: Additional environment variables
-        :param heartbeat_timeout: Timeout in seconds for heartbeat monitoring
         """
         self._profile_name = profile_name
         self._config_path = Path(config_path)
         self._verdi_path = verdi_path
         self._python_path = python_path or sys.executable
         self._environment = environment or {}
-        self._heartbeat_timeout = heartbeat_timeout
 
         # Track spawned workers
         self._workers: dict[str, WorkerProcess] = {}
-        self._last_heartbeat: dict[str, float] = {}  # worker_id -> timestamp
-
-        # Heartbeat monitoring
-        self._heartbeat_pipe_path: Path | None = None
-        self._heartbeat_fd: int | None = None
-        self._selector: selectors.DefaultSelector | None = None
 
         # State
         self._closed = False
@@ -118,32 +104,11 @@ class SubprocessWorkerExecutor:
         LOGGER.setLevel(logging.INFO)
 
     def start(self) -> None:
-        """Initialize executor and prepare for spawning workers.
-
-        Sets up heartbeat monitoring pipe and selector for event-driven I/O.
-        """
+        """Initialize executor and prepare for spawning workers."""
         if self._started:
             return
 
         LOGGER.info(f'Starting SubprocessWorkerExecutor for profile: {self._profile_name}')
-
-        # Create heartbeat pipe
-        pipes_dir = self._config_path / 'broker' / 'pipes'
-        pipes_dir.mkdir(parents=True, exist_ok=True)
-
-        self._heartbeat_pipe_path = pipes_dir / 'heartbeat'
-
-        # Create named pipe if it doesn't exist
-        if not self._heartbeat_pipe_path.exists():
-            os.mkfifo(self._heartbeat_pipe_path)
-
-        # Open heartbeat pipe in non-blocking mode
-        self._heartbeat_fd = os.open(self._heartbeat_pipe_path, os.O_RDONLY | os.O_NONBLOCK)
-
-        # Setup selector for heartbeat monitoring
-        self._selector = selectors.DefaultSelector()
-        self._selector.register(self._heartbeat_fd, selectors.EVENT_READ)
-
         self._started = True
         LOGGER.info('SubprocessWorkerExecutor started successfully')
 
@@ -151,7 +116,7 @@ class SubprocessWorkerExecutor:
         """Shutdown all workers and cleanup resources.
 
         Workers are given a chance to shutdown gracefully before
-        being force-killed. All executor resources are cleaned up.
+        being force-killed.
         """
         if self._closed:
             return
@@ -165,30 +130,6 @@ class SubprocessWorkerExecutor:
                 self.stop_worker(worker_id)
             except Exception as exc:
                 LOGGER.error(f'Error stopping worker {worker_id}: {exc}')
-
-        # Cleanup selector
-        if self._selector is not None:
-            try:
-                self._selector.unregister(self._heartbeat_fd)
-            except Exception:
-                pass
-            self._selector.close()
-            self._selector = None
-
-        # Close heartbeat pipe
-        if self._heartbeat_fd is not None:
-            try:
-                os.close(self._heartbeat_fd)
-            except Exception:
-                pass
-            self._heartbeat_fd = None
-
-        # Remove heartbeat pipe
-        if self._heartbeat_pipe_path and self._heartbeat_pipe_path.exists():
-            try:
-                self._heartbeat_pipe_path.unlink()
-            except Exception:
-                pass
 
         self._closed = True
         LOGGER.info('SubprocessWorkerExecutor closed')
@@ -256,7 +197,22 @@ class SubprocessWorkerExecutor:
         LOGGER.info(f'Worker {worker_id} spawned with PID: {process.pid}')
 
         # Wait for worker to register in discovery
-        worker_info = self._wait_for_registration(worker_id, timeout=10.0)
+        try:
+            worker_info = self._wait_for_registration(worker_id, timeout=10.0)
+        except RuntimeError:
+            # Worker failed to register - capture its output for debugging
+            if process.poll() is not None:
+                # Process has exited
+                stdout, stderr = process.communicate(timeout=1.0)
+                LOGGER.error(f'Worker {worker_id} exited with code {process.returncode}')
+                if stdout:
+                    LOGGER.error(f'Worker stdout: {stdout.decode(errors="replace")}')
+                if stderr:
+                    LOGGER.error(f'Worker stderr: {stderr.decode(errors="replace")}')
+            else:
+                # Process still running but didn't register
+                LOGGER.error(f'Worker {worker_id} running (PID: {process.pid}) but did not register')
+            raise
 
         # Track worker
         self._workers[worker_id] = WorkerProcess(
@@ -265,9 +221,6 @@ class SubprocessWorkerExecutor:
             info=worker_info,
             started_at=time.time(),
         )
-
-        # Initialize heartbeat tracking
-        self._last_heartbeat[worker_id] = time.time()
 
         LOGGER.info(f'Worker {worker_id} started successfully (PID: {process.pid})')
         return worker_info
@@ -315,8 +268,6 @@ class SubprocessWorkerExecutor:
             # Cleanup tracking
             if worker_id in self._workers:
                 del self._workers[worker_id]
-            if worker_id in self._last_heartbeat:
-                del self._last_heartbeat[worker_id]
 
     def get_workers(self) -> list[WorkerInfo]:
         """Get list of all managed workers.
@@ -380,18 +331,14 @@ class SubprocessWorkerExecutor:
         return len(self._workers)
 
     def check_workers_health(self) -> list[str]:
-        """Check health of all workers and cleanup dead/hung ones.
+        """Check health of all workers and cleanup dead ones.
 
-        This checks both process aliveness and heartbeats (if applicable).
-        Dead workers are cleaned up and removed from the executor's tracking.
+        Checks process aliveness via poll(). Dead workers are cleaned up
+        and removed from the executor's tracking.
 
         :return: List of worker_ids that were cleaned up
         """
         dead_workers = []
-        current_time = time.time()
-
-        # Process any pending heartbeat messages
-        self._process_heartbeats()
 
         for worker_id, worker in list(self._workers.items()):
             # Check if process is still alive
@@ -401,86 +348,12 @@ class SubprocessWorkerExecutor:
                 # Process died
                 LOGGER.error(f'Worker {worker_id} died with exit code {returncode}')
                 dead_workers.append(worker_id)
-                # Cleanup
-                if worker_id in self._workers:
-                    del self._workers[worker_id]
-                if worker_id in self._last_heartbeat:
-                    del self._last_heartbeat[worker_id]
-                continue
-
-            # Check heartbeat timeout
-            last_beat = self._last_heartbeat.get(worker_id, 0)
-            time_since_heartbeat = current_time - last_beat
-
-            if time_since_heartbeat > self._heartbeat_timeout:
-                # Worker is unresponsive
-                LOGGER.error(
-                    f'Worker {worker_id} missed heartbeat '
-                    f'(last seen {time_since_heartbeat:.1f}s ago), killing'
-                )
-
-                # Force kill unresponsive worker
-                try:
-                    worker.process.terminate()
-                    try:
-                        worker.process.wait(timeout=2.0)
-                    except subprocess.TimeoutExpired:
-                        worker.process.kill()
-                        worker.process.wait(timeout=1.0)
-                except Exception as exc:
-                    LOGGER.error(f'Error killing unresponsive worker {worker_id}: {exc}')
-
-                dead_workers.append(worker_id)
-                # Cleanup
-                if worker_id in self._workers:
-                    del self._workers[worker_id]
-                if worker_id in self._last_heartbeat:
-                    del self._last_heartbeat[worker_id]
+                del self._workers[worker_id]
 
         if dead_workers:
-            LOGGER.warning(f'Cleaned up {len(dead_workers)} dead/hung workers: {dead_workers}')
+            LOGGER.warning(f'Cleaned up {len(dead_workers)} dead workers: {dead_workers}')
 
         return dead_workers
-
-    def _process_heartbeats(self) -> None:
-        """Process pending heartbeat messages from workers."""
-        if self._selector is None or self._heartbeat_fd is None:
-            return
-
-        # Poll for events without blocking
-        events = self._selector.select(timeout=0)
-
-        for key, mask in events:
-            if key.fileobj == self._heartbeat_fd:
-                self._handle_heartbeat()
-
-    def _handle_heartbeat(self) -> None:
-        """Process incoming heartbeat messages."""
-        if self._heartbeat_fd is None:
-            return
-
-        try:
-            # Read available data
-            data = os.read(self._heartbeat_fd, 4096)
-            if not data:
-                return
-
-            # Parse message (simple JSON format)
-            import json
-
-            message = json.loads(data.decode('utf-8'))
-
-            if message.get('type') == 'heartbeat':
-                worker_id = message.get('worker_id')
-                if worker_id:
-                    self._last_heartbeat[worker_id] = time.time()
-                    LOGGER.debug(f'Received heartbeat from worker {worker_id}')
-
-        except BlockingIOError:
-            # No data available
-            pass
-        except Exception as exc:
-            LOGGER.warning(f'Error processing heartbeat: {exc}')
 
     def _wait_for_registration(self, worker_id: str, timeout: float = 10.0) -> WorkerInfo:
         """Wait for worker to register in discovery system.
@@ -490,7 +363,7 @@ class SubprocessWorkerExecutor:
         :return: WorkerInfo from discovery
         :raises RuntimeError: If worker doesn't register within timeout
         """
-        from ..namedpipe import discovery
+        from aiida.communication.namedpipe import discovery
 
         deadline = time.time() + timeout
         poll_interval = 0.1
