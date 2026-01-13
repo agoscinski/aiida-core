@@ -175,34 +175,19 @@ class ProcessSchedulerConfig:
         scheduling_enabled: bool = False,
         computer_limits: dict[str, int] | None = None,
         default_limit: int = 10,
-        # Worker management options
-        auto_spawn_workers: bool = False,
-        initial_worker_count: int = 0,
-        auto_respawn_workers: bool = False,
-        min_worker_count: int = 0,
-        max_worker_count: int = 10,
+        worker_count: int = 0,
     ):
-        """Initialize broker configuration.
+        """Initialize scheduler configuration.
 
         :param scheduling_enabled: Enable per-computer scheduling
         :param computer_limits: Dict mapping computer labels to concurrency limits
         :param default_limit: Default limit for computers without explicit config
-        :param auto_spawn_workers: Auto-spawn workers when needed
-        :param initial_worker_count: Number of workers to spawn at startup
-        :param auto_respawn_workers: Auto-respawn dead workers
-        :param min_worker_count: Minimum number of workers to maintain
-        :param max_worker_count: Maximum number of workers allowed
+        :param worker_count: Number of workers to spawn at startup
         """
         self.scheduling_enabled = scheduling_enabled
         self.computer_limits = computer_limits or {}
         self.default_limit = default_limit
-
-        # Worker management
-        self.auto_spawn_workers = auto_spawn_workers
-        self.initial_worker_count = initial_worker_count
-        self.auto_respawn_workers = auto_respawn_workers
-        self.min_worker_count = min_worker_count
-        self.max_worker_count = max_worker_count
+        self.worker_count = worker_count
 
     @classmethod
     def from_file(cls, config_path: Path) -> 'ProcessSchedulerConfig':
@@ -213,11 +198,7 @@ class ProcessSchedulerConfig:
             "scheduling_enabled": true,
             "default_limit": 10,
             "workers": {
-                "initial_count": 4,
-                "min_count": 1,
-                "max_count": 10,
-                "auto_spawn": false,
-                "auto_respawn": true
+                "count": 4
             },
             "computers": {
                 "localhost": 20,
@@ -242,13 +223,9 @@ class ProcessSchedulerConfig:
             scheduling_enabled = data.get('scheduling_enabled', True)
             default_limit = data.get('default_limit', 10)
 
-            # Worker management options
+            # Worker count (support both 'count' and legacy 'initial_count')
             workers = data.get('workers', {})
-            auto_spawn_workers = workers.get('auto_spawn', False)
-            initial_worker_count = workers.get('initial_count', 0)
-            auto_respawn_workers = workers.get('auto_respawn', False)
-            min_worker_count = workers.get('min_count', 0)
-            max_worker_count = workers.get('max_count', 10)
+            worker_count = workers.get('count', workers.get('initial_count', 0))
 
             # Computer limits
             computer_limits = data.get('computers', {})
@@ -257,11 +234,7 @@ class ProcessSchedulerConfig:
                 scheduling_enabled=scheduling_enabled,
                 computer_limits=computer_limits,
                 default_limit=default_limit,
-                auto_spawn_workers=auto_spawn_workers,
-                initial_worker_count=initial_worker_count,
-                auto_respawn_workers=auto_respawn_workers,
-                min_worker_count=min_worker_count,
-                max_worker_count=max_worker_count,
+                worker_count=worker_count,
             )
         except (json.JSONDecodeError, OSError) as exc:
             LOGGER.warning(f'Failed to load config: {exc}, using defaults')
