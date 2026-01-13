@@ -164,15 +164,18 @@ class ProcessSchedulerService:
         # Register cleanup
         atexit.register(self.close)
 
+        # Store worker count for auto-respawn
+        self._worker_count = config.worker_count
+
         LOGGER.info(f'ProcessSchedulerService started for profile: {profile_name} (scheduling={config.scheduling_enabled})')
 
         # Start initial workers if configured (after broker is registered)
-        if config.initial_worker_count > 0:
-            LOGGER.info(f'Starting {config.initial_worker_count} initial workers')
+        if self._worker_count > 0:
+            LOGGER.info(f'Starting {self._worker_count} workers')
             try:
-                self._executor.scale_workers(config.initial_worker_count)
+                self._executor.scale_workers(self._worker_count)
             except Exception as exc:
-                LOGGER.error(f'Failed to start initial workers: {exc}')
+                LOGGER.error(f'Failed to start workers: {exc}')
 
     def _get_worker_environment(self) -> dict[str, str]:
         """Get environment variables for worker processes.
@@ -222,9 +225,20 @@ class ProcessSchedulerService:
     def run_maintenance(self) -> None:
         """Run periodic maintenance tasks.
 
-        Delegate to ProcessScheduler's maintenance method.
+        - Delegates to ProcessScheduler's maintenance method
+        - Auto-respawns dead workers to maintain configured count
         """
         self._broker.run_maintenance()
+
+        # Auto-respawn: maintain configured worker count
+        if self._worker_count > 0:
+            current_count = self._executor.get_worker_count()
+            if current_count < self._worker_count:
+                LOGGER.info(f'Auto-respawning workers: {current_count} -> {self._worker_count}')
+                try:
+                    self._executor.scale_workers(self._worker_count)
+                except Exception as exc:
+                    LOGGER.error(f'Failed to respawn workers: {exc}')
 
     def get_status(self) -> dict:
         """Get broker status for CLI display.
