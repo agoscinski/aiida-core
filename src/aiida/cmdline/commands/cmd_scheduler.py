@@ -249,13 +249,9 @@ def scheduler_status():
     echo.echo('')
 
     workers = discovery.discover_workers(profile.name)
-    configured_count = workers_config.get('initial_count', 0)
-    min_count = workers_config.get('min_count', 0)
-    max_count = workers_config.get('max_count', 10)
+    configured_count = workers_config.get('count', workers_config.get('initial_count', 0))
 
-    echo.echo(f'  Running:       {len(workers):<5} (configured: {configured_count}, min: {min_count}, max: {max_count})')
-    echo.echo(f'  Auto-spawn:    {workers_config.get("auto_spawn", False)}')
-    echo.echo(f'  Auto-respawn:  {workers_config.get("auto_respawn", False)}')
+    echo.echo(f'  Running:       {len(workers)} (configured: {configured_count})')
 
     if workers:
         echo.echo('')
@@ -422,23 +418,17 @@ def _save_scheduler_config(config_path: Path, data: dict) -> None:
 
 @verdi_scheduler.command('set-workers')
 @click.argument('count', type=int)
-@click.option('--min', 'min_workers', type=int, default=None, help='Minimum workers to maintain')
-@click.option('--max', 'max_workers', type=int, default=None, help='Maximum workers allowed')
-@click.option('--auto-spawn/--no-auto-spawn', default=None, help='Auto-spawn workers when tasks arrive')
-@click.option('--auto-respawn/--no-auto-respawn', default=None, help='Auto-respawn dead workers')
 @decorators.with_dbenv()
-def scheduler_set_workers(count, min_workers, max_workers, auto_spawn, auto_respawn):
+def scheduler_set_workers(count):
     """Set the number of workers for the scheduler.
 
-    COUNT: Number of workers to start initially.
+    COUNT: Number of workers to run. Dead workers are automatically respawned.
 
     The scheduler must be restarted for changes to take effect.
 
     \\b
     Examples:
         verdi scheduler set-workers 4
-        verdi scheduler set-workers 4 --min 1 --max 10
-        verdi scheduler set-workers 4 --auto-spawn --auto-respawn
     """
     if count < 0:
         echo.echo_critical('Worker count must be non-negative')
@@ -456,32 +446,15 @@ def scheduler_set_workers(count, min_workers, max_workers, auto_spawn, auto_resp
     if 'workers' not in data:
         data['workers'] = {}
 
-    # Update worker settings
-    data['workers']['initial_count'] = count
-
-    if min_workers is not None:
-        data['workers']['min_count'] = min_workers
-    if max_workers is not None:
-        data['workers']['max_count'] = max_workers
-    if auto_spawn is not None:
-        data['workers']['auto_spawn'] = auto_spawn
-    if auto_respawn is not None:
-        data['workers']['auto_respawn'] = auto_respawn
+    # Update worker count
+    data['workers']['count'] = count
 
     try:
         _save_scheduler_config(config_path, data)
     except OSError as exc:
         echo.echo_critical(f'Failed to write config file: {exc}')
 
-    echo.echo_success(f'Set initial worker count to {count}')
-    if min_workers is not None:
-        echo.echo_info(f'  Min workers: {min_workers}')
-    if max_workers is not None:
-        echo.echo_info(f'  Max workers: {max_workers}')
-    if auto_spawn is not None:
-        echo.echo_info(f'  Auto-spawn: {auto_spawn}')
-    if auto_respawn is not None:
-        echo.echo_info(f'  Auto-respawn: {auto_respawn}')
+    echo.echo_success(f'Set worker count to {count}')
     echo.echo_info('Restart the scheduler for changes to take effect: verdi scheduler restart')
 
 
@@ -505,12 +478,11 @@ def scheduler_show_workers():
     data = _load_scheduler_config(config_path)
     workers_config = data.get('workers', {})
 
+    configured_count = workers_config.get('count', workers_config.get('initial_count', 0))
+
     echo.echo_info('Worker configuration:')
-    echo.echo(f'  Initial count:  {workers_config.get("initial_count", 0)}')
-    echo.echo(f'  Min workers:    {workers_config.get("min_count", 0)}')
-    echo.echo(f'  Max workers:    {workers_config.get("max_count", 10)}')
-    echo.echo(f'  Auto-spawn:     {workers_config.get("auto_spawn", False)}')
-    echo.echo(f'  Auto-respawn:   {workers_config.get("auto_respawn", False)}')
+    echo.echo(f'  Count:        {configured_count}')
+    echo.echo(f'  Auto-respawn: always enabled')
     echo.echo('')
 
     # Show running workers
