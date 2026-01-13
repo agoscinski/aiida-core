@@ -231,6 +231,7 @@ def scheduler_status():
     # Scheduler is running
     echo.echo(f'  Status:    Running')
     echo.echo(f'  PID:       {existing["pid"]}')
+    echo.echo(f'  Log:       {config_path / "scheduler" / "scheduler.log"}')
 
     # Show uptime if available
     if 'timestamp' in existing:
@@ -248,10 +249,15 @@ def scheduler_status():
     echo.echo('-' * 60)
     echo.echo('')
 
+    from aiida.engine.daemon.client import get_daemon_client
+    daemon_client = get_daemon_client()
+
     workers = discovery.discover_workers(profile.name)
     configured_count = workers_config.get('count', workers_config.get('initial_count', 0))
 
-    echo.echo(f'  Running:       {len(workers)} (configured: {configured_count})')
+    echo.echo(f'  Configured:    {configured_count}')
+    echo.echo(f'  Running:       {len(workers)}')
+    echo.echo(f'  Log:           {daemon_client.daemon_log_file}')
 
     if workers:
         echo.echo('')
@@ -262,39 +268,31 @@ def scheduler_status():
 
     echo.echo('')
 
-    # Queue status
+    # Queue status (only for computers with limits)
+    limits = data.get('computers', {})
+
+    if not limits:
+        echo.echo('-' * 60)
+        echo.echo('  LIMITS')
+        echo.echo('-' * 60)
+        echo.echo('')
+        echo.echo('  No computer limits configured (all unlimited).')
+        echo.echo('')
+        return
+
     echo.echo('-' * 60)
-    echo.echo('  QUEUES')
+    echo.echo('  QUEUES (computers with limits)')
     echo.echo('-' * 60)
     echo.echo('')
 
     queue_dir = config_path / 'scheduler' / 'queue'
-    limits = data.get('computers', {})
-    default_limit = data.get('default_limit', 10)
-
-    # Check for queue directories
-    if not queue_dir.exists():
-        echo.echo('  No queues found.')
-        echo.echo('')
-        return
-
-    computer_dirs = [d for d in queue_dir.iterdir() if d.is_dir() and d.name not in ('__pycache__', 'tasks')]
-
-    if not computer_dirs and not limits:
-        echo.echo(f'  Default limit: {default_limit} processes per computer')
-        echo.echo('  No computer-specific limits configured.')
-        echo.echo('')
-        return
-
-    # Display all computers (from limits or queues)
-    all_computers = set(limits.keys()) | {d.name for d in computer_dirs}
 
     echo.echo(f'  {"Computer":<28} {"Limit":>8} {"Queued":>8}')
     echo.echo('  ' + '-' * 46)
 
     total_queued = 0
-    for computer_label in sorted(all_computers):
-        limit = limits.get(computer_label, default_limit)
+    for computer_label in sorted(limits.keys()):
+        limit = limits[computer_label]
 
         # Count queued processes
         computer_dir = queue_dir / computer_label
@@ -312,11 +310,16 @@ def scheduler_status():
     echo.echo('')
 
 
-@verdi_scheduler.command('set-limit')
+@verdi_scheduler.group('limits')
+def scheduler_limits():
+    """Manage per-computer concurrency limits."""
+
+
+@scheduler_limits.command('set')
 @click.argument('computer_label', type=str)
 @click.argument('limit', type=int)
 @decorators.with_dbenv()
-def scheduler_set_limit(computer_label, limit):
+def limits_set(computer_label, limit):
     """Set concurrency limit for a computer.
 
     COMPUTER_LABEL: The label of the computer to configure.
@@ -326,8 +329,8 @@ def scheduler_set_limit(computer_label, limit):
 
     \\b
     Examples:
-        verdi scheduler set-limit localhost 20
-        verdi scheduler set-limit frontier 50
+        verdi scheduler limits set localhost 20
+        verdi scheduler limits set frontier 50
     """
     if limit < 1:
         echo.echo_critical('Limit must be a positive integer')
@@ -357,18 +360,19 @@ def scheduler_set_limit(computer_label, limit):
     echo.echo_info('Restart the scheduler for changes to take effect: verdi scheduler restart')
 
 
-@verdi_scheduler.command('show-limits')
+@scheduler_limits.command('show')
 @decorators.with_dbenv()
-def scheduler_show_limits():
+def limits_show():
     """Show concurrency limits for all computers.
 
-    Displays the configured concurrency limits.
-    If no limits are configured, shows the default limit.
+    Displays the configured concurrency limits for all computers.
+    Computers without a specific limit show 'Unlimited'.
 
     \\b
     Examples:
-        verdi scheduler show-limits
+        verdi scheduler limits show
     """
+    from aiida.orm import Computer, QueryBuilder
     from aiida.manage import manager
 
     mgr = manager.get_manager()
@@ -377,22 +381,31 @@ def scheduler_show_limits():
     config_path = Path(config.dirpath) / 'profiles' / profile.name
 
     data = _load_scheduler_config(config_path)
-    computers = data.get('computers', {})
-    default_limit = data.get('default_limit', 10)
+    configured_limits = data.get('computers', {})
 
-    echo.echo_info(f'Default limit: {default_limit} processes per computer')
-    echo.echo('')
-
-    if not computers:
-        echo.echo_info('No computer-specific limits configured.')
-        echo.echo_info('Configure limits with: verdi scheduler set-limit <computer_label> <limit>')
-        return
+    # Query all computers
+    qb = QueryBuilder()
+    qb.append(Computer, project=['label'])
+    all_computers = sorted([row[0] for row in qb.all()])
 
     echo.echo_info('Computer concurrency limits:')
     echo.echo('')
-    for computer_label in sorted(computers.keys()):
-        limit = computers[computer_label]
-        echo.echo(f'  {computer_label:<30} {limit:>5}')
+    echo.echo(f'  {"Computer":<30} {"Limit":>10}')
+    echo.echo('  ' + '-' * 42)
+
+    if not all_computers:
+        echo.echo('  No computers configured.')
+        return
+
+    for computer_label in all_computers:
+        if computer_label in configured_limits:
+            limit = str(configured_limits[computer_label])
+        else:
+            limit = 'Unlimited'
+        echo.echo(f'  {computer_label:<30} {limit:>10}')
+
+    echo.echo('')
+    echo.echo_info('Set limits with: verdi scheduler limits set <computer> <limit>')
 
 
 def _load_scheduler_config(config_path: Path) -> dict:
@@ -416,10 +429,15 @@ def _save_scheduler_config(config_path: Path, data: dict) -> None:
         json.dump(data, f, indent=2)
 
 
-@verdi_scheduler.command('set-workers')
+@verdi_scheduler.group('workers')
+def scheduler_workers():
+    """Manage scheduler workers."""
+
+
+@scheduler_workers.command('set')
 @click.argument('count', type=int)
 @decorators.with_dbenv()
-def scheduler_set_workers(count):
+def workers_set(count):
     """Set the number of workers for the scheduler.
 
     COUNT: Number of workers to run. Dead workers are automatically respawned.
@@ -428,7 +446,7 @@ def scheduler_set_workers(count):
 
     \\b
     Examples:
-        verdi scheduler set-workers 4
+        verdi scheduler workers set 4
     """
     if count < 0:
         echo.echo_critical('Worker count must be non-negative')
@@ -458,14 +476,14 @@ def scheduler_set_workers(count):
     echo.echo_info('Restart the scheduler for changes to take effect: verdi scheduler restart')
 
 
-@verdi_scheduler.command('show-workers')
+@scheduler_workers.command('status')
 @decorators.with_dbenv()
-def scheduler_show_workers():
+def workers_status():
     """Show worker configuration and status.
 
     \\b
     Examples:
-        verdi scheduler show-workers
+        verdi scheduler workers status
     """
     from aiida.communication.namedpipe import discovery
     from aiida.manage import manager
@@ -480,14 +498,17 @@ def scheduler_show_workers():
 
     configured_count = workers_config.get('count', workers_config.get('initial_count', 0))
 
-    echo.echo_info('Worker configuration:')
-    echo.echo(f'  Count:        {configured_count}')
-    echo.echo(f'  Auto-respawn: always enabled')
-    echo.echo('')
-
     # Show running workers
+    from aiida.engine.daemon.client import get_daemon_client
+    daemon_client = get_daemon_client()
+
     workers = discovery.discover_workers(profile.name)
-    echo.echo_info(f'Running workers: {len(workers)}')
+
+    echo.echo_info('Worker status:')
+    echo.echo(f'  Configured:   {configured_count}')
+    echo.echo(f'  Running:      {len(workers)}')
+    echo.echo(f'  Log:          {daemon_client.daemon_log_file}')
+
     if workers:
         echo.echo('')
         echo.echo(f'  {"Worker ID":<20} {"PID":>8}')
@@ -497,27 +518,10 @@ def scheduler_show_workers():
 
 
 @verdi_scheduler.command('logshow')
-@click.option(
-    '--log',
-    type=click.Choice(['scheduler', 'daemon']),
-    default='scheduler',
-    help='Which log to show: scheduler (default) or daemon (worker processes).',
-)
 @decorators.with_dbenv()
-def scheduler_logshow(log):
-    """Show scheduler-related logs in a pager.
-
-    \\b
-    Log types:
-      scheduler  - Scheduler daemon log (default)
-      daemon     - Worker process logs (actual worker output)
-
-    \\b
-    Examples:
-        verdi scheduler logshow
-        verdi scheduler logshow --log daemon
+def scheduler_logshow():
+    """Show scheduler log in a pager.
     """
-    from aiida.engine.daemon.client import get_daemon_client
     from aiida.manage import manager
 
     mgr = manager.get_manager()
@@ -525,12 +529,7 @@ def scheduler_logshow(log):
     profile = mgr.get_profile()
     config_path = Path(config.dirpath) / 'profiles' / profile.name
 
-    if log == 'scheduler':
-        log_file = config_path / 'scheduler' / 'scheduler.log'
-    elif log == 'daemon':
-        # Worker processes log to the daemon log file
-        daemon_client = get_daemon_client()
-        log_file = Path(daemon_client.daemon_log_file)
+    log_file = config_path / 'scheduler' / 'scheduler.log'
 
     if not log_file.exists():
         echo.echo_warning(f'Log file not found: {log_file}')

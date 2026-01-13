@@ -172,21 +172,16 @@ class ProcessSchedulerConfig:
 
     def __init__(
         self,
-        scheduling_enabled: bool = False,
         computer_limits: dict[str, int] | None = None,
-        default_limit: int = 10,
         worker_count: int = 0,
     ):
         """Initialize scheduler configuration.
 
-        :param scheduling_enabled: Enable per-computer scheduling
-        :param computer_limits: Dict mapping computer labels to concurrency limits
-        :param default_limit: Default limit for computers without explicit config
+        :param computer_limits: Dict mapping computer labels to concurrency limits.
+                                Computers not listed have unlimited concurrency.
         :param worker_count: Number of workers to spawn at startup
         """
-        self.scheduling_enabled = scheduling_enabled
         self.computer_limits = computer_limits or {}
-        self.default_limit = default_limit
         self.worker_count = worker_count
 
     @classmethod
@@ -195,8 +190,6 @@ class ProcessSchedulerConfig:
 
         Config file format (scheduler/config.json):
         {
-            "scheduling_enabled": true,
-            "default_limit": 10,
             "workers": {
                 "count": 4
             },
@@ -206,22 +199,19 @@ class ProcessSchedulerConfig:
             }
         }
 
+        Computers not listed have unlimited concurrency.
+
         :param config_path: Path to config directory (contains scheduler/)
         :return: ProcessSchedulerConfig instance
         """
         config_file = config_path / 'scheduler' / 'config.json'
 
-        # If file doesn't exist, scheduling is disabled
         if not config_file.exists():
-            return cls(scheduling_enabled=False)
+            return cls()
 
         try:
             with open(config_file) as f:
                 data = json.load(f)
-
-            # Top-level options
-            scheduling_enabled = data.get('scheduling_enabled', True)
-            default_limit = data.get('default_limit', 10)
 
             # Worker count (support both 'count' and legacy 'initial_count')
             workers = data.get('workers', {})
@@ -231,14 +221,12 @@ class ProcessSchedulerConfig:
             computer_limits = data.get('computers', {})
 
             return cls(
-                scheduling_enabled=scheduling_enabled,
                 computer_limits=computer_limits,
-                default_limit=default_limit,
                 worker_count=worker_count,
             )
         except (json.JSONDecodeError, OSError) as exc:
             LOGGER.warning(f'Failed to load config: {exc}, using defaults')
-            return cls(scheduling_enabled=False)
+            return cls()
 
 
 class ProcessScheduler:
@@ -249,7 +237,7 @@ class ProcessScheduler:
     - Worker discovery and selection
     - Task distribution
     - Broadcast fanout
-    - Optional per-computer scheduling
+    - Per-computer scheduling with concurrency limits
 
     Transport operations are delegated to BrokerCommunicator (dependency injection).
     This class contains NO pipe operations - pure business logic.
@@ -263,18 +251,18 @@ class ProcessScheduler:
         config: ProcessSchedulerConfig | None = None,
         executor: 'WorkerExecutor | None' = None,  # noqa: F821
     ):
-        """Initialize the process broker.
+        """Initialize the process scheduler.
 
         :param communicator: Transport abstraction for broker communications
         :param profile_name: AiiDA profile name
         :param working_dir: Working directory for queue files
-        :param config: Broker configuration (None = scheduling disabled)
+        :param config: Scheduler configuration
         :param executor: Optional worker executor for lifecycle management
         """
         self._communicator = communicator
         self._profile_name = profile_name
         self._working_dir = Path(working_dir)
-        self._config = config or ProcessSchedulerConfig(scheduling_enabled=False)
+        self._config = config or ProcessSchedulerConfig()
         self._executor = executor
 
         # Task queue for persistence
@@ -283,7 +271,7 @@ class ProcessScheduler:
         # Worker selection (round-robin)
         self._worker_index = 0
 
-        # Scheduling state (only used if scheduling enabled)
+        # Scheduling state
         self._queues: dict[str, ComputerQueue] = {}
         self._running_counts: dict[str, int] = {}
 
@@ -294,10 +282,7 @@ class ProcessScheduler:
         # Start communicator
         self._communicator.start()
 
-        LOGGER.info(
-            f'ProcessScheduler started for profile: {profile_name} '
-            f'(scheduling={"enabled" if self._config.scheduling_enabled else "disabled"})'
-        )
+        LOGGER.info(f'ProcessScheduler started for profile: {profile_name}')
 
     def _on_task_received(self, message: dict) -> None:
         """Callback invoked when task message received from communicator.
@@ -307,16 +292,15 @@ class ProcessScheduler:
 
         :param message: Task message dict
         """
-        if self._config.scheduling_enabled:
-            # Check if this is a continue_process task requiring scheduling
-            task_type = message.get('body', {}).get('task')
-            if task_type == 'continue':
-                # plumpy sends: {'task': 'continue', 'args': {'pid': 123, ...}}
-                pid = message['body']['args']['pid']
-                self._schedule_process(pid, message)
-                return
+        # Check if this is a continue_process task requiring scheduling
+        task_type = message.get('body', {}).get('task')
+        if task_type == 'continue':
+            # plumpy sends: {'task': 'continue', 'args': {'pid': 123, ...}}
+            pid = message['body']['args']['pid']
+            self._schedule_process(pid, message)
+            return
 
-        # Non-scheduled tasks or scheduling disabled: handle directly
+        # Non-continue tasks: handle directly
         self._handle_task_message(message)
 
     def _on_broadcast_received(self, message: dict) -> None:
@@ -418,6 +402,7 @@ class ProcessScheduler:
         """Apply per-computer scheduling logic.
 
         Checks concurrency limits and either executes immediately or queues.
+        Computers without configured limits have unlimited concurrency.
 
         :param pid: Process ID
         :param message: Task message
@@ -433,7 +418,16 @@ class ProcessScheduler:
             self._handle_task_message(message)
             return
 
-        # Get or create queue for this computer
+        # Check if this computer has a limit configured
+        limit = self._config.computer_limits.get(computer_label)
+
+        if limit is None:
+            # No limit configured - execute immediately (unlimited)
+            self._handle_task_message(message)
+            LOGGER.debug(f'Executed process {pid} on {computer_label} (unlimited)')
+            return
+
+        # Get or create queue for this computer (only for limited computers)
         if computer_label not in self._queues:
             queue_dir = self._working_dir / 'queue' / computer_label
             self._queues[computer_label] = ComputerQueue(computer_label, queue_dir)
@@ -441,7 +435,6 @@ class ProcessScheduler:
 
         # Check limit
         current = self._running_counts.get(computer_label, 0)
-        limit = self._config.computer_limits.get(computer_label, self._config.default_limit)
 
         if current < limit:
             # Under limit - execute immediately
@@ -470,9 +463,6 @@ class ProcessScheduler:
 
         :param pid: Process ID that completed
         """
-        if not self._config.scheduling_enabled:
-            return
-
         from aiida.orm import load_node
 
         try:
@@ -480,6 +470,10 @@ class ProcessScheduler:
             computer_label = self._get_computer_label(node)
         except Exception as exc:
             LOGGER.warning(f'Could not determine computer for {pid}: {exc}')
+            return
+
+        # Check if this computer has a limit (only track limited computers)
+        if computer_label not in self._config.computer_limits:
             return
 
         # Decrement count
@@ -500,8 +494,12 @@ class ProcessScheduler:
         if not queue:
             return
 
+        limit = self._config.computer_limits.get(computer_label)
+        if limit is None:
+            # No limit - shouldn't have a queue, but handle gracefully
+            return
+
         current = self._running_counts.get(computer_label, 0)
-        limit = self._config.computer_limits.get(computer_label, self._config.default_limit)
 
         if current >= limit:
             LOGGER.debug(f'Computer {computer_label} still at limit ({current}/{limit})')
@@ -534,7 +532,7 @@ class ProcessScheduler:
         - Cleanup of old completed tasks
         - Cleanup of dead worker entries (or executor health checks)
         - Requeue tasks assigned to dead workers
-        - Poll for missed completions (if scheduling enabled)
+        - Poll for missed completions
         """
         try:
             # Cleanup old completed tasks
@@ -557,8 +555,8 @@ class ProcessScheduler:
             # Requeue tasks assigned to dead workers
             self._requeue_orphaned_tasks()
 
-            # Poll for missed completions (if scheduling enabled)
-            if self._config.scheduling_enabled:
+            # Poll for missed completions (only for computers with limits)
+            if self._queues:
                 self._poll_running_processes()
 
         except Exception as exc:
@@ -607,9 +605,9 @@ class ProcessScheduler:
                     self.on_completion(pid)
 
     def get_status(self) -> dict:
-        """Get broker status for CLI display.
+        """Get scheduler status for CLI display.
 
-        :return: Status dict with scheduling info if enabled
+        :return: Status dict with worker count and computer limits
         """
         # Get worker count from executor or discovery
         if self._executor:
@@ -618,17 +616,14 @@ class ProcessScheduler:
             worker_count = len(discovery.discover_workers(self._profile_name, check_alive=True))
 
         status = {
-            'scheduling_enabled': self._config.scheduling_enabled,
             'worker_count': worker_count,
         }
 
-        if self._config.scheduling_enabled:
+        # Only include computers with limits
+        if self._config.computer_limits:
             computers = {}
-            all_computer_labels = set(list(self._queues.keys()) + list(self._config.computer_limits.keys()))
-
-            for computer_label in all_computer_labels:
+            for computer_label, limit in self._config.computer_limits.items():
                 running = self._running_counts.get(computer_label, 0)
-                limit = self._config.computer_limits.get(computer_label, self._config.default_limit)
                 queue = self._queues.get(computer_label)
 
                 if queue:

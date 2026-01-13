@@ -167,7 +167,7 @@ class ProcessSchedulerService:
         # Store worker count for auto-respawn
         self._worker_count = config.worker_count
 
-        LOGGER.info(f'ProcessSchedulerService started for profile: {profile_name} (scheduling={config.scheduling_enabled})')
+        LOGGER.info(f'ProcessSchedulerService started for profile: {profile_name}')
 
         # Start initial workers if configured (after broker is registered)
         if self._worker_count > 0:
