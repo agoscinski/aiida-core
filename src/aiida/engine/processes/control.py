@@ -11,7 +11,7 @@ import kiwipy
 from kiwipy import communications
 from plumpy.futures import unwrap_kiwi_future
 
-from aiida.brokers import Broker
+from aiida.brokers import BrokerCommunicator
 from aiida.common.exceptions import AiidaException
 from aiida.common.log import AIIDA_LOGGER
 from aiida.engine.daemon.client import DaemonException, get_daemon_client
@@ -38,7 +38,7 @@ def get_active_processes(paused: bool = False, project: str | list[str] = '*') -
     return builder.all(flat=True)
 
 
-def iterate_process_tasks(broker: Broker) -> collections.abc.Iterator[kiwipy.rmq.RmqIncomingTask]:
+def iterate_process_tasks(broker: BrokerCommunicator) -> collections.abc.Iterator[kiwipy.rmq.RmqIncomingTask]:
     """Return the list of process pks that have a process task in the RabbitMQ process queue.
 
     :returns: A list of process pks that have a corresponding process task with RabbitMQ.
@@ -47,7 +47,7 @@ def iterate_process_tasks(broker: Broker) -> collections.abc.Iterator[kiwipy.rmq
         yield task
 
 
-def get_process_tasks(broker: Broker) -> list[int]:
+def get_process_tasks(broker: BrokerCommunicator) -> list[int]:
     """Return the list of process pks that have a process task in the RabbitMQ process queue.
 
     :returns: A list of process pks that have a corresponding process task with RabbitMQ.

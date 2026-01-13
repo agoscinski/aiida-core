@@ -19,9 +19,89 @@ from aiida.communication.namedpipe.broker_communicator import PipeBrokerCommunic
 from aiida.engine.scheduler.process_scheduler import ProcessScheduler, ProcessSchedulerConfig
 from aiida.engine.scheduler.executor import SubprocessWorkerExecutor
 
-__all__ = ('ProcessSchedulerService',)
+__all__ = ('ProcessSchedulerService', 'start_daemon')
 
 LOGGER = logging.getLogger(__name__)
+
+
+def start_daemon(profile_name: str, config_path: Path | str, enable_scheduling: bool = True) -> None:
+    """Start the scheduler as a daemon process.
+
+    This function forks and daemonizes, then runs ProcessSchedulerService
+    in the child process. The parent process returns immediately.
+
+    :param profile_name: The AiiDA profile name
+    :param config_path: Path to the AiiDA config directory
+    :param enable_scheduling: Whether to enable per-computer scheduling
+    """
+    import os
+    import sys
+
+    config_path = Path(config_path)
+
+    # Fork the process
+    try:
+        pid = os.fork()
+        if pid > 0:
+            # Parent process - wait briefly then return
+            import time
+            time.sleep(0.5)
+            return
+    except OSError as exc:
+        raise RuntimeError(f'Fork failed: {exc}') from exc
+
+    # Child process - become session leader
+    os.setsid()
+
+    # Second fork to prevent zombie
+    try:
+        pid = os.fork()
+        if pid > 0:
+            # First child exits
+            sys.exit(0)
+    except OSError as exc:
+        LOGGER.error(f'Second fork failed: {exc}')
+        sys.exit(1)
+
+    # Grandchild continues as daemon
+    # Redirect standard file descriptors
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+    # Close stdin/stdout/stderr
+    with open(os.devnull, 'r') as devnull:
+        os.dup2(devnull.fileno(), sys.stdin.fileno())
+    with open(os.devnull, 'a+') as devnull:
+        os.dup2(devnull.fileno(), sys.stdout.fileno())
+        os.dup2(devnull.fileno(), sys.stderr.fileno())
+
+    # Configure logging to file
+    log_file = config_path / 'scheduler' / 'scheduler.log'
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    logging.basicConfig(
+        filename=str(log_file),
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+    # Create and run scheduler
+    scheduler = ProcessSchedulerService(
+        profile_name=profile_name,
+        config_path=config_path,
+        enable_scheduling=enable_scheduling,
+    )
+
+    # Run maintenance loop
+    import time
+    try:
+        while True:
+            time.sleep(1)
+            scheduler.run_maintenance()
+    except Exception:
+        logging.exception('Scheduler daemon crashed')
+        scheduler.close()
+        sys.exit(1)
 
 
 class ProcessSchedulerService:

@@ -11,88 +11,12 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import click
 
 from aiida.cmdline.commands.cmd_verdi import verdi
 from aiida.cmdline.utils import decorators, echo
-
-
-def _daemonize_scheduler(profile_name: str, config_path: Path) -> None:
-    """Daemonize the scheduler process.
-
-    :param profile_name: The profile name.
-    :param config_path: Path to the profile config directory.
-    """
-    import logging
-    import os
-
-    # Fork the process
-    try:
-        pid = os.fork()
-        if pid > 0:
-            # Parent process - wait briefly then exit
-            import time
-            time.sleep(0.5)
-            sys.exit(0)
-    except OSError as exc:
-        echo.echo_critical(f'Fork failed: {exc}')
-
-    # Child process - become session leader
-    os.setsid()
-
-    # Second fork to prevent zombie
-    try:
-        pid = os.fork()
-        if pid > 0:
-            # First child exits
-            sys.exit(0)
-    except OSError as exc:
-        echo.echo_critical(f'Second fork failed: {exc}')
-
-    # Grandchild continues as daemon
-    # Redirect standard file descriptors
-    sys.stdout.flush()
-    sys.stderr.flush()
-
-    # Close stdin/stdout/stderr
-    with open(os.devnull, 'r') as devnull:
-        os.dup2(devnull.fileno(), sys.stdin.fileno())
-    with open(os.devnull, 'a+') as devnull:
-        os.dup2(devnull.fileno(), sys.stdout.fileno())
-        os.dup2(devnull.fileno(), sys.stderr.fileno())
-
-    # Configure logging to file
-    log_file = config_path / 'scheduler' / 'scheduler.log'
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-
-    logging.basicConfig(
-        filename=str(log_file),
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-
-    # Create and run scheduler (ProcessSchedulerService with scheduling enabled)
-    from aiida.engine.scheduler.process_scheduler_service import ProcessSchedulerService
-
-    scheduler = ProcessSchedulerService(
-        profile_name=profile_name,
-        config_path=config_path,
-        enable_scheduling=True,
-    )
-
-    # Run maintenance loop
-    import time
-    try:
-        while True:
-            time.sleep(1)  # More frequent for scheduling
-            scheduler.run_maintenance()
-    except Exception:
-        logging.exception('Scheduler daemon crashed')
-        scheduler.close()
-        sys.exit(1)
 
 
 @verdi.group('scheduler')
@@ -162,7 +86,9 @@ def scheduler_start(foreground):
     else:
         # Daemonize
         try:
-            _daemonize_scheduler(profile_name=profile.name, config_path=config_path)
+            from aiida.engine.scheduler.process_scheduler_service import start_daemon
+
+            start_daemon(profile_name=profile.name, config_path=config_path, enable_scheduling=True)
             echo.echo_success('Scheduler daemon started')
             echo.echo_info('Use "verdi scheduler status" to check status')
         except Exception as exc:

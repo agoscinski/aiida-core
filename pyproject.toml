@@ -71,7 +71,7 @@ readme = 'README.md'
 requires-python = '>=3.9'
 
 [project.entry-points.'aiida.brokers']
-'core.namedpipe' = 'aiida.brokers.namedpipe.broker:PipeBroker'
+'core.namedpipe' = 'aiida.communication.namedpipe.broker:PipeBroker'
 'core.rabbitmq' = 'aiida.brokers.rabbitmq.broker:RabbitmqBroker'
 
 [project.entry-points.'aiida.calculations']
