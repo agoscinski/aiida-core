@@ -144,12 +144,12 @@ class ProcessSchedulerService:
         # Create communicator
         self._communicator = PipeBrokerCommunicator(profile_name=profile_name, broker_id=self._broker_id)
 
-        # Create broker with working directory and executor
-        broker_working_dir = self._config_path / 'broker'
+        # Create scheduler with working directory and executor
+        scheduler_working_dir = self._config_path / 'scheduler'
         self._broker = ProcessScheduler(
             communicator=self._communicator,
             profile_name=profile_name,
-            working_dir=broker_working_dir,
+            working_dir=scheduler_working_dir,
             config=config,
             executor=self._executor,
         )

@@ -305,7 +305,7 @@ class ProcessScheduler:
         self._executor = executor
 
         # Task queue for persistence
-        self._task_queue = TaskQueue(self._working_dir / 'tasks')
+        self._task_queue = TaskQueue(self._working_dir / 'queue' / 'tasks')
 
         # Worker selection (round-robin)
         self._worker_index = 0
@@ -462,7 +462,7 @@ class ProcessScheduler:
 
         # Get or create queue for this computer
         if computer_label not in self._queues:
-            queue_dir = self._working_dir / 'scheduler' / computer_label
+            queue_dir = self._working_dir / 'queue' / computer_label
             self._queues[computer_label] = ComputerQueue(computer_label, queue_dir)
             LOGGER.info(f'Created queue for computer: {computer_label}')
 

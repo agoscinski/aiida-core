@@ -83,26 +83,6 @@ class SubprocessWorkerExecutor:
         self._closed = False
         self._started = False
 
-        # Logging
-        self._setup_logging()
-
-    def _setup_logging(self) -> None:
-        """Setup centralized logging for workers."""
-        log_dir = self._config_path / 'broker' / 'logs'
-        log_dir.mkdir(parents=True, exist_ok=True)
-
-        log_file = log_dir / 'workers.log'
-
-        # Create file handler for worker logs
-        handler = logging.FileHandler(log_file)
-        handler.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-
-        # Add to logger
-        LOGGER.addHandler(handler)
-        LOGGER.setLevel(logging.INFO)
-
     def start(self) -> None:
         """Initialize executor and prepare for spawning workers."""
         if self._started:

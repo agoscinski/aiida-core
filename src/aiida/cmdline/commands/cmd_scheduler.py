@@ -272,17 +272,17 @@ def scheduler_status():
     echo.echo('-' * 60)
     echo.echo('')
 
-    broker_dir = config_path / 'broker' / 'scheduler'
+    queue_dir = config_path / 'scheduler' / 'queue'
     limits = data.get('computers', {})
     default_limit = data.get('default_limit', 10)
 
     # Check for queue directories
-    if not broker_dir.exists():
+    if not queue_dir.exists():
         echo.echo('  No queues found.')
         echo.echo('')
         return
 
-    computer_dirs = [d for d in broker_dir.iterdir() if d.is_dir() and d.name != '__pycache__']
+    computer_dirs = [d for d in queue_dir.iterdir() if d.is_dir() and d.name not in ('__pycache__', 'tasks')]
 
     if not computer_dirs and not limits:
         echo.echo(f'  Default limit: {default_limit} processes per computer')
@@ -301,7 +301,7 @@ def scheduler_status():
         limit = limits.get(computer_label, default_limit)
 
         # Count queued processes
-        computer_dir = broker_dir / computer_label
+        computer_dir = queue_dir / computer_label
         if computer_dir.exists():
             queue_files = list(computer_dir.glob('proc_*.json'))
             queued_count = len(queue_files)
@@ -522,3 +522,48 @@ def scheduler_show_workers():
         echo.echo('  ' + '-' * 30)
         for worker in workers:
             echo.echo(f'  {worker["process_id"]:<20} {worker["pid"]:>8}')
+
+
+@verdi_scheduler.command('logshow')
+@click.option(
+    '--log',
+    type=click.Choice(['scheduler', 'daemon']),
+    default='scheduler',
+    help='Which log to show: scheduler (default) or daemon (worker processes).',
+)
+@decorators.with_dbenv()
+def scheduler_logshow(log):
+    """Show scheduler-related logs in a pager.
+
+    \\b
+    Log types:
+      scheduler  - Scheduler daemon log (default)
+      daemon     - Worker process logs (actual worker output)
+
+    \\b
+    Examples:
+        verdi scheduler logshow
+        verdi scheduler logshow --log daemon
+    """
+    from aiida.engine.daemon.client import get_daemon_client
+    from aiida.manage import manager
+
+    mgr = manager.get_manager()
+    config = mgr.get_config()
+    profile = mgr.get_profile()
+    config_path = Path(config.dirpath) / 'profiles' / profile.name
+
+    if log == 'scheduler':
+        log_file = config_path / 'scheduler' / 'scheduler.log'
+    elif log == 'daemon':
+        # Worker processes log to the daemon log file
+        daemon_client = get_daemon_client()
+        log_file = Path(daemon_client.daemon_log_file)
+
+    if not log_file.exists():
+        echo.echo_warning(f'Log file not found: {log_file}')
+        echo.echo_info('The scheduler may not have been started yet.')
+        return
+
+    with open(log_file) as f:
+        click.echo_via_pager(f.read())
