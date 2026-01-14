@@ -275,6 +275,9 @@ class ProcessScheduler:
         self._queues: dict[str, ComputerQueue] = {}
         self._running_counts: dict[str, int] = {}
 
+        # Load existing ComputerQueues from disk (for restart scenarios)
+        self._load_existing_queues()
+
         # Register callbacks with communicator
         self._communicator.add_task_subscriber(self._on_task_received, 'process_broker')
         self._communicator.add_broadcast_subscriber(self._on_broadcast_received, 'process_broker')
@@ -284,6 +287,36 @@ class ProcessScheduler:
 
         LOGGER.info(f'ProcessScheduler started for profile: {profile_name}')
 
+    def _load_existing_queues(self) -> None:
+        """Load existing ComputerQueues from disk on startup.
+
+        For computers with configured limits, checks if queue directories exist
+        on disk and loads them into memory. Also initializes running counts based
+        on tasks marked as 'running' in the queue files.
+
+        This enables proper restart behavior where pending/running processes
+        from before the restart are properly tracked.
+        """
+        for computer_label in self._config.computer_limits:
+            queue_dir = self._working_dir / 'queue' / computer_label
+            if queue_dir.exists():
+                # Create queue instance (loads existing files)
+                queue = ComputerQueue(computer_label, queue_dir)
+                self._queues[computer_label] = queue
+
+                # Initialize running count from tasks marked as running
+                # (may be stale - _poll_running_processes will correct)
+                running_pids = queue.get_running_pids()
+                self._running_counts[computer_label] = len(running_pids)
+
+                # Count pending
+                pending_count = sum(1 for _ in queue_dir.glob('proc_*.json')) - len(running_pids)
+
+                LOGGER.info(
+                    f'Loaded queue for {computer_label}: '
+                    f'{len(running_pids)} running, {pending_count} pending'
+                )
+
     def _on_task_received(self, message: dict) -> None:
         """Callback invoked when task message received from communicator.
 
@@ -292,6 +325,12 @@ class ProcessScheduler:
 
         :param message: Task message dict
         """
+        # Check for scheduler query messages
+        msg_type = message.get('type')
+        if msg_type == 'query_queue_status':
+            self._handle_queue_status_query(message)
+            return
+
         # Check if this is a continue_process task requiring scheduling
         task_type = message.get('body', {}).get('task')
         if task_type == 'continue':
@@ -476,6 +515,11 @@ class ProcessScheduler:
         if computer_label not in self._config.computer_limits:
             return
 
+        # Remove from queue if present
+        queue = self._queues.get(computer_label)
+        if queue:
+            queue.remove_running(pid)
+
         # Decrement count
         current = self._running_counts.get(computer_label, 0)
         if current > 0:
@@ -492,11 +536,13 @@ class ProcessScheduler:
         """
         queue = self._queues.get(computer_label)
         if not queue:
+            LOGGER.debug(f'No queue for {computer_label}')
             return
 
         limit = self._config.computer_limits.get(computer_label)
         if limit is None:
             # No limit - shouldn't have a queue, but handle gracefully
+            LOGGER.debug(f'No limit for {computer_label}')
             return
 
         current = self._running_counts.get(computer_label, 0)
@@ -508,6 +554,7 @@ class ProcessScheduler:
         # Get next pending process
         pending = queue.get_pending()
         if not pending:
+            LOGGER.debug(f'No pending process for {computer_label}')
             return
 
         # Submit via broker
@@ -555,16 +602,23 @@ class ProcessScheduler:
             # Requeue tasks assigned to dead workers
             self._requeue_orphaned_tasks()
 
+            # Clean up tasks for processes that have completed
+            self._cleanup_completed_tasks()
+
             # Poll for missed completions (only for computers with limits)
             if self._queues:
                 self._poll_running_processes()
+
+            # Try to schedule pending processes from ComputerQueues
+            for computer_label in self._queues:
+                self._try_submit_next(computer_label)
 
         except Exception as exc:
             LOGGER.exception(f'Error in maintenance: {exc}')
 
     def _requeue_orphaned_tasks(self) -> None:
         """Requeue tasks assigned to dead workers."""
-        pending_tasks = self._task_queue.get_pending_tasks()
+        all_tasks = self._task_queue.get_all_tasks()
 
         # Get worker IDs from executor or discovery
         if self._executor:
@@ -574,13 +628,58 @@ class ProcessScheduler:
             workers = discovery.discover_workers(self._profile_name, check_alive=True)
             worker_ids = {w['process_id'] for w in workers}
 
-        for task_data in pending_tasks:
+        for task_data in all_tasks:
             if task_data.get('status') == 'assigned':
                 assigned_to = task_data.get('assigned_to')
                 if assigned_to and assigned_to not in worker_ids:
                     task_id = task_data['id']
                     LOGGER.info(f'Requeueing task {task_id} from dead worker {assigned_to}')
+                    # Reset to pending and redistribute
+                    self._task_queue.reset_to_pending(task_id)
                     self._distribute_task(task_id, task_data['message'])
+
+    def _cleanup_completed_tasks(self) -> None:
+        """Clean up tasks for processes that have reached terminal state.
+
+        Queries the database to check if processes referenced by tasks have
+        completed (finished/failed/killed/excepted). If so, removes the task
+        from the queue since it's no longer needed.
+        """
+        from aiida.orm import ProcessNode, QueryBuilder
+
+        all_tasks = self._task_queue.get_all_tasks()
+        if not all_tasks:
+            return
+
+        # Extract PIDs from tasks
+        task_pids = {}
+        for task_data in all_tasks:
+            task_message = task_data.get('message', {})
+            task_body = task_message.get('body', {})
+            task_pid = task_body.get('args', {}).get('pid')
+            if task_pid is not None:
+                task_pids[int(task_pid)] = task_data['id']
+
+        if not task_pids:
+            return
+
+        # Query database for terminal processes
+        qb = QueryBuilder()
+        qb.append(
+            ProcessNode,
+            filters={
+                'id': {'in': list(task_pids.keys())},
+                'attributes.process_state': {'in': ['finished', 'failed', 'killed', 'excepted']},
+            },
+            project=['id'],
+        )
+
+        # Remove tasks for completed processes
+        for (pid,) in qb.all():
+            task_id = task_pids.get(pid)
+            if task_id:
+                LOGGER.debug(f'Removing task {task_id} for completed process {pid}')
+                self._task_queue.mark_completed(task_id)
 
     def _poll_running_processes(self) -> None:
         """Poll database for missed completions.
@@ -636,6 +735,101 @@ class ProcessScheduler:
             status['computers'] = computers
 
         return status
+
+    def get_queue_status(self, pids: list[int]) -> dict[int, str | None]:
+        """Get scheduler queue status for given PIDs.
+
+        :param pids: List of process IDs to query
+        :return: Dict mapping PID to status:
+            - 'queued' - waiting in queue (pending)
+            - 'running' - assigned to a worker
+            - None - not tracked by scheduler
+        """
+        result: dict[int, str | None] = {pid: None for pid in pids}
+        pids_set = set(pids)
+
+        # Check TaskQueue (general task queue for all processes)
+        for task_file in self._task_queue.queue_dir.glob('task_*.json'):
+            try:
+                with open(task_file) as f:
+                    task_data = json.load(f)
+
+                # Extract PID from the task message
+                # Format: {'body': {'task': 'continue', 'args': {'pid': 123}}}
+                task_message = task_data.get('message', {})
+                task_body = task_message.get('body', {})
+                task_pid = task_body.get('args', {}).get('pid')
+
+                # Convert to int (PIDs may be stored as strings)
+                if task_pid is not None:
+                    task_pid = int(task_pid)
+
+                if task_pid and task_pid in pids_set:
+                    task_status = task_data.get('status')
+                    if task_status == 'pending':
+                        result[task_pid] = 'queued'
+                    elif task_status == 'assigned':
+                        result[task_pid] = 'running'
+
+            except (json.JSONDecodeError, OSError, KeyError, ValueError, TypeError):
+                pass
+
+        # Check ComputerQueues (for limited computers)
+        for computer_label, queue in self._queues.items():
+            for task_file in queue.queue_dir.glob('proc_*.json'):
+                try:
+                    with open(task_file) as f:
+                        task_data = json.load(f)
+
+                    task_pid = task_data['message']['pid']
+                    if task_pid in pids_set:
+                        status = task_data.get('status', 'pending')
+                        if status == 'pending':
+                            result[task_pid] = 'queued'
+                        elif status == 'running':
+                            result[task_pid] = 'running'
+
+                except (json.JSONDecodeError, OSError, KeyError):
+                    pass
+
+        return result
+
+    def _handle_queue_status_query(self, message: dict) -> None:
+        """Handle IPC query for queue status.
+
+        Receives query message and sends response back via reply pipe.
+
+        Message format:
+            Request: {'type': 'query_queue_status', 'pids': [1, 2, 3], 'reply_pipe': '/path'}
+            Response: {'type': 'queue_status_response', 'status': {1: 'queued', 2: None, ...}}
+
+        :param message: Query message dict
+        """
+        from aiida.communication.namedpipe import messages, utils
+
+        reply_pipe = message.get('reply_pipe')
+        if not reply_pipe:
+            LOGGER.warning('Queue status query missing reply_pipe, ignoring')
+            return
+
+        pids = message.get('pids', [])
+
+        # Get queue status
+        status = self.get_queue_status(pids)
+
+        # Build response
+        response = {
+            'type': 'queue_status_response',
+            'status': status,
+        }
+
+        # Send response to reply pipe
+        try:
+            data = messages.serialize(response)
+            utils.write_to_pipe(reply_pipe, data, non_blocking=False)
+            LOGGER.debug(f'Sent queue status response for {len(pids)} PIDs')
+        except (BrokenPipeError, FileNotFoundError, OSError) as exc:
+            LOGGER.warning(f'Failed to send queue status response: {exc}')
 
     def close(self) -> None:
         """Close the broker and cleanup resources."""

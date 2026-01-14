@@ -162,6 +162,14 @@ class PipeCommunicator(kiwipy.Communicator):
         except Exception as exc:
             LOGGER.exception(f'Error handling reply: {exc}')
 
+    def _cleanup_future(self, correlation_id: str) -> None:
+        """Remove a future from pending futures (called on future completion/cancellation).
+
+        :param correlation_id: The correlation ID of the future to remove.
+        """
+        with self._futures_lock:
+            self._pending_futures.pop(correlation_id, None)
+
     def _discover_broker(self) -> discovery.ProcessInfo:
         """Discover the broker process.
 
@@ -276,8 +284,9 @@ class PipeCommunicator(kiwipy.Communicator):
         if no_reply:
             return None
 
-        # Create and register future
-        future = futures.Future()
+        # Create and register future with auto-cleanup callback
+        future = TimeoutFuture()
+        future.add_done_callback(lambda _: self._cleanup_future(correlation_id))
         with self._futures_lock:
             self._pending_futures[correlation_id] = future
 
@@ -309,8 +318,9 @@ class PipeCommunicator(kiwipy.Communicator):
 
         self._send_message(recipient['rpc_pipe'], message)
 
-        # Create and register future
+        # Create and register future with auto-cleanup callback
         future = futures.Future()
+        future.add_done_callback(lambda _: self._cleanup_future(correlation_id))
         with self._futures_lock:
             self._pending_futures[correlation_id] = future
 

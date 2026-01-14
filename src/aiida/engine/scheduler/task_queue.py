@@ -58,6 +58,44 @@ class TaskQueue:
                     pass
         return pending
 
+    def get_all_tasks(self) -> list[dict]:
+        """Get all tasks (pending and assigned).
+
+        :return: List of all task data.
+        """
+        tasks = []
+        with self._lock:
+            for task_file in self.queue_dir.glob('task_*.json'):
+                try:
+                    with open(task_file) as f:
+                        task_data = json.load(f)
+                        tasks.append(task_data)
+                except (json.JSONDecodeError, OSError):
+                    pass
+        return tasks
+
+    def reset_to_pending(self, task_id: str) -> None:
+        """Reset an assigned task back to pending status.
+
+        :param task_id: The task ID to reset.
+        """
+        with self._lock:
+            task_file = self.queue_dir / f'{task_id}.json'
+            if not task_file.exists():
+                return
+
+            try:
+                with open(task_file) as f:
+                    task_data = json.load(f)
+
+                task_data['status'] = 'pending'
+                task_data['assigned_to'] = None
+
+                with open(task_file, 'w') as f:
+                    json.dump(task_data, f)
+            except (json.JSONDecodeError, OSError):
+                pass
+
     def mark_assigned(self, task_id: str, worker_id: str) -> None:
         """Mark a task as assigned to a worker.
 

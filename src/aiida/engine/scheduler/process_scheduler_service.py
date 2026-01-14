@@ -74,15 +74,17 @@ def start_daemon(profile_name: str, config_path: Path | str) -> None:
         os.dup2(devnull.fileno(), sys.stdout.fileno())
         os.dup2(devnull.fileno(), sys.stderr.fileno())
 
-    # Configure logging to file
+    # Configure logging using AiiDA's logging system for consistency
+    # This sets up a RotatingFileHandler for all AiiDA loggers
     log_file = config_path / 'scheduler' / 'scheduler.log'
     log_file.parent.mkdir(parents=True, exist_ok=True)
 
-    logging.basicConfig(
-        filename=str(log_file),
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+    from aiida.common.log import AIIDA_LOGGER, configure_logging
+    from aiida.manage import get_config_option
+    configure_logging(daemon=True, daemon_log_file=str(log_file))
+    # Set aiida logger level from config (default REPORT=23 filters out INFO messages)
+    log_level = getattr(logging, get_config_option('logging.circus_loglevel'), logging.INFO)
+    AIIDA_LOGGER.setLevel(log_level)
 
     # Create and run scheduler
     scheduler = ProcessSchedulerService(
@@ -97,7 +99,7 @@ def start_daemon(profile_name: str, config_path: Path | str) -> None:
             time.sleep(1)
             scheduler.run_maintenance()
     except Exception:
-        logging.exception('Scheduler daemon crashed')
+        LOGGER.exception('Scheduler daemon crashed')
         scheduler.close()
         sys.exit(1)
 

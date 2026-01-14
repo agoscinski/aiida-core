@@ -313,8 +313,8 @@ class Manager:
                 # Enhance error message for named pipe broker
                 if entry_point == 'core.namedpipe':
                     raise ConnectionError(
-                        f'Named pipe coordinator for profile `{self._profile.name}` is not running. '
-                        f'Start it with: verdi coordinator start\n'
+                        f'Scheduler for profile `{self._profile.name}` is not running. '
+                        f'Start it with: verdi scheduler start\n'
                         f'Original error: {exc}'
                     ) from exc
                 else:

@@ -14,9 +14,10 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -35,6 +36,7 @@ class WorkerProcess:
     process: subprocess.Popen
     info: WorkerInfo
     started_at: float
+    log_threads: list[threading.Thread] = field(default_factory=list)
 
 
 class SubprocessWorkerExecutor:
@@ -75,6 +77,11 @@ class SubprocessWorkerExecutor:
         self._verdi_path = verdi_path
         self._python_path = python_path or sys.executable
         self._environment = environment or {}
+
+        # Get daemon log file path (like Circus did)
+        from aiida.engine.daemon.client import get_daemon_client
+        self._daemon_log_file = Path(get_daemon_client(profile_name).daemon_log_file)
+        self._daemon_log_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Track spawned workers
         self._workers: dict[str, WorkerProcess] = {}
@@ -194,12 +201,16 @@ class SubprocessWorkerExecutor:
                 LOGGER.error(f'Worker {worker_id} running (PID: {process.pid}) but did not register')
             raise
 
+        # Start log forwarding threads (like Circus did)
+        log_threads = self._start_log_forwarding(worker_id, process)
+
         # Track worker
         self._workers[worker_id] = WorkerProcess(
             worker_id=worker_id,
             process=process,
             info=worker_info,
             started_at=time.time(),
+            log_threads=log_threads,
         )
 
         LOGGER.info(f'Worker {worker_id} started successfully (PID: {process.pid})')
@@ -393,3 +404,50 @@ class SubprocessWorkerExecutor:
         if verdi_path is None:
             raise RuntimeError('verdi executable not found in PATH')
         return verdi_path
+
+    def _start_log_forwarding(self, worker_id: str, process: subprocess.Popen) -> list[threading.Thread]:
+        """Start threads to forward worker stdout/stderr to the daemon log file.
+
+        This mimics Circus's behavior of capturing worker output and writing
+        it to a central log file.
+
+        :param worker_id: Worker identifier for log prefixing
+        :param process: Worker subprocess with stdout/stderr pipes
+        :return: List of log forwarding threads
+        """
+        threads = []
+
+        def forward_stream(stream, stream_name: str):
+            """Forward a stream to the log file."""
+            try:
+                with open(self._daemon_log_file, 'a') as log_file:
+                    for line in iter(stream.readline, b''):
+                        if not line:
+                            break
+                        decoded = line.decode(errors='replace').rstrip('\n')
+                        log_file.write(f'{decoded}\n')
+                        log_file.flush()
+            except Exception as exc:
+                LOGGER.debug(f'Log forwarding ended for {worker_id} {stream_name}: {exc}')
+
+        if process.stdout:
+            stdout_thread = threading.Thread(
+                target=forward_stream,
+                args=(process.stdout, 'stdout'),
+                daemon=True,
+                name=f'{worker_id}-stdout',
+            )
+            stdout_thread.start()
+            threads.append(stdout_thread)
+
+        if process.stderr:
+            stderr_thread = threading.Thread(
+                target=forward_stream,
+                args=(process.stderr, 'stderr'),
+                daemon=True,
+                name=f'{worker_id}-stderr',
+            )
+            stderr_thread.start()
+            threads.append(stderr_thread)
+
+        return threads

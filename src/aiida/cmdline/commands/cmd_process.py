@@ -18,11 +18,11 @@ from aiida.cmdline.utils.decorators import with_dbenv
 from aiida.common.log import LOG_LEVELS, capture_logging
 
 REPAIR_INSTRUCTIONS = """\
-If one ore more processes are unreachable, you can run the following commands to try and repair them:
+If one or more processes are unreachable, you can run the following command to try and repair them:
 
-    verdi daemon stop
     verdi process repair
-    verdi daemon start
+
+Note: The scheduler must be running for this command to work.
 """
 
 ACTION_TIMEOUT = OverridableOption(
@@ -66,6 +66,32 @@ def get_most_recent_node():
     process = QueryBuilder().append(ProcessNode, tag='n').order_by({'n': {'ctime': 'desc'}}).first(flat=True)
     echo.echo_info(f'Most recent node matched: `{process}`.')
     return process
+
+
+def _get_queue_status_for_processes(pids: list[int]) -> dict[int, str | None]:
+    """Get scheduler queue status for a list of process IDs.
+
+    This function gracefully handles the case when the scheduler is not running.
+
+    :param pids: List of process IDs to query.
+    :return: Dict mapping PID to status ('queued', 'scheduled', or None).
+    """
+    if not pids:
+        return {}
+
+    try:
+        from aiida.engine.scheduler import get_scheduler_client
+
+        client = get_scheduler_client()
+
+        if not client.is_running():
+            # Scheduler not running - return empty status for all
+            return {pid: None for pid in pids}
+
+        return client.get_queue_status(pids)
+    except Exception:
+        # Any error - return empty status for all
+        return {pid: None for pid in pids}
 
 
 @verdi.group('process')
@@ -126,11 +152,41 @@ def process_list(
 
     builder = CalculationQueryBuilder()
     filters = builder.get_filters(all_entries, process_state, process_label, paused, exit_status, failed)
+
+    # Ensure PK is in projections for queue status
+    project_list = list(project)
+    pk_included = 'pk' in project_list
+    if not pk_included:
+        project_list.insert(0, 'pk')
+
     query_set = builder.get_query_set(
         relationships=relationships, filters=filters, order_by={order_by: order_dir}, past_days=past_days, limit=limit
     )
-    projected = builder.get_projected(query_set, projections=project)
+    projected = builder.get_projected(query_set, projections=project_list)
     headers = projected.pop(0)
+
+    # Get PKs from results for queue status lookup
+    pk_index = project_list.index('pk')
+    pids = [row[pk_index] for row in projected]
+
+    # Query scheduler for queue status (graceful handling if scheduler not running)
+    queue_status = _get_queue_status_for_processes(pids)
+
+    # Add Queue column
+    headers = list(headers) + ['Queue']
+    for i, row in enumerate(projected):
+        status = queue_status.get(pids[i])
+        status_str = ''
+        if status == 'queued':
+            status_str = 'Queued'
+        elif status == 'running':
+            status_str = 'Running'
+        projected[i] = list(row) + [status_str]
+
+    # Remove pk column if we added it just for queue status
+    if not pk_included:
+        headers = headers[1:]
+        projected = [row[1:] for row in projected]
 
     if raw:
         tabulated = tabulate(projected, tablefmt='plain')
@@ -508,75 +564,82 @@ def process_watch(broker, processes, most_recent_node):
 
 @verdi_process.command('repair')
 @options.DRY_RUN()
-@decorators.only_if_daemon_not_running()
-@decorators.with_manager
-@decorators.with_broker
-def process_repair(manager, broker, dry_run):
+@decorators.with_dbenv()
+def process_repair(dry_run):
     """Automatically repair all stuck processes.
 
-    N.B.: This command requires the daemon to be stopped.
+    N.B.: This command requires the scheduler to be running.
 
-    This command queries the database to find all "active" processes, meaning those that haven't yet reached a terminal
-    state, and cross-references them with the active process tasks in the process queue of RabbitMQ. Any active process
-    that does not have a corresponding process task can be considered a zombie, as it will never be picked up by a
-    daemon worker to complete it and will effectively be "stuck". Any process task that does not correspond to an active
-    process is useless and should be discarded. Finally, duplicate process tasks are also problematic and are discarded.
+    This command queries the database to find all "active" processes (those that haven't reached a terminal state)
+    and checks their status in the scheduler queue. Processes that are neither queued nor scheduled and have no
+    corresponding process task are considered zombies and will be revived.
     """
-    from aiida.engine.processes.control import get_active_processes, get_process_tasks, iterate_process_tasks
+    from aiida.engine.processes.control import get_active_processes
+    from aiida.engine.scheduler import get_scheduler_client
+    from aiida.manage import get_manager
 
+    # Get scheduler client and verify scheduler is running
+    scheduler_client = get_scheduler_client()
+
+    if not scheduler_client.is_running():
+        echo.echo_critical('Scheduler is not running. Start it with: verdi scheduler start')
+
+    # Get active processes
     active_processes = get_active_processes(project='id')
-    process_tasks = get_process_tasks(broker)
-
     set_active_processes = set(active_processes)
-    set_process_tasks = set(process_tasks)
 
-    echo.echo_info(f'Active processes: {active_processes}')
-    echo.echo_info(f'Process tasks: {process_tasks}')
+    echo.echo_info(f'Active processes: {len(active_processes)}')
 
-    state_inconsistent = False
-
-    if len(process_tasks) != len(set_process_tasks):
-        state_inconsistent = True
-        echo.echo_warning('There are duplicates process tasks: ', nl=False)
-        echo.echo(set(x for x in process_tasks if process_tasks.count(x) > 1))
-
-    if set_process_tasks.difference(set_active_processes):
-        state_inconsistent = True
-        echo.echo_warning('There are process tasks for terminated processes: ', nl=False)
-        echo.echo(set_process_tasks.difference(set_active_processes))
-
-    if set_active_processes.difference(set_process_tasks):
-        state_inconsistent = True
-        echo.echo_warning('There are active processes without process task: ', nl=False)
-        echo.echo(set_active_processes.difference(set_process_tasks))
-
-    if not state_inconsistent:
-        echo.echo_success('No inconsistencies detected between database and RabbitMQ.')
+    if not active_processes:
+        echo.echo_success('No active processes found.')
         return
 
-    echo.echo_warning('Inconsistencies detected between database and RabbitMQ.')
+    # Query scheduler for queue status
+    echo.echo_report('Querying scheduler for queue status...')
+    try:
+        queue_status = scheduler_client.get_queue_status(active_processes)
+    except Exception as exc:
+        echo.echo_critical(f'Failed to query scheduler: {exc}')
+
+    # Categorize processes
+    queued_processes = [pid for pid, status in queue_status.items() if status == 'queued']
+    scheduled_processes = [pid for pid, status in queue_status.items() if status == 'scheduled']
+    untracked_processes = [pid for pid, status in queue_status.items() if status is None]
+
+    echo.echo_info(f'  Queued:     {len(queued_processes)}')
+    echo.echo_info(f'  Scheduled:  {len(scheduled_processes)}')
+    echo.echo_info(f'  Untracked:  {len(untracked_processes)}')
+
+    # Find zombie processes (untracked active processes)
+    # These are processes that are active in the database but not in the scheduler queue
+    zombie_processes = untracked_processes
+
+    if not zombie_processes:
+        echo.echo_success('No zombie processes found. All active processes are tracked by scheduler.')
+        return
+
+    echo.echo_warning(f'Found {len(zombie_processes)} zombie process(es): {zombie_processes}')
 
     if dry_run:
-        echo.echo_critical('This was a dry-run, no changes will be made.')
+        echo.echo_warning('This was a dry-run, no changes will be made.')
+        return
 
-    # At this point we have either exited because of inconsistencies and ``--dry-run`` was passed, or we returned
-    # because there were no inconsistencies, so all that is left is to address inconsistencies
-    echo.echo_report('Attempting to fix inconsistencies')
+    # Revive zombie processes
+    echo.echo_report('Attempting to revive zombie processes...')
 
-    # Eliminate duplicate tasks and tasks that correspond to terminated process
-    for task in iterate_process_tasks(broker):
-        pid = task.body.get('args', {}).get('pid', None)
-        if pid not in set_active_processes:
-            with task.processing() as outcome:
-                outcome.set_result(False)
-            echo.echo_report(f'Acknowledged task `{pid}`')
-
-    # Revive zombie processes that no longer have a process task
+    manager = get_manager()
     process_controller = manager.get_process_controller()
-    for pid in set_active_processes:
-        if pid not in set_process_tasks:
+
+    revived_count = 0
+    for pid in zombie_processes:
+        try:
             process_controller.continue_process(pid)
             echo.echo_report(f'Revived process `{pid}`')
+            revived_count += 1
+        except Exception as exc:
+            echo.echo_warning(f'Failed to revive process `{pid}`: {exc}')
+
+    echo.echo_success(f'Revived {revived_count} process(es).')
 
 
 @verdi_process.command('dump')
