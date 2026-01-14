@@ -335,6 +335,14 @@ def limits_set(computer_label, limit):
     if limit < 1:
         echo.echo_critical('Limit must be a positive integer')
 
+    from aiida.common.exceptions import NotExistent
+    from aiida.orm import Computer
+
+    try:
+        Computer.collection.get(label=computer_label)
+    except NotExistent:
+        echo.echo_critical(f'Computer "{computer_label}" does not exist')
+
     from aiida.manage import manager
 
     mgr = manager.get_manager()
@@ -419,7 +427,7 @@ def _load_scheduler_config(config_path: Path) -> dict:
             pass
     return {}
 
-
+# TODO should be somehow in scheduler API
 def _save_scheduler_config(config_path: Path, data: dict) -> None:
     """Save scheduler config to file."""
     scheduler_dir = config_path / 'scheduler'

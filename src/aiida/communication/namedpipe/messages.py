@@ -58,11 +58,12 @@ def deserialize(data: bytes, decoder: t.Callable | None = None) -> dict:
 def deserialize_from_fd(fd: int, decoder: t.Callable | None = None) -> dict | None:
     """Read and deserialize a framed message from a file descriptor.
 
-    Uses blocking reads. For typical small messages, reads complete atomically.
+    Handles both blocking and non-blocking file descriptors. For non-blocking fds,
+    returns None if no data is available (BlockingIOError).
 
     :param fd: File descriptor to read from.
     :param decoder: Optional custom decoder function. If not provided, uses JSON.
-    :return: Deserialized message dictionary, or None if EOF.
+    :return: Deserialized message dictionary, or None if EOF or no data available.
     :raises ValueError: If message is malformed.
     :raises OSError: If read operation fails.
     """
@@ -71,7 +72,13 @@ def deserialize_from_fd(fd: int, decoder: t.Callable | None = None) -> dict | No
     # Read 4-byte length prefix
     length_bytes = b''
     while len(length_bytes) < 4:
-        chunk = os.read(fd, 4 - len(length_bytes))
+        try:
+            chunk = os.read(fd, 4 - len(length_bytes))
+        except BlockingIOError:
+            # Non-blocking fd with no data available
+            if length_bytes:
+                raise ValueError('Incomplete message: no data while reading length prefix')
+            return None
         if not chunk:
             if length_bytes:
                 raise ValueError('Incomplete message: EOF while reading length prefix')
@@ -89,7 +96,10 @@ def deserialize_from_fd(fd: int, decoder: t.Callable | None = None) -> dict | No
     # Read message data
     data = b''
     while len(data) < length:
-        chunk = os.read(fd, length - len(data))
+        try:
+            chunk = os.read(fd, length - len(data))
+        except BlockingIOError:
+            raise ValueError(f'Incomplete message: no data while reading body ({len(data)}/{length} bytes)')
         if not chunk:
             raise ValueError('Incomplete message: EOF while reading data')
         data += chunk
