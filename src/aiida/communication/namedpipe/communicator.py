@@ -285,7 +285,7 @@ class PipeCommunicator(kiwipy.Communicator):
             return None
 
         # Create and register future with auto-cleanup callback
-        future = TimeoutFuture()
+        future = kiwipy.Future()
         future.add_done_callback(lambda _: self._cleanup_future(correlation_id))
         with self._futures_lock:
             self._pending_futures[correlation_id] = future

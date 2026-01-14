@@ -474,10 +474,14 @@ class ProcessScheduler:
 
         # Check limit
         current = self._running_counts.get(computer_label, 0)
+        queue = self._queues[computer_label]
 
         if current < limit:
             # Under limit - execute immediately
             self._handle_task_message(message)
+            # Add to queue as 'running' so we can track completion
+            task_id = queue.enqueue({'pid': pid, 'message': message})
+            queue.mark_running(task_id)
             self._running_counts[computer_label] = current + 1
             LOGGER.info(f'Executed process {pid} on {computer_label} ({current + 1}/{limit})')
         else:

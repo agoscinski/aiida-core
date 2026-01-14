@@ -631,6 +631,7 @@ def process_repair(dry_run):
     process_controller = manager.get_process_controller()
 
     revived_count = 0
+    failed_count = 0
     for pid in zombie_processes:
         try:
             process_controller.continue_process(pid)
@@ -638,8 +639,14 @@ def process_repair(dry_run):
             revived_count += 1
         except Exception as exc:
             echo.echo_warning(f'Failed to revive process `{pid}`: {exc}')
+            failed_count += 1
 
-    echo.echo_success(f'Revived {revived_count} process(es).')
+    if failed_count == 0:
+        echo.echo_success(f'Revived {revived_count} process(es).')
+    elif revived_count == 0:
+        echo.echo_error(f'Failed to revive all {failed_count} process(es).')
+    else:
+        echo.echo_warning(f'Revived {revived_count} process(es), failed to revive {failed_count}.')
 
 
 @verdi_process.command('dump')
