@@ -274,6 +274,7 @@ class ProcessScheduler:
         # Scheduling state
         self._queues: dict[str, ComputerQueue] = {}
         self._running_counts: dict[str, int] = {}
+        self._running_pids: dict[str, set[int]] = {}  # Track running PIDs in memory for polling
 
         # Load existing ComputerQueues from disk (for restart scenarios)
         self._load_existing_queues()
@@ -474,14 +475,14 @@ class ProcessScheduler:
 
         # Check limit
         current = self._running_counts.get(computer_label, 0)
-        queue = self._queues[computer_label]
 
         if current < limit:
             # Under limit - execute immediately
             self._handle_task_message(message)
-            # Add to queue as 'running' so we can track completion
-            task_id = queue.enqueue({'pid': pid, 'message': message})
-            queue.mark_running(task_id)
+            # Track running PID in memory for completion polling
+            if computer_label not in self._running_pids:
+                self._running_pids[computer_label] = set()
+            self._running_pids[computer_label].add(pid)
             self._running_counts[computer_label] = current + 1
             LOGGER.info(f'Executed process {pid} on {computer_label} ({current + 1}/{limit})')
         else:
@@ -519,7 +520,11 @@ class ProcessScheduler:
         if computer_label not in self._config.computer_limits:
             return
 
-        # Remove from queue if present
+        # Remove from in-memory running set
+        if computer_label in self._running_pids:
+            self._running_pids[computer_label].discard(pid)
+
+        # Remove from queue if present (for processes that were queued then executed)
         queue = self._queues.get(computer_label)
         if queue:
             queue.remove_running(pid)
@@ -693,14 +698,23 @@ class ProcessScheduler:
         """
         from aiida.orm import ProcessNode, QueryBuilder
 
-        for computer_label, queue in self._queues.items():
-            pids = queue.get_running_pids()
-            if not pids:
+        # Collect all running PIDs from both in-memory tracking and queue files
+        for computer_label in self._config.computer_limits:
+            # Get PIDs from in-memory set (immediately executed)
+            memory_pids = self._running_pids.get(computer_label, set())
+
+            # Get PIDs from queue files (queued then executed)
+            queue = self._queues.get(computer_label)
+            queue_pids = set(queue.get_running_pids()) if queue else set()
+
+            # Combine both sources
+            all_pids = list(memory_pids | queue_pids)
+            if not all_pids:
                 continue
 
             # Query database for these processes
             qb = QueryBuilder()
-            qb.append(ProcessNode, filters={'id': {'in': pids}}, project=['id', 'attributes.process_state'])
+            qb.append(ProcessNode, filters={'id': {'in': all_pids}}, project=['id', 'attributes.process_state'])
 
             for pid, state in qb.all():
                 if state in ['finished', 'failed', 'killed', 'excepted']:
