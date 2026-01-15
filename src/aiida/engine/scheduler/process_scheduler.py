@@ -18,25 +18,29 @@ from pathlib import Path
 from aiida.communication.namedpipe import discovery
 from aiida.engine.scheduler.task_queue import TaskQueue
 
-__all__ = ('ProcessScheduler', 'ProcessSchedulerConfig', 'ComputerQueue')
+__all__ = ('ProcessScheduler', 'ProcessSchedulerConfig', 'ProcessQueue')
 
 LOGGER = logging.getLogger(__name__)
 
 
-class ComputerQueue:
-    """Persistent queue for processes targeting a specific computer.
+class ProcessQueue:
+    """Persistent queue for processes with a specific queue identifier.
 
-    Each computer has its own queue stored on disk, allowing the scheduler
+    Each queue_id has its own queue stored on disk, allowing the scheduler
     to persist queued processes across restarts.
+
+    Queue identifiers follow the format:
+    - 'COMPUTER__<computer_label>' for CalcJobs (e.g., 'COMPUTER__localhost')
+    - 'LOCAL' for WorkChains/CalcFunctions
     """
 
-    def __init__(self, computer_label: str, queue_dir: Path):
-        """Initialize the computer queue.
+    def __init__(self, queue_id: str, queue_dir: Path):
+        """Initialize the process queue.
 
-        :param computer_label: The computer label for this queue.
-        :param queue_dir: Directory for storing queue files for this computer.
+        :param queue_id: The queue identifier (e.g., 'COMPUTER__localhost' or 'LOCAL').
+        :param queue_dir: Directory for storing queue files for this queue.
         """
-        self.computer_label = computer_label
+        self.queue_id = queue_id
         self.queue_dir = queue_dir
         self.queue_dir.mkdir(parents=True, exist_ok=True)
         self._lock = __import__('threading').Lock()
@@ -307,12 +311,12 @@ class ProcessScheduler:
         self._worker_index = 0
 
         # Scheduling state
-        self._queues: dict[str, ComputerQueue] = {}
+        self._queues: dict[str, ProcessQueue] = {}
         self._running_counts: dict[str, int] = {}
         self._running_pids: dict[str, set[int]] = {}  # Track running PIDs in memory for polling
-        self._pid_to_computer: dict[int, str] = {}  # Map PID to computer_label for completion handling
+        self._pid_to_queue_id: dict[int, str] = {}  # Map PID to queue_id for completion handling
 
-        # Load existing ComputerQueues from disk (for restart scenarios)
+        # Load existing ProcessQueues from disk (for restart scenarios)
         self._load_existing_queues()
 
         # Register callbacks with communicator
@@ -325,36 +329,38 @@ class ProcessScheduler:
         LOGGER.info(f'ProcessScheduler started for profile: {profile_name}')
 
     def _load_existing_queues(self) -> None:
-        """Load existing ComputerQueues from disk on startup.
+        """Load existing ProcessQueues from disk on startup.
 
         For computers with configured limits, checks if queue directories exist
         on disk and loads them into memory.
 
-        All "running" entries in ComputerQueue are cleaned up on startup since
+        All "running" entries in ProcessQueue are cleaned up on startup since
         they're stale (workers from before restart are gone). Tasks will be
-        re-added to ComputerQueue if needed when _requeue_orphaned_tasks runs.
+        re-added to ProcessQueue if needed when _requeue_orphaned_tasks runs.
         """
-        # Load ComputerQueues for pending tasks
+        # Load ProcessQueues for pending tasks
+        # Config uses computer_label, but queue dirs use full queue_id format
         for computer_label in self._config.computer_limits:
-            queue_dir = self._working_dir / 'queue' / computer_label
+            queue_id = f'COMPUTER__{computer_label}'
+            queue_dir = self._working_dir / 'queue' / queue_id
             if queue_dir.exists():
                 # Create queue instance (loads existing files)
-                queue = ComputerQueue(computer_label, queue_dir)
-                self._queues[computer_label] = queue
+                queue = ProcessQueue(queue_id, queue_dir)
+                self._queues[queue_id] = queue
 
                 # Clean up stale "running" entries from previous scheduler run
                 # These are always stale after restart since old workers are gone
                 running_pids = queue.get_running_pids()
                 for pid in running_pids:
                     queue.remove_running(pid)
-                    LOGGER.debug(f'Cleaned up stale running entry for pid={pid} in {computer_label}')
+                    LOGGER.debug(f'Cleaned up stale running entry for pid={pid} in {queue_id}')
 
                 if running_pids:
-                    LOGGER.info(f'Cleaned up {len(running_pids)} stale running entries for {computer_label}')
+                    LOGGER.info(f'Cleaned up {len(running_pids)} stale running entries for {queue_id}')
 
                 # Count remaining pending entries
                 pending_count = sum(1 for _ in queue_dir.glob('proc_*.json'))
-                LOGGER.info(f'Loaded queue for {computer_label}: {pending_count} pending')
+                LOGGER.info(f'Loaded queue for {queue_id}: {pending_count} pending')
 
     def _on_task_received(self, message: dict) -> None:
         """Callback invoked when task message received from communicator.
@@ -418,10 +424,10 @@ class ProcessScheduler:
             return
 
         # Strip scheduler-specific metadata from args before sending to worker
-        # The computer_label is used by the scheduler for throttling but ProcessLauncher doesn't expect it
+        # The queue_id is used by the scheduler for routing but ProcessLauncher doesn't expect it
         worker_message = copy.deepcopy(message)
         if 'body' in worker_message and 'args' in worker_message['body']:
-            worker_message['body']['args'].pop('computer_label', None)
+            worker_message['body']['args'].pop('queue_id', None)
 
         # Round-robin worker selection
         worker = workers[self._worker_index % len(workers)]
@@ -434,7 +440,7 @@ class ProcessScheduler:
         self._sanitize_reply_pipe(worker_message, worker)
 
         try:
-            # Send task via communicator (use worker_message with computer_label stripped)
+            # Send task via communicator (use worker_message with queue_id stripped)
             self._communicator.task_send(worker['task_pipe'], worker_message, non_blocking=True)
 
             # Mark as assigned
@@ -482,23 +488,43 @@ class ProcessScheduler:
 
         LOGGER.debug(f'Broadcast sent to {success_count}/{len(workers)} workers')
 
+    def _get_computer_label_from_queue_id(self, queue_id: str) -> str | None:
+        """Extract computer_label from queue_id if it's a computer queue.
+
+        :param queue_id: Queue identifier (e.g., 'COMPUTER__localhost' or 'LOCAL')
+        :return: Computer label if queue_id is for a computer, None otherwise
+        """
+        if queue_id.startswith('COMPUTER__'):
+            return queue_id[len('COMPUTER__'):]
+        return None
+
     def _schedule_process(self, pid: int, message: dict) -> None:
-        """Apply per-computer scheduling logic.
+        """Apply queue-based scheduling logic.
 
         Checks concurrency limits and either executes immediately or queues.
-        Computers without configured limits have unlimited concurrency.
+        Queues without configured limits have unlimited concurrency.
 
         :param pid: Process ID
         :param message: Task message
         """
-        # Get computer_label from message metadata (set by launch.py/runners.py for CalcJobs)
-        # WorkChains don't have a computer, so computer_label will be None
-        computer_label = message.get('body', {}).get('args', {}).get('computer_label')
+        # Get queue_id from message metadata (set by launch.py/runners.py via plumpy metadata)
+        # Format: 'COMPUTER__<label>' for CalcJobs, 'LOCAL' for WorkChains/CalcFunctions
+        queue_id = message.get('body', {}).get('args', {}).get('queue_id')
+
+        if queue_id is None:
+            # No queue_id (legacy message or error) - execute immediately
+            self._handle_task_message(message)
+            LOGGER.debug(f'Executed process {pid} (no queue_id)')
+            return
+
+        # Extract computer_label from queue_id to check limits
+        # Config uses computer_label, queue uses full queue_id
+        computer_label = self._get_computer_label_from_queue_id(queue_id)
 
         if computer_label is None:
-            # No computer (WorkChain) - execute immediately without scheduling
+            # Not a computer queue (e.g., 'LOCAL') - execute immediately without scheduling
             self._handle_task_message(message)
-            LOGGER.debug(f'Executed process {pid} (no computer)')
+            LOGGER.debug(f'Executed process {pid} (queue_id={queue_id})')
             return
 
         # Check if this computer has a limit configured
@@ -507,102 +533,109 @@ class ProcessScheduler:
         if limit is None:
             # No limit configured - execute immediately (unlimited)
             self._handle_task_message(message)
-            LOGGER.debug(f'Executed process {pid} on {computer_label} (unlimited)')
+            LOGGER.debug(f'Executed process {pid} on {queue_id} (unlimited)')
             return
 
-        # Get or create queue for this computer (only for limited computers)
-        if computer_label not in self._queues:
-            queue_dir = self._working_dir / 'queue' / computer_label
-            self._queues[computer_label] = ComputerQueue(computer_label, queue_dir)
-            LOGGER.info(f'Created queue for computer: {computer_label}')
+        # Get or create queue for this queue_id (only for limited queues)
+        if queue_id not in self._queues:
+            queue_dir = self._working_dir / 'queue' / queue_id
+            self._queues[queue_id] = ProcessQueue(queue_id, queue_dir)
+            LOGGER.info(f'Created queue: {queue_id}')
 
         # Check limit
-        current = self._running_counts.get(computer_label, 0)
+        current = self._running_counts.get(queue_id, 0)
 
-        # Store pid -> computer_label mapping for completion handling
-        self._pid_to_computer[pid] = computer_label
+        # Store pid -> queue_id mapping for completion handling
+        self._pid_to_queue_id[pid] = queue_id
 
         if current < limit:
             # Under limit - execute immediately
             self._handle_task_message(message)
             # Track running PID in memory for completion polling
-            if computer_label not in self._running_pids:
-                self._running_pids[computer_label] = set()
-            self._running_pids[computer_label].add(pid)
-            self._running_counts[computer_label] = current + 1
-            LOGGER.info(f'Executed process {pid} on {computer_label} ({current + 1}/{limit})')
+            if queue_id not in self._running_pids:
+                self._running_pids[queue_id] = set()
+            self._running_pids[queue_id].add(pid)
+            self._running_counts[queue_id] = current + 1
+            LOGGER.info(f'Executed process {pid} on {queue_id} ({current + 1}/{limit})')
         else:
             # At limit - enqueue
-            self._queues[computer_label].enqueue({'pid': pid, 'message': message})
-            LOGGER.info(f'Queued process {pid} for {computer_label} (at limit {current}/{limit})')
+            self._queues[queue_id].enqueue({'pid': pid, 'message': message})
+            LOGGER.info(f'Queued process {pid} for {queue_id} (at limit {current}/{limit})')
 
-    def on_completion(self, pid: int, computer_label: str | None = None) -> None:
+    def on_completion(self, pid: int, queue_id: str | None = None) -> None:
         """Handle process completion (decrement count, try submit next).
 
         This method should be called externally when a process completes.
 
         :param pid: Process ID that completed
-        :param computer_label: Optional computer label (if known from context)
+        :param queue_id: Optional queue identifier (if known from context)
         """
-        # Get computer_label from parameter or from our mapping (set when process was scheduled)
-        if computer_label is None:
-            computer_label = self._pid_to_computer.pop(pid, None)
+        # Get queue_id from parameter or from our mapping (set when process was scheduled)
+        if queue_id is None:
+            queue_id = self._pid_to_queue_id.pop(pid, None)
         else:
             # Clear from mapping if it was there
-            self._pid_to_computer.pop(pid, None)
+            self._pid_to_queue_id.pop(pid, None)
 
-        if computer_label is None:
-            # Process wasn't tracked (unlimited computer or WorkChain)
+        if queue_id is None:
+            # Process wasn't tracked (unlimited queue or LOCAL)
             return
 
-        # Check if this computer has a limit (only track limited computers)
-        if computer_label not in self._config.computer_limits:
+        # Extract computer_label to check if this queue has a limit
+        computer_label = self._get_computer_label_from_queue_id(queue_id)
+        if computer_label is None or computer_label not in self._config.computer_limits:
             return
 
         # Remove from in-memory running set
-        if computer_label in self._running_pids:
-            self._running_pids[computer_label].discard(pid)
+        if queue_id in self._running_pids:
+            self._running_pids[queue_id].discard(pid)
 
         # Remove from queue if present (for processes that were queued then executed)
-        queue = self._queues.get(computer_label)
+        queue = self._queues.get(queue_id)
         if queue:
             queue.remove_running(pid)
 
         # Decrement count
-        current = self._running_counts.get(computer_label, 0)
+        current = self._running_counts.get(queue_id, 0)
         if current > 0:
-            self._running_counts[computer_label] = current - 1
-            LOGGER.info(f'Process {pid} completed on {computer_label}. New count: {current - 1}')
+            self._running_counts[queue_id] = current - 1
+            LOGGER.info(f'Process {pid} completed on {queue_id}. New count: {current - 1}')
 
         # Try to submit next queued process
-        self._try_submit_next(computer_label)
+        self._try_submit_next(queue_id)
 
-    def _try_submit_next(self, computer_label: str) -> None:
+    def _try_submit_next(self, queue_id: str) -> None:
         """Try to submit next queued process.
 
-        :param computer_label: Computer label
+        :param queue_id: Queue identifier
         """
-        queue = self._queues.get(computer_label)
+        queue = self._queues.get(queue_id)
         if not queue:
-            LOGGER.debug(f'No queue for {computer_label}')
+            LOGGER.debug(f'No queue for {queue_id}')
+            return
+
+        # Extract computer_label to get limit from config
+        computer_label = self._get_computer_label_from_queue_id(queue_id)
+        if computer_label is None:
+            LOGGER.debug(f'Not a computer queue: {queue_id}')
             return
 
         limit = self._config.computer_limits.get(computer_label)
         if limit is None:
             # No limit - shouldn't have a queue, but handle gracefully
-            LOGGER.debug(f'No limit for {computer_label}')
+            LOGGER.debug(f'No limit for {queue_id}')
             return
 
-        current = self._running_counts.get(computer_label, 0)
+        current = self._running_counts.get(queue_id, 0)
 
         if current >= limit:
-            LOGGER.debug(f'Computer {computer_label} still at limit ({current}/{limit})')
+            LOGGER.debug(f'Queue {queue_id} still at limit ({current}/{limit})')
             return
 
         # Get next pending process
         pending = queue.get_pending()
         if not pending:
-            LOGGER.debug(f'No pending process for {computer_label}')
+            LOGGER.debug(f'No pending process for {queue_id}')
             return
 
         # Submit via broker
@@ -613,9 +646,9 @@ class ProcessScheduler:
 
             # Mark as running
             queue.mark_running(pending['id'])
-            self._running_counts[computer_label] = current + 1
+            self._running_counts[queue_id] = current + 1
 
-            LOGGER.info(f'Submitted queued process {pid} to {computer_label} ({current + 1}/{limit})')
+            LOGGER.info(f'Submitted queued process {pid} to {queue_id} ({current + 1}/{limit})')
 
         except Exception as exc:
             LOGGER.error(f'Failed to submit process: {exc}')
@@ -660,9 +693,9 @@ class ProcessScheduler:
             if self._queues:
                 self._poll_running_processes()
 
-            # Try to schedule pending processes from ComputerQueues
-            for computer_label in self._queues:
-                self._try_submit_next(computer_label)
+            # Try to schedule pending processes from ProcessQueues
+            for queue_id in self._queues:
+                self._try_submit_next(queue_id)
 
         except Exception as exc:
             LOGGER.exception(f'Error in maintenance: {exc}')
@@ -690,19 +723,22 @@ class ProcessScheduler:
                     task_id = task_data['id']
                     message = task_data['message']
 
-                    # Check if this is a CalcJob with computer limit
-                    computer_label = message.get('body', {}).get('args', {}).get('computer_label')
+                    # Check if this is a process with a queue that has limits
+                    queue_id = message.get('body', {}).get('args', {}).get('queue_id')
                     pid = message.get('body', {}).get('args', {}).get('pid')
+
+                    # Extract computer_label from queue_id to check limits
+                    computer_label = self._get_computer_label_from_queue_id(queue_id) if queue_id else None
 
                     if computer_label and computer_label in self._config.computer_limits:
                         # CalcJob with limit - remove from TaskQueue and re-schedule
                         # This decrements the effective running count and respects limits
                         LOGGER.info(f'Requeueing CalcJob task {task_id} (pid={pid}) through scheduler')
                         self._task_queue.mark_completed(task_id)
-                        # Remove from pid_to_computer tracking (will be re-added if scheduled)
-                        self._pid_to_computer.pop(pid, None)
-                        # Also clean up any stale ComputerQueue entry
-                        queue = self._queues.get(computer_label)
+                        # Remove from pid_to_queue_id tracking (will be re-added if scheduled)
+                        self._pid_to_queue_id.pop(pid, None)
+                        # Also clean up any stale ProcessQueue entry
+                        queue = self._queues.get(queue_id)
                         if queue:
                             queue.remove_running(pid)
                         # Re-route through scheduling logic
@@ -730,13 +766,16 @@ class ProcessScheduler:
             task_id = task_data['id']
             message = task_data['message']
 
-            # Check if this is a CalcJob with computer limit
-            computer_label = message.get('body', {}).get('args', {}).get('computer_label')
+            # Check if this is a process with a queue that has limits
+            queue_id = message.get('body', {}).get('args', {}).get('queue_id')
             pid = message.get('body', {}).get('args', {}).get('pid')
+
+            # Extract computer_label from queue_id to check limits
+            computer_label = self._get_computer_label_from_queue_id(queue_id) if queue_id else None
 
             if computer_label and computer_label in self._config.computer_limits:
                 # CalcJob with limit - route through scheduler
-                # First remove from TaskQueue (will be tracked in ComputerQueue)
+                # First remove from TaskQueue (will be tracked in ProcessQueue)
                 self._task_queue.mark_completed(task_id)
                 LOGGER.info(f'Processing pending CalcJob task (pid={pid}) through scheduler')
                 self._schedule_process(pid, message)
@@ -797,14 +836,15 @@ class ProcessScheduler:
         """
         from aiida.orm import ProcessNode, QueryBuilder
 
-        # Process each computer with limits
+        # Process each queue with limits
         for computer_label in self._config.computer_limits:
-            queue = self._queues.get(computer_label)
+            queue_id = f'COMPUTER__{computer_label}'
+            queue = self._queues.get(queue_id)
             if not queue:
                 continue
 
             # Get PIDs from in-memory set (immediately executed - running)
-            memory_pids = self._running_pids.get(computer_label, set())
+            memory_pids = self._running_pids.get(queue_id, set())
 
             # Get PIDs from queue files - both running and pending
             running_pids = set(queue.get_running_pids())
@@ -820,7 +860,7 @@ class ProcessScheduler:
                 for pid, state in qb.all():
                     if state in ['finished', 'failed', 'killed', 'excepted']:
                         LOGGER.warning(f'Missed completion event for {pid}, handling now')
-                        self.on_completion(pid, computer_label)
+                        self.on_completion(pid, queue_id)
 
             # Check pending processes - remove stale entries (no completion handling needed)
             if pending_pids:
@@ -851,8 +891,9 @@ class ProcessScheduler:
         if self._config.computer_limits:
             computers = {}
             for computer_label, limit in self._config.computer_limits.items():
-                running = self._running_counts.get(computer_label, 0)
-                queue = self._queues.get(computer_label)
+                queue_id = f'COMPUTER__{computer_label}'
+                running = self._running_counts.get(queue_id, 0)
+                queue = self._queues.get(queue_id)
 
                 if queue:
                     queued = len(list(queue.queue_dir.glob('proc_*.json')))
@@ -903,8 +944,8 @@ class ProcessScheduler:
             except (json.JSONDecodeError, OSError, KeyError, ValueError, TypeError):
                 pass
 
-        # Check ComputerQueues (for limited computers)
-        for computer_label, queue in self._queues.items():
+        # Check ProcessQueues (for limited queues)
+        for queue_id, queue in self._queues.items():
             for task_file in queue.queue_dir.glob('proc_*.json'):
                 try:
                     with open(task_file) as f:

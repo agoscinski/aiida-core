@@ -74,7 +74,7 @@ def _get_queue_status_for_processes(pids: list[int]) -> dict[int, str | None]:
     This function gracefully handles the case when the scheduler is not running.
 
     :param pids: List of process IDs to query.
-    :return: Dict mapping PID to status ('queued', 'scheduled', or None).
+    :return: Dict mapping PID to status ('queued', 'running', or None).
     """
     if not pids:
         return {}
@@ -92,6 +92,35 @@ def _get_queue_status_for_processes(pids: list[int]) -> dict[int, str | None]:
     except Exception:
         # Any error - return empty status for all
         return {pid: None for pid in pids}
+
+
+def _get_queue_identifiers_for_processes(pids: list[int]) -> dict[int, str]:
+    """Get queue identifiers for a list of process IDs.
+
+    Queue identifiers follow the format:
+    - 'COMPUTER__<computer_label>' for CalcJobs
+    - 'LOCAL' for WorkChains/CalcFunctions
+
+    :param pids: List of process IDs to query.
+    :return: Dict mapping PID to queue identifier.
+    """
+    if not pids:
+        return {}
+
+    from aiida.orm import Computer, ProcessNode, QueryBuilder
+
+    # Default all to LOCAL
+    result: dict[int, str] = {pid: 'LOCAL' for pid in pids}
+
+    # Query processes that have computers (CalcJobs)
+    qb = QueryBuilder()
+    qb.append(ProcessNode, filters={'id': {'in': pids}}, project=['id'], tag='process')
+    qb.append(Computer, with_node='process', project=['label'])
+
+    for pid, computer_label in qb.all():
+        result[pid] = f'COMPUTER__{computer_label}'
+
+    return result
 
 
 @verdi.group('process')
@@ -172,16 +201,26 @@ def process_list(
     # Query scheduler for queue status (graceful handling if scheduler not running)
     queue_status = _get_queue_status_for_processes(pids)
 
-    # Add Queue column
-    headers = list(headers) + ['Queue']
+    # Get queue identifiers for processes
+    queue_identifiers = _get_queue_identifiers_for_processes(pids)
+
+    # Add Queue and Queue Status columns
+    headers = list(headers) + ['Queue', 'Queue Status']
     for i, row in enumerate(projected):
-        status = queue_status.get(pids[i])
+        pid = pids[i]
+
+        # Queue identifier (COMPUTER__<label> or LOCAL)
+        queue_id = queue_identifiers.get(pid, '')
+
+        # Queue status (Pending, Running, or empty)
+        status = queue_status.get(pid)
         status_str = ''
         if status == 'queued':
-            status_str = 'Queued'
+            status_str = 'Pending'
         elif status == 'running':
             status_str = 'Running'
-        projected[i] = list(row) + [status_str]
+
+        projected[i] = list(row) + [queue_id, status_str]
 
     # Remove pk column if we added it just for queue status
     if not pk_included:
@@ -647,10 +686,13 @@ def process_repair(dry_run):
     failed_count = 0
     for pid in zombie_processes:
         try:
-            # Get computer_label for scheduler routing
+            # Get queue_id for scheduler routing
             computer_label = pid_to_computer.get(pid)
-            metadata = {'computer_label': computer_label} if computer_label else None
-            process_controller.continue_process(pid, metadata=metadata)
+            if computer_label is not None:
+                queue_id = f'COMPUTER__{computer_label}'
+            else:
+                queue_id = 'LOCAL'
+            process_controller.continue_process(pid, metadata={'queue_id': queue_id})
             echo.echo_report(f'Revived process `{pid}`')
             revived_count += 1
         except Exception as exc:

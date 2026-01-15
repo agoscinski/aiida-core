@@ -20,7 +20,6 @@ from aiida.manage import manager
 from aiida.orm import ProcessNode
 
 from .processes.builder import ProcessBuilder
-from .processes.calcjobs import CalcJob
 from .processes.functions import FunctionProcess
 from .processes.process import Process
 from .runners import ResultAndPk
@@ -172,13 +171,11 @@ def submit(
     runner.persister.save_checkpoint(process_inited)
     process_inited.close()
 
-    # Get computer_label from CalcJob processes for scheduler optimization
-    metadata = None
-    if isinstance(process_inited, CalcJob):
-        metadata = {'computer_label': process_inited.get_computer_label()}
+    # Get queue identifier for scheduler routing
+    queue_id = process_inited.get_queue_identifier()
 
     # Do not wait for the future's result, because in the case of a single worker this would cock-block itself
-    runner.controller.continue_process(process_inited.pid, nowait=False, no_reply=True, metadata=metadata)
+    runner.controller.continue_process(process_inited.pid, nowait=False, no_reply=True, metadata={'queue_id': queue_id})
     node = process_inited.node
 
     if not wait:

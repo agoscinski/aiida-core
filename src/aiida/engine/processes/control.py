@@ -88,10 +88,13 @@ def revive_processes(processes: list[ProcessNode], *, wait: bool = False) -> Non
     process_controller = get_manager().get_process_controller()
 
     for process in processes:
-        # Get computer_label for scheduler routing (if process has a computer)
-        computer_label = process.computer.label if process.computer else None
-        metadata = {'computer_label': computer_label} if computer_label else None
-        future = process_controller.continue_process(process.pk, nowait=not wait, no_reply=False, metadata=metadata)
+        # Get queue identifier for scheduler routing
+        # CalcJobs have a computer, others (WorkChains) don't
+        if process.computer is not None:
+            queue_id = f'COMPUTER__{process.computer.label}'
+        else:
+            queue_id = 'LOCAL'
+        future = process_controller.continue_process(process.pk, nowait=not wait, no_reply=False, metadata={'queue_id': queue_id})
 
         if future:
             response = future.result()  # type: ignore[union-attr]
