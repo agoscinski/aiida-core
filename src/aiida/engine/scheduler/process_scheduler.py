@@ -16,7 +16,6 @@ import logging
 from pathlib import Path
 
 from aiida.communication.namedpipe import discovery
-from aiida.engine.scheduler.task_queue import TaskQueue
 
 __all__ = ('ProcessScheduler', 'ProcessSchedulerConfig', 'ProcessQueue')
 
@@ -185,22 +184,154 @@ class ProcessQueue:
                     pass
         return False
 
-    def cleanup_old_tasks(self, max_age_seconds: int = 86400):
+    def cleanup_old_tasks(self, max_age_seconds: int = 86400) -> int:
         """Clean up old completed tasks.
 
         :param max_age_seconds: Maximum age in seconds (default: 1 day).
+        :return: Number of tasks cleaned up.
         """
         import time
 
+        count = 0
         with self._lock:
             current_time = time.time()
-            for task_file in self.queue_dir.glob('proc_*.json'):
+            for task_file in self._glob_task_files():
                 try:
                     mtime = task_file.stat().st_mtime
                     if current_time - mtime > max_age_seconds:
                         task_file.unlink()
+                        count += 1
                 except OSError:
                     pass
+        return count
+
+    def _glob_task_files(self):
+        """Get all task files in queue directory.
+
+        Supports both 'proc_*.json' (throttling queues) and 'task_*.json' (general task queue).
+        """
+        yield from self.queue_dir.glob('proc_*.json')
+        yield from self.queue_dir.glob('task_*.json')
+
+    # --- Methods below are for general task distribution ---
+
+    def enqueue_task(self, task_message: dict) -> str:
+        """Add a task to the queue (for general task distribution).
+
+        Unlike enqueue() which expects {'pid': ..., 'message': ...}, this method
+        stores the task message directly with worker assignment tracking.
+
+        :param task_message: The task message to enqueue.
+        :return: Task ID.
+        """
+        import time
+
+        with self._lock:
+            task_id = f'task_{int(time.time() * 1000)}_{id(task_message) % 10000}'
+
+            task_file = self.queue_dir / f'{task_id}.json'
+            task_data = {
+                'id': task_id,
+                'message': task_message,
+                'status': 'pending',
+                'assigned_to': None,
+                'enqueued_at': time.time(),
+            }
+
+            with open(task_file, 'w') as f:
+                json.dump(task_data, f)
+
+            return task_id
+
+    def get_pending_tasks(self) -> list[dict]:
+        """Get all pending tasks.
+
+        :return: List of pending task data dicts.
+        """
+        pending = []
+        with self._lock:
+            for task_file in self._glob_task_files():
+                try:
+                    with open(task_file) as f:
+                        task_data = json.load(f)
+                        if task_data.get('status') == 'pending':
+                            pending.append(task_data)
+                except (json.JSONDecodeError, OSError):
+                    pass
+        return pending
+
+    def get_all_tasks(self) -> list[dict]:
+        """Get all tasks (pending and assigned).
+
+        :return: List of all task data dicts.
+        """
+        tasks = []
+        with self._lock:
+            for task_file in self._glob_task_files():
+                try:
+                    with open(task_file) as f:
+                        task_data = json.load(f)
+                        tasks.append(task_data)
+                except (json.JSONDecodeError, OSError):
+                    pass
+        return tasks
+
+    def mark_assigned(self, task_id: str, worker_id: str) -> None:
+        """Mark a task as assigned to a worker.
+
+        :param task_id: The task ID.
+        :param worker_id: The worker ID.
+        """
+        with self._lock:
+            task_file = self.queue_dir / f'{task_id}.json'
+            if not task_file.exists():
+                return
+
+            try:
+                with open(task_file) as f:
+                    task_data = json.load(f)
+
+                task_data['status'] = 'assigned'
+                task_data['assigned_to'] = worker_id
+
+                with open(task_file, 'w') as f:
+                    json.dump(task_data, f)
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    def reset_to_pending(self, task_id: str) -> None:
+        """Reset an assigned task back to pending status.
+
+        :param task_id: The task ID to reset.
+        """
+        with self._lock:
+            task_file = self.queue_dir / f'{task_id}.json'
+            if not task_file.exists():
+                return
+
+            try:
+                with open(task_file) as f:
+                    task_data = json.load(f)
+
+                task_data['status'] = 'pending'
+                task_data['assigned_to'] = None
+
+                with open(task_file, 'w') as f:
+                    json.dump(task_data, f)
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    def mark_completed(self, task_id: str) -> None:
+        """Mark a task as completed and remove it.
+
+        :param task_id: The task ID.
+        """
+        with self._lock:
+            task_file = self.queue_dir / f'{task_id}.json'
+            try:
+                task_file.unlink()
+            except FileNotFoundError:
+                pass
 
 
 class ProcessSchedulerConfig:
@@ -304,8 +435,8 @@ class ProcessScheduler:
         self._config = config or ProcessSchedulerConfig()
         self._executor = executor
 
-        # Task queue for persistence
-        self._task_queue = TaskQueue(self._working_dir / 'queue' / 'tasks')
+        # Task queue for persistence (using ProcessQueue with queue_id='tasks')
+        self._task_queue = ProcessQueue('tasks', self._working_dir / 'queue')
 
         # Worker selection (round-robin)
         self._worker_index = 0
@@ -400,7 +531,7 @@ class ProcessScheduler:
         :param message: Task message dict
         """
         # Persist task
-        task_id = self._task_queue.enqueue(message)
+        task_id = self._task_queue.enqueue_task(message)
 
         # Distribute to available worker
         self._distribute_task(task_id, message)
@@ -731,7 +862,7 @@ class ProcessScheduler:
                     computer_label = self._get_computer_label_from_queue_id(queue_id) if queue_id else None
 
                     if computer_label and computer_label in self._config.computer_limits:
-                        # CalcJob with limit - remove from TaskQueue and re-schedule
+                        # CalcJob with limit - remove from task queue and re-schedule
                         # This decrements the effective running count and respects limits
                         LOGGER.info(f'Requeueing CalcJob task {task_id} (pid={pid}) through scheduler')
                         self._task_queue.mark_completed(task_id)
@@ -775,7 +906,7 @@ class ProcessScheduler:
 
             if computer_label and computer_label in self._config.computer_limits:
                 # CalcJob with limit - route through scheduler
-                # First remove from TaskQueue (will be tracked in ProcessQueue)
+                # First remove from task queue (will be tracked in ProcessQueue)
                 self._task_queue.mark_completed(task_id)
                 LOGGER.info(f'Processing pending CalcJob task (pid={pid}) through scheduler')
                 self._schedule_process(pid, message)
@@ -918,7 +1049,7 @@ class ProcessScheduler:
         result: dict[int, str | None] = {pid: None for pid in pids}
         pids_set = set(pids)
 
-        # Check TaskQueue (general task queue for all processes)
+        # Check task queue (general task queue for all processes)
         for task_file in self._task_queue.queue_dir.glob('task_*.json'):
             try:
                 with open(task_file) as f:
