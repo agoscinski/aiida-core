@@ -386,8 +386,8 @@ class PipeCommunicator(kiwipy.Communicator):
         # Register subscriber
         self._task_subscribers[identifier] = subscriber
 
-        # Create task pipe if first subscriber
-        if len(self._task_subscribers) == 1:
+        # Create task pipe if first subscriber AND not already initialized
+        if len(self._task_subscribers) == 1 and self._task_fd is None:
             self._init_task_pipe()
 
         return identifier
@@ -548,8 +548,8 @@ class PipeCommunicator(kiwipy.Communicator):
         # Register subscriber
         self._rpc_subscribers[identifier] = subscriber
 
-        # Create RPC pipe if first subscriber
-        if len(self._rpc_subscribers) == 1:
+        # Create RPC pipe if first subscriber AND not already initialized
+        if len(self._rpc_subscribers) == 1 and self._rpc_fd is None:
             self._init_rpc_pipe()
 
         return identifier
@@ -680,8 +680,8 @@ class PipeCommunicator(kiwipy.Communicator):
         # Register subscriber
         self._broadcast_subscribers[identifier] = subscriber
 
-        # Create broadcast pipe if first subscriber
-        if len(self._broadcast_subscribers) == 1:
+        # Create broadcast pipe if first subscriber AND not already initialized
+        if len(self._broadcast_subscribers) == 1 and self._broadcast_fd is None:
             self._init_broadcast_pipe()
 
         return identifier

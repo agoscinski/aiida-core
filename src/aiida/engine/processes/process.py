@@ -175,7 +175,6 @@ class Process(PlumpyProcess):
         from aiida.manage import manager
 
         self._runner = runner if runner is not None else manager.get_manager().get_runner()
-        # assert self._runner.communicator is not None, 'communicator not set for runner'
 
         super().__init__(
             inputs=self.spec().inputs.serialize(inputs),

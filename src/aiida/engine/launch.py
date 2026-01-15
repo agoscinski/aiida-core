@@ -140,7 +140,6 @@ def submit(
     if is_process_scoped() and not isinstance(Process.current(), FunctionProcess):
         raise InvalidOperation('Cannot use top-level `submit` from within another process, use `self.submit` instead')
 
-
     _auto_start_scheduler()
 
     runner = manager.get_manager().get_runner()
@@ -176,6 +175,7 @@ def submit(
 
     # Do not wait for the future's result, because in the case of a single worker this would cock-block itself
     runner.controller.continue_process(process_inited.pid, nowait=False, no_reply=True, metadata={'queue_id': queue_id})
+
     node = process_inited.node
 
     if not wait:
