@@ -650,6 +650,9 @@ class ProcessScheduler:
             # Requeue tasks assigned to dead workers
             self._requeue_orphaned_tasks()
 
+            # Process pending tasks that were never assigned (e.g., from before restart)
+            self._process_pending_tasks()
+
             # Clean up tasks for processes that have completed
             self._cleanup_completed_tasks()
 
@@ -709,6 +712,38 @@ class ProcessScheduler:
                         LOGGER.info(f'Requeueing task {task_id} from dead worker {assigned_to}')
                         self._task_queue.reset_to_pending(task_id)
                         self._distribute_task(task_id, message)
+
+    def _process_pending_tasks(self) -> None:
+        """Process pending tasks that were never assigned.
+
+        This handles tasks that were queued before a scheduler restart but never
+        got assigned to a worker. Routes CalcJobs through _schedule_process for
+        proper throttling.
+        """
+        pending_tasks = self._task_queue.get_pending_tasks()
+
+        for task_data in pending_tasks:
+            # Only process tasks that have never been assigned
+            if task_data.get('assigned_to') is not None:
+                continue
+
+            task_id = task_data['id']
+            message = task_data['message']
+
+            # Check if this is a CalcJob with computer limit
+            computer_label = message.get('body', {}).get('args', {}).get('computer_label')
+            pid = message.get('body', {}).get('args', {}).get('pid')
+
+            if computer_label and computer_label in self._config.computer_limits:
+                # CalcJob with limit - route through scheduler
+                # First remove from TaskQueue (will be tracked in ComputerQueue)
+                self._task_queue.mark_completed(task_id)
+                LOGGER.info(f'Processing pending CalcJob task (pid={pid}) through scheduler')
+                self._schedule_process(pid, message)
+            else:
+                # WorkChain or unlimited - distribute directly to worker
+                LOGGER.info(f'Distributing pending task {task_id} (pid={pid})')
+                self._distribute_task(task_id, message)
 
     def _cleanup_completed_tasks(self) -> None:
         """Clean up tasks for processes that have reached terminal state.
