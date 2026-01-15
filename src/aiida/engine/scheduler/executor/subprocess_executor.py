@@ -405,6 +405,25 @@ class SubprocessWorkerExecutor:
             raise RuntimeError('verdi executable not found in PATH')
         return verdi_path
 
+    def cleanup_orphaned_workers(self) -> int:
+        """Clean up orphaned workers from previous broker instances.
+
+        This method discovers workers registered in the discovery system that
+        are no longer running (e.g., after a broker crash/restart) and cleans
+        up their discovery entries and any associated resources (pipes, etc.).
+
+        Should be called during broker startup to handle stale state from
+        previous instances.
+
+        :return: Number of orphaned workers cleaned up
+        """
+        from aiida.communication.namedpipe import discovery
+
+        count = discovery.cleanup_dead_processes(self._profile_name)
+        if count > 0:
+            LOGGER.info(f'Cleaned up {count} orphaned worker discovery entries')
+        return count
+
     def _start_log_forwarding(self, worker_id: str, process: subprocess.Popen) -> list[threading.Thread]:
         """Start threads to forward worker stdout/stderr to the daemon log file.
 

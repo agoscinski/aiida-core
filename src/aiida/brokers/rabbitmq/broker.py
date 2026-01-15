@@ -187,12 +187,7 @@ class RabbitmqBroker:
             'Use get_communicator().remove_broadcast_subscriber() instead.'
         )
 
-    def task_send(
-        self,
-        worker_pipe: str,
-        message: dict,
-        non_blocking: bool = True,
-    ) -> None:
+    def task_send(self, message: dict) -> None:
         """Send a task message to a specific worker.
 
         :raises NotImplementedError: RabbitMQ broker uses kiwipy's task_send.
@@ -202,13 +197,8 @@ class RabbitmqBroker:
             'Use get_communicator().task_send() instead.'
         )
 
-    def broadcast_send(
-        self,
-        worker_pipes: list[str],
-        message: dict,
-        non_blocking: bool = True,
-    ) -> int:
-        """Send broadcast message to multiple workers.
+    def broadcast_send(self, message: dict) -> int:
+        """Send broadcast message to all workers.
 
         :raises NotImplementedError: RabbitMQ broker uses kiwipy's broadcast_send.
         """
@@ -217,12 +207,18 @@ class RabbitmqBroker:
             'Use get_communicator().broadcast_send() instead.'
         )
 
-    def get_broker_pipes(self) -> dict[str, str]:
-        """Get broker pipe paths for discovery registration.
+    def register_in_discovery(self) -> None:
+        """Register this communicator in the discovery system.
 
-        :raises NotImplementedError: RabbitMQ broker doesn't use pipes.
+        RabbitMQ does not use file-based discovery - it uses AMQP message routing.
+        This is a no-op for RabbitMQ.
         """
-        raise NotImplementedError(
-            'RabbitMQ broker does not use named pipes for communication. '
-            'Use RabbitMQ management API or get_url() instead.'
-        )
+        pass
+
+    def unregister_from_discovery(self) -> None:
+        """Unregister this communicator from the discovery system.
+
+        RabbitMQ does not use file-based discovery - it uses AMQP message routing.
+        This is a no-op for RabbitMQ.
+        """
+        pass

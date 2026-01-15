@@ -570,18 +570,21 @@ class ProcessScheduler:
         # Sanitize reply pipe
         self._sanitize_reply_pipe(worker_message, worker)
 
+        # Add routing header for communicator
+        worker_message['_routing'] = {'target_worker': worker_id}
+
         try:
-            # Send task via communicator (use worker_message with queue_id stripped)
-            self._communicator.task_send(worker['task_pipe'], worker_message, non_blocking=True)
+            # Send task via communicator
+            self._communicator.task_send(worker_message)
 
             # Mark as assigned
             self._task_queue.mark_assigned(task_id, worker_id)
 
             LOGGER.debug(f'Distributed task {task_id} to worker {worker_id}')
 
-        except (BrokenPipeError, FileNotFoundError, OSError) as exc:
+        except (BrokenPipeError, FileNotFoundError, OSError, ValueError) as exc:
             LOGGER.warning(
-                f'Worker {worker_id} pipe unavailable ({type(exc).__name__}), ' f'requeueing task {task_id}'
+                f'Worker {worker_id} unavailable ({type(exc).__name__}), ' f'requeueing task {task_id}'
             )
 
     def _sanitize_reply_pipe(self, message: dict, worker: dict) -> None:
@@ -608,16 +611,10 @@ class ProcessScheduler:
 
         :param message: Broadcast message
         """
-        # Get all workers
-        workers = discovery.discover_workers(self._profile_name, check_alive=True)
+        # Send via communicator (it handles worker discovery internally)
+        success_count = self._communicator.broadcast_send(message)
 
-        # Extract worker broadcast pipes
-        worker_pipes = [w['broadcast_pipe'] for w in workers]
-
-        # Send via communicator
-        success_count = self._communicator.broadcast_send(worker_pipes, message, non_blocking=True)
-
-        LOGGER.debug(f'Broadcast sent to {success_count}/{len(workers)} workers')
+        LOGGER.debug(f'Broadcast sent to {success_count} workers')
 
     def _get_computer_label_from_queue_id(self, queue_id: str) -> str | None:
         """Extract computer_label from queue_id if it's a computer queue.

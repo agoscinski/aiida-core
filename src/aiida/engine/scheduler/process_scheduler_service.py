@@ -13,11 +13,13 @@ from __future__ import annotations
 import atexit
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from aiida.communication.namedpipe import discovery
-from aiida.communication.namedpipe.broker_communicator import PipeBrokerCommunicator
 from aiida.engine.scheduler.process_scheduler import ProcessScheduler, ProcessSchedulerConfig
-from aiida.engine.scheduler.executor import SubprocessWorkerExecutor
+
+if TYPE_CHECKING:
+    from aiida.brokers.broker import BrokerCommunicator
+    from aiida.engine.scheduler.executor.protocol import WorkerExecutor
 
 __all__ = ('ProcessSchedulerService', 'start_daemon')
 
@@ -86,10 +88,23 @@ def start_daemon(profile_name: str, config_path: Path | str) -> None:
     log_level = getattr(logging, get_config_option('logging.circus_loglevel'), logging.INFO)
     AIIDA_LOGGER.setLevel(log_level)
 
+    # Create communicator (pipe-based for now)
+    from aiida.communication.namedpipe.broker_communicator import PipeBrokerCommunicator
+    communicator = PipeBrokerCommunicator(profile_name=profile_name, broker_id='broker')
+
+    # Create executor for worker lifecycle management
+    from aiida.engine.scheduler.executor import SubprocessWorkerExecutor
+    executor = SubprocessWorkerExecutor(
+        profile_name=profile_name,
+        config_path=config_path,
+    )
+
     # Create and run scheduler
     scheduler = ProcessSchedulerService(
         profile_name=profile_name,
         config_path=config_path,
+        communicator=communicator,
+        executor=executor,
     )
 
     # Run maintenance loop
@@ -108,9 +123,9 @@ class ProcessSchedulerService:
     """Daemon service wrapper for ProcessScheduler.
 
     This class provides daemon management features:
-    - Creates and owns PipeBrokerCommunicator
+    - Accepts communicator and executor via dependency injection
     - Creates ProcessScheduler with communicator
-    - Registers in discovery system
+    - Registers in discovery system via communicator
     - Handles cleanup on shutdown
     - Provides maintenance loop interface
     """
@@ -119,32 +134,31 @@ class ProcessSchedulerService:
         self,
         profile_name: str,
         config_path: Path | str,
+        communicator: 'BrokerCommunicator',
+        executor: 'WorkerExecutor',
     ):
         """Initialize the process broker service.
 
         :param profile_name: The AiiDA profile name
         :param config_path: Path to the AiiDA config directory
+        :param communicator: BrokerCommunicator instance for IPC
+        :param executor: WorkerExecutor instance for worker lifecycle management
         """
         self._profile_name = profile_name
         self._config_path = Path(config_path)
-        self._broker_id = 'broker'
 
         # Load config from file
         config = ProcessSchedulerConfig.from_file(self._config_path)
 
+        # Store injected dependencies
+        self._communicator = communicator
+        self._executor = executor
+
         # Clean up orphaned workers from previous runs
-        self._cleanup_orphaned_workers(profile_name)
+        self._executor.cleanup_orphaned_workers()
 
-        # Create executor for worker lifecycle management
-        self._executor = SubprocessWorkerExecutor(
-            profile_name=profile_name,
-            config_path=self._config_path,
-            environment=self._get_worker_environment(),
-        )
+        # Start executor
         self._executor.start()
-
-        # Create communicator
-        self._communicator = PipeBrokerCommunicator(profile_name=profile_name, broker_id=self._broker_id)
 
         # Create scheduler with working directory and executor
         scheduler_working_dir = self._config_path / 'scheduler'
@@ -158,10 +172,7 @@ class ProcessSchedulerService:
 
         # Register in discovery BEFORE spawning workers
         # (workers check if broker is running via discovery)
-        broker_pipes = self._communicator.get_broker_pipes()
-        discovery.register_broker(
-            profile_name, self._broker_id, task_pipe=broker_pipes['task_pipe'], broadcast_pipe=broker_pipes['broadcast_pipe']
-        )
+        self._communicator.register_in_discovery()
 
         # Register cleanup
         atexit.register(self.close)
@@ -178,51 +189,6 @@ class ProcessSchedulerService:
                 self._executor.scale_workers(self._worker_count)
             except Exception as exc:
                 LOGGER.error(f'Failed to start workers: {exc}')
-
-    def _get_worker_environment(self) -> dict[str, str]:
-        """Get environment variables for worker processes.
-
-        :return: Dict of environment variables
-        """
-        import os
-
-        env = {}
-
-        # Pass through important AiiDA environment variables
-        if 'AIIDA_PATH' in os.environ:
-            env['AIIDA_PATH'] = os.environ['AIIDA_PATH']
-
-        return env
-
-    def _cleanup_orphaned_workers(self, profile_name: str) -> None:
-        """Clean up workers from previous scheduler runs.
-
-        When the scheduler starts fresh, any existing workers are orphaned
-        and should be terminated.
-
-        :param profile_name: The AiiDA profile name
-        """
-        import os
-        import signal
-
-        # Find all registered workers (including dead ones)
-        workers = discovery.discover_workers(profile_name, check_alive=False)
-
-        for worker in workers:
-            pid = worker['pid']
-            worker_id = worker['process_id']
-
-            # Try to kill the process if it's still alive
-            try:
-                os.kill(pid, signal.SIGTERM)
-                LOGGER.info(f'Terminated orphaned worker {worker_id} (PID: {pid})')
-            except ProcessLookupError:
-                pass  # Process already dead
-            except PermissionError:
-                LOGGER.warning(f'Cannot terminate worker {worker_id} (PID: {pid}): permission denied')
-
-            # Remove discovery entry
-            discovery.unregister_worker(profile_name, worker_id)
 
     def run_maintenance(self) -> None:
         """Run periodic maintenance tasks.
@@ -265,7 +231,7 @@ class ProcessSchedulerService:
 
         # Unregister from discovery
         try:
-            discovery.unregister_broker(self._profile_name, self._broker_id)
+            self._communicator.unregister_from_discovery()
         except Exception as exc:
             LOGGER.warning(f'Error unregistering broker: {exc}')
 

@@ -138,3 +138,17 @@ class WorkerExecutor(Protocol):
         :return: List of worker_ids that were cleaned up
         """
         ...
+
+    def cleanup_orphaned_workers(self) -> int:
+        """Clean up orphaned workers from previous broker instances.
+
+        This method discovers workers registered in the discovery system that
+        are no longer running (e.g., after a broker crash/restart) and cleans
+        up their discovery entries and any associated resources (pipes, etc.).
+
+        Should be called during broker startup to handle stale state from
+        previous instances.
+
+        :return: Number of orphaned workers cleaned up
+        """
+        ...

@@ -188,36 +188,24 @@ class PipeBroker:
         if self._broker_communicator:
             self._broker_communicator.remove_broadcast_subscriber(identifier)
 
-    def task_send(
-        self,
-        worker_pipe: str,
-        message: dict,
-        non_blocking: bool = True,
-    ) -> None:
+    def task_send(self, message: dict) -> None:
         """Send a task message to a specific worker.
 
-        :param worker_pipe: Worker's task pipe path
-        :param message: Task message dict to send
-        :param non_blocking: Use non-blocking write
+        The message must contain routing info in '_routing.target_worker'.
+
+        :param message: Task message dict with '_routing' header
         """
         self._ensure_broker_communicator()
-        self._broker_communicator.task_send(worker_pipe, message, non_blocking)
+        self._broker_communicator.task_send(message)
 
-    def broadcast_send(
-        self,
-        worker_pipes: list[str],
-        message: dict,
-        non_blocking: bool = True,
-    ) -> int:
-        """Send broadcast message to multiple workers.
+    def broadcast_send(self, message: dict) -> int:
+        """Send broadcast message to all registered workers.
 
-        :param worker_pipes: List of worker broadcast pipe paths
         :param message: Broadcast message dict to send
-        :param non_blocking: Use non-blocking write
         :return: Number of successful sends
         """
         self._ensure_broker_communicator()
-        return self._broker_communicator.broadcast_send(worker_pipes, message, non_blocking)
+        return self._broker_communicator.broadcast_send(message)
 
     def get_broker_pipes(self) -> dict[str, str]:
         """Get broker pipe paths for discovery registration.

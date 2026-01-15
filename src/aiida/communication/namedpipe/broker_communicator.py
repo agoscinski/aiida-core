@@ -21,7 +21,7 @@ from pathlib import Path
 
 from aiida.orm.utils import serialize
 
-from . import messages, utils
+from . import discovery, messages, utils
 
 __all__ = ('PipeBrokerCommunicator',)
 
@@ -212,45 +212,72 @@ class PipeBrokerCommunicator:
         """
         self._broadcast_subscribers.pop(identifier, None)
 
-    def task_send(
-        self,
-        worker_pipe: str,
-        message: dict,
-        non_blocking: bool = True,
-    ) -> None:
+    def task_send(self, message: dict) -> None:
         """Send a task message to a specific worker.
 
-        :param worker_pipe: Worker's task pipe path
-        :param message: Task message dict to send
-        :param non_blocking: Use non-blocking write
+        Extracts target worker from message['_routing']['target_worker'],
+        looks up the worker's pipe path via discovery, and sends the message.
+
+        :param message: Task message dict with '_routing' header
+        :raises KeyError: If routing information is missing
+        :raises ValueError: If target worker not found in discovery
         :raises BrokenPipeError: If worker pipe unavailable
         :raises OSError: If send fails
         """
+        # Extract routing information
+        routing = message.get('_routing', {})
+        target_worker = routing.get('target_worker')
+        if not target_worker:
+            raise KeyError("Message missing '_routing.target_worker'")
+
+        # Look up worker in discovery
+        workers = discovery.discover_workers(self._profile_name, check_alive=False)
+        worker_info = None
+        for worker in workers:
+            if worker.get('process_id') == target_worker or worker.get('worker_id') == target_worker:
+                worker_info = worker
+                break
+
+        if worker_info is None:
+            raise ValueError(f'Worker not found in discovery: {target_worker}')
+
+        # Send to worker's task pipe
+        task_pipe = worker_info.get('task_pipe')
+        if not task_pipe:
+            raise ValueError(f'Worker {target_worker} has no task_pipe')
+
         data = messages.serialize(message, encoder=self._encoder)
-        utils.write_to_pipe(worker_pipe, data, non_blocking=non_blocking)
+        utils.write_to_pipe(task_pipe, data, non_blocking=True)
 
-    def broadcast_send(
-        self,
-        worker_pipes: list[str],
-        message: dict,
-        non_blocking: bool = True,
-    ) -> int:
-        """Send broadcast message to multiple workers.
+    def broadcast_send(self, message: dict) -> int:
+        """Send broadcast message to all registered workers.
 
-        :param worker_pipes: List of worker broadcast pipe paths
+        Discovers all active workers and sends the message to each.
+
         :param message: Broadcast message dict to send
-        :param non_blocking: Use non-blocking write
         :return: Number of successful sends
         """
+        # Discover all workers
+        workers = discovery.discover_workers(self._profile_name, check_alive=True)
+
+        if not workers:
+            LOGGER.debug('No workers found for broadcast')
+            return 0
+
         data = messages.serialize(message, encoder=self._encoder)
         success_count = 0
 
-        for pipe_path in worker_pipes:
+        for worker in workers:
+            broadcast_pipe = worker.get('broadcast_pipe')
+            if not broadcast_pipe:
+                continue
+
             try:
-                utils.write_to_pipe(pipe_path, data, non_blocking=non_blocking)
+                utils.write_to_pipe(broadcast_pipe, data, non_blocking=True)
                 success_count += 1
             except (BrokenPipeError, FileNotFoundError, OSError) as exc:
-                LOGGER.debug(f'Worker pipe unavailable: {pipe_path} ({type(exc).__name__})')
+                worker_id = worker.get('process_id', 'unknown')
+                LOGGER.debug(f'Worker {worker_id} broadcast pipe unavailable ({type(exc).__name__})')
 
         return success_count
 
@@ -263,6 +290,30 @@ class PipeBrokerCommunicator:
             'task_pipe': str(self._task_pipe_path),
             'broadcast_pipe': str(self._broadcast_pipe_path),
         }
+
+    def register_in_discovery(self) -> None:
+        """Register this communicator in the discovery system.
+
+        Registers the broker's pipe paths so workers can discover how to connect.
+        """
+        discovery.register_broker(
+            profile_name=self._profile_name,
+            broker_id=self._broker_id,
+            task_pipe=str(self._task_pipe_path),
+            broadcast_pipe=str(self._broadcast_pipe_path),
+        )
+        LOGGER.info(f'Registered broker {self._broker_id} in discovery')
+
+    def unregister_from_discovery(self) -> None:
+        """Unregister this communicator from the discovery system.
+
+        Cleans up the broker's discovery entry during shutdown.
+        """
+        discovery.unregister_broker(
+            profile_name=self._profile_name,
+            broker_id=self._broker_id,
+        )
+        LOGGER.info(f'Unregistered broker {self._broker_id} from discovery')
 
     def close(self) -> None:
         """Close the communicator and cleanup resources."""

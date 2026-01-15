@@ -49,6 +49,22 @@ class BrokerCommunicator(Protocol):
         """
         ...
 
+    # Discovery integration
+    def register_in_discovery(self) -> None:
+        """Register this communicator in the discovery system.
+
+        Implementations should register their transport endpoints so that
+        workers and clients can discover how to connect.
+        """
+        ...
+
+    def unregister_from_discovery(self) -> None:
+        """Unregister this communicator from the discovery system.
+
+        Should be called during shutdown to clean up discovery entries.
+        """
+        ...
+
     # Callback registration (receive side)
     def add_task_subscriber(
         self,
@@ -97,68 +113,29 @@ class BrokerCommunicator(Protocol):
         ...
 
     # Sending methods (send side)
-    def task_send(
-        self,
-        worker_pipe: str,
-        message: dict,
-        non_blocking: bool = True,
-    ) -> None:
+    def task_send(self, message: dict) -> None:
         """Send a task message to a specific worker.
 
-        :param worker_pipe: Worker's task pipe path (or other transport endpoint)
-        :param message: Task message dict to send
-        :param non_blocking: Use non-blocking write (default: True)
-        :raises BrokenPipeError: If worker pipe/endpoint unavailable
+        The message must contain routing information in the '_routing' key:
+        - 'target_worker': Worker ID to send the task to
+
+        The implementation is responsible for looking up how to reach the
+        target worker (pipe path, queue name, etc.) based on its transport.
+
+        :param message: Task message dict with '_routing' header
+        :raises KeyError: If routing information is missing
+        :raises BrokenPipeError: If worker endpoint unavailable
         :raises OSError: If send fails
         """
         ...
 
-    def broadcast_send(
-        self,
-        worker_pipes: list[str],
-        message: dict,
-        non_blocking: bool = True,
-    ) -> int:
-        """Send broadcast message to multiple workers.
+    def broadcast_send(self, message: dict) -> int:
+        """Send broadcast message to all registered workers.
 
-        This method attempts to send to all workers and returns the count of
-        successful sends. Failures on individual workers are logged but do not
-        raise exceptions.
+        The implementation discovers all active workers and sends the message
+        to each. No routing information is required in the message.
 
-        :param worker_pipes: List of worker broadcast pipe paths (or transport endpoints)
         :param message: Broadcast message dict to send
-        :param non_blocking: Use non-blocking write (default: True)
         :return: Number of successful sends
-        """
-        ...
-
-    # Discovery integration
-    def get_broker_pipes(self) -> dict[str, str]:
-        """Get broker pipe paths for discovery registration.
-
-        Returns the transport endpoints where clients should send messages.
-        For pipe-based transport, this includes task_pipe and broadcast_pipe paths.
-
-        :return: Dict with transport endpoint information (keys depend on implementation)
-        """
-        ...
-
-    # High-level broker methods
-    def get_communicator(self):
-        """Return an instance of :class:`kiwipy.Communicator`.
-
-        This provides access to the kiwipy communicator for RPC calls,
-        task sending, and other kiwipy-based operations.
-
-        :return: Instance of kiwipy.Communicator
-        """
-        ...
-
-    def iterate_tasks(self):
-        """Return an iterator over the tasks in the launch queue.
-
-        This allows inspection of queued tasks for debugging and monitoring.
-
-        :return: Iterator over task messages
         """
         ...
