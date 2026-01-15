@@ -364,7 +364,8 @@ class PipeCommunicator(kiwipy.Communicator):
         :return: True if broadcast was fired.
         """
         self._ensure_open()
-        for subscriber in self._broadcast_subscribers.values():
+        # Take a snapshot to avoid "dictionary changed size during iteration" if modified concurrently
+        for subscriber in list(self._broadcast_subscribers.values()):
             # Call with positional arguments like RMQ does
             subscriber(self, body, sender, subject, correlation_id)
         return True
@@ -405,6 +406,9 @@ class PipeCommunicator(kiwipy.Communicator):
         :param no_reply: If True, do not return a future.
         :return: Future with the result, or None if no_reply=True.
         """
+        import asyncio
+        import inspect
+
         self._ensure_open()
 
         # Task subscribers should process the message and return a result
@@ -417,6 +421,30 @@ class PipeCommunicator(kiwipy.Communicator):
         # Call subscriber and wrap result in a future
         try:
             result = subscriber(self, msg)
+
+            # Handle async subscribers (like ProcessLauncher.__call__)
+            if inspect.iscoroutine(result):
+                # Schedule the coroutine on the event loop
+                loop = asyncio.get_event_loop()
+                async_future = asyncio.ensure_future(result, loop=loop)
+
+                if no_reply:
+                    return None
+
+                # Convert asyncio.Future to concurrent.futures.Future
+                concurrent_future = futures.Future()
+
+                def on_done(af):
+                    try:
+                        if af.exception():
+                            concurrent_future.set_exception(af.exception())
+                        else:
+                            concurrent_future.set_result(af.result())
+                    except asyncio.CancelledError:
+                        concurrent_future.cancel()
+
+                async_future.add_done_callback(on_done)
+                return concurrent_future
 
             if no_reply:
                 return None

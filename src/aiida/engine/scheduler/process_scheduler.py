@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 from pathlib import Path
@@ -146,6 +147,40 @@ class ComputerQueue:
 
         return pids
 
+    def get_all_pids(self) -> list[int]:
+        """Get list of all PIDs in the queue (pending and running).
+
+        :return: List of all process IDs in this queue.
+        """
+        pids = []
+        with self._lock:
+            for task_file in self.queue_dir.glob('proc_*.json'):
+                try:
+                    with open(task_file) as f:
+                        task_data = json.load(f)
+                    pids.append(task_data['message']['pid'])
+                except (json.JSONDecodeError, OSError, KeyError):
+                    pass
+        return pids
+
+    def remove_by_pid(self, pid: int) -> bool:
+        """Remove queue entry by PID (any status).
+
+        :param pid: Process ID to remove.
+        :return: True if removed, False if not found.
+        """
+        with self._lock:
+            for task_file in self.queue_dir.glob('proc_*.json'):
+                try:
+                    with open(task_file) as f:
+                        task_data = json.load(f)
+                    if task_data['message']['pid'] == pid:
+                        task_file.unlink()
+                        return True
+                except (json.JSONDecodeError, OSError, KeyError):
+                    pass
+        return False
+
     def cleanup_old_tasks(self, max_age_seconds: int = 86400):
         """Clean up old completed tasks.
 
@@ -275,6 +310,7 @@ class ProcessScheduler:
         self._queues: dict[str, ComputerQueue] = {}
         self._running_counts: dict[str, int] = {}
         self._running_pids: dict[str, set[int]] = {}  # Track running PIDs in memory for polling
+        self._pid_to_computer: dict[int, str] = {}  # Map PID to computer_label for completion handling
 
         # Load existing ComputerQueues from disk (for restart scenarios)
         self._load_existing_queues()
@@ -292,12 +328,13 @@ class ProcessScheduler:
         """Load existing ComputerQueues from disk on startup.
 
         For computers with configured limits, checks if queue directories exist
-        on disk and loads them into memory. Also initializes running counts based
-        on tasks marked as 'running' in the queue files.
+        on disk and loads them into memory.
 
-        This enables proper restart behavior where pending/running processes
-        from before the restart are properly tracked.
+        All "running" entries in ComputerQueue are cleaned up on startup since
+        they're stale (workers from before restart are gone). Tasks will be
+        re-added to ComputerQueue if needed when _requeue_orphaned_tasks runs.
         """
+        # Load ComputerQueues for pending tasks
         for computer_label in self._config.computer_limits:
             queue_dir = self._working_dir / 'queue' / computer_label
             if queue_dir.exists():
@@ -305,18 +342,19 @@ class ProcessScheduler:
                 queue = ComputerQueue(computer_label, queue_dir)
                 self._queues[computer_label] = queue
 
-                # Initialize running count from tasks marked as running
-                # (may be stale - _poll_running_processes will correct)
+                # Clean up stale "running" entries from previous scheduler run
+                # These are always stale after restart since old workers are gone
                 running_pids = queue.get_running_pids()
-                self._running_counts[computer_label] = len(running_pids)
+                for pid in running_pids:
+                    queue.remove_running(pid)
+                    LOGGER.debug(f'Cleaned up stale running entry for pid={pid} in {computer_label}')
 
-                # Count pending
-                pending_count = sum(1 for _ in queue_dir.glob('proc_*.json')) - len(running_pids)
+                if running_pids:
+                    LOGGER.info(f'Cleaned up {len(running_pids)} stale running entries for {computer_label}')
 
-                LOGGER.info(
-                    f'Loaded queue for {computer_label}: '
-                    f'{len(running_pids)} running, {pending_count} pending'
-                )
+                # Count remaining pending entries
+                pending_count = sum(1 for _ in queue_dir.glob('proc_*.json'))
+                LOGGER.info(f'Loaded queue for {computer_label}: {pending_count} pending')
 
     def _on_task_received(self, message: dict) -> None:
         """Callback invoked when task message received from communicator.
@@ -379,6 +417,12 @@ class ProcessScheduler:
             LOGGER.warning(f'No workers available for task {task_id}')
             return
 
+        # Strip scheduler-specific metadata from args before sending to worker
+        # The computer_label is used by the scheduler for throttling but ProcessLauncher doesn't expect it
+        worker_message = copy.deepcopy(message)
+        if 'body' in worker_message and 'args' in worker_message['body']:
+            worker_message['body']['args'].pop('computer_label', None)
+
         # Round-robin worker selection
         worker = workers[self._worker_index % len(workers)]
         self._worker_index += 1
@@ -387,11 +431,11 @@ class ProcessScheduler:
         worker_id = worker.get('worker_id', worker.get('process_id', 'unknown'))
 
         # Sanitize reply pipe
-        self._sanitize_reply_pipe(message, worker)
+        self._sanitize_reply_pipe(worker_message, worker)
 
         try:
-            # Send task via communicator
-            self._communicator.task_send(worker['task_pipe'], message, non_blocking=True)
+            # Send task via communicator (use worker_message with computer_label stripped)
+            self._communicator.task_send(worker['task_pipe'], worker_message, non_blocking=True)
 
             # Mark as assigned
             self._task_queue.mark_assigned(task_id, worker_id)
@@ -447,15 +491,14 @@ class ProcessScheduler:
         :param pid: Process ID
         :param message: Task message
         """
-        from aiida.orm import load_node
+        # Get computer_label from message metadata (set by launch.py/runners.py for CalcJobs)
+        # WorkChains don't have a computer, so computer_label will be None
+        computer_label = message.get('body', {}).get('args', {}).get('computer_label')
 
-        try:
-            node = load_node(pid)
-            computer_label = self._get_computer_label(node)
-        except Exception as exc:
-            LOGGER.error(f'Failed to load node {pid}: {exc}')
-            # Execute anyway - don't block if we can't determine computer
+        if computer_label is None:
+            # No computer (WorkChain) - execute immediately without scheduling
             self._handle_task_message(message)
+            LOGGER.debug(f'Executed process {pid} (no computer)')
             return
 
         # Check if this computer has a limit configured
@@ -476,6 +519,9 @@ class ProcessScheduler:
         # Check limit
         current = self._running_counts.get(computer_label, 0)
 
+        # Store pid -> computer_label mapping for completion handling
+        self._pid_to_computer[pid] = computer_label
+
         if current < limit:
             # Under limit - execute immediately
             self._handle_task_message(message)
@@ -490,30 +536,23 @@ class ProcessScheduler:
             self._queues[computer_label].enqueue({'pid': pid, 'message': message})
             LOGGER.info(f'Queued process {pid} for {computer_label} (at limit {current}/{limit})')
 
-    def _get_computer_label(self, node) -> str:
-        """Get computer label from node.
-
-        :param node: ProcessNode instance
-        :return: Computer label
-        """
-        if hasattr(node, 'computer') and node.computer is not None:
-            return node.computer.label
-        return 'localhost'
-
-    def on_completion(self, pid: int) -> None:
+    def on_completion(self, pid: int, computer_label: str | None = None) -> None:
         """Handle process completion (decrement count, try submit next).
 
         This method should be called externally when a process completes.
 
         :param pid: Process ID that completed
+        :param computer_label: Optional computer label (if known from context)
         """
-        from aiida.orm import load_node
+        # Get computer_label from parameter or from our mapping (set when process was scheduled)
+        if computer_label is None:
+            computer_label = self._pid_to_computer.pop(pid, None)
+        else:
+            # Clear from mapping if it was there
+            self._pid_to_computer.pop(pid, None)
 
-        try:
-            node = load_node(pid)
-            computer_label = self._get_computer_label(node)
-        except Exception as exc:
-            LOGGER.warning(f'Could not determine computer for {pid}: {exc}')
+        if computer_label is None:
+            # Process wasn't tracked (unlimited computer or WorkChain)
             return
 
         # Check if this computer has a limit (only track limited computers)
@@ -626,7 +665,11 @@ class ProcessScheduler:
             LOGGER.exception(f'Error in maintenance: {exc}')
 
     def _requeue_orphaned_tasks(self) -> None:
-        """Requeue tasks assigned to dead workers."""
+        """Requeue tasks assigned to dead workers.
+
+        For CalcJob tasks with computer limits, decrements the running count
+        and re-routes through _schedule_process to respect limits.
+        """
         all_tasks = self._task_queue.get_all_tasks()
 
         # Get worker IDs from executor or discovery
@@ -642,10 +685,30 @@ class ProcessScheduler:
                 assigned_to = task_data.get('assigned_to')
                 if assigned_to and assigned_to not in worker_ids:
                     task_id = task_data['id']
-                    LOGGER.info(f'Requeueing task {task_id} from dead worker {assigned_to}')
-                    # Reset to pending and redistribute
-                    self._task_queue.reset_to_pending(task_id)
-                    self._distribute_task(task_id, task_data['message'])
+                    message = task_data['message']
+
+                    # Check if this is a CalcJob with computer limit
+                    computer_label = message.get('body', {}).get('args', {}).get('computer_label')
+                    pid = message.get('body', {}).get('args', {}).get('pid')
+
+                    if computer_label and computer_label in self._config.computer_limits:
+                        # CalcJob with limit - remove from TaskQueue and re-schedule
+                        # This decrements the effective running count and respects limits
+                        LOGGER.info(f'Requeueing CalcJob task {task_id} (pid={pid}) through scheduler')
+                        self._task_queue.mark_completed(task_id)
+                        # Remove from pid_to_computer tracking (will be re-added if scheduled)
+                        self._pid_to_computer.pop(pid, None)
+                        # Also clean up any stale ComputerQueue entry
+                        queue = self._queues.get(computer_label)
+                        if queue:
+                            queue.remove_running(pid)
+                        # Re-route through scheduling logic
+                        self._schedule_process(pid, message)
+                    else:
+                        # WorkChain or unlimited - redistribute directly
+                        LOGGER.info(f'Requeueing task {task_id} from dead worker {assigned_to}')
+                        self._task_queue.reset_to_pending(task_id)
+                        self._distribute_task(task_id, message)
 
     def _cleanup_completed_tasks(self) -> None:
         """Clean up tasks for processes that have reached terminal state.
@@ -691,35 +754,48 @@ class ProcessScheduler:
                 self._task_queue.mark_completed(task_id)
 
     def _poll_running_processes(self) -> None:
-        """Poll database for missed completions.
+        """Poll database for missed completions and clean up stale queue entries.
 
         Queries the database to find processes that are marked as completed
         in the database but were not properly handled by the scheduler.
+        Also removes pending queue entries for already-completed processes.
         """
         from aiida.orm import ProcessNode, QueryBuilder
 
-        # Collect all running PIDs from both in-memory tracking and queue files
+        # Process each computer with limits
         for computer_label in self._config.computer_limits:
-            # Get PIDs from in-memory set (immediately executed)
-            memory_pids = self._running_pids.get(computer_label, set())
-
-            # Get PIDs from queue files (queued then executed)
             queue = self._queues.get(computer_label)
-            queue_pids = set(queue.get_running_pids()) if queue else set()
-
-            # Combine both sources
-            all_pids = list(memory_pids | queue_pids)
-            if not all_pids:
+            if not queue:
                 continue
 
-            # Query database for these processes
-            qb = QueryBuilder()
-            qb.append(ProcessNode, filters={'id': {'in': all_pids}}, project=['id', 'attributes.process_state'])
+            # Get PIDs from in-memory set (immediately executed - running)
+            memory_pids = self._running_pids.get(computer_label, set())
 
-            for pid, state in qb.all():
-                if state in ['finished', 'failed', 'killed', 'excepted']:
-                    LOGGER.warning(f'Missed completion event for {pid}, handling now')
-                    self.on_completion(pid)
+            # Get PIDs from queue files - both running and pending
+            running_pids = set(queue.get_running_pids())
+            all_queue_pids = set(queue.get_all_pids())
+            pending_pids = all_queue_pids - running_pids
+
+            # Check running processes for missed completions
+            all_running_pids = list(memory_pids | running_pids)
+            if all_running_pids:
+                qb = QueryBuilder()
+                qb.append(ProcessNode, filters={'id': {'in': all_running_pids}}, project=['id', 'attributes.process_state'])
+
+                for pid, state in qb.all():
+                    if state in ['finished', 'failed', 'killed', 'excepted']:
+                        LOGGER.warning(f'Missed completion event for {pid}, handling now')
+                        self.on_completion(pid, computer_label)
+
+            # Check pending processes - remove stale entries (no completion handling needed)
+            if pending_pids:
+                qb = QueryBuilder()
+                qb.append(ProcessNode, filters={'id': {'in': list(pending_pids)}}, project=['id', 'attributes.process_state'])
+
+                for pid, state in qb.all():
+                    if state in ['finished', 'failed', 'killed', 'excepted']:
+                        LOGGER.debug(f'Removing stale queue entry for completed process {pid}')
+                        queue.remove_by_pid(pid)
 
     def get_status(self) -> dict:
         """Get scheduler status for CLI display.

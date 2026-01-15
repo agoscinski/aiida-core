@@ -574,9 +574,10 @@ def process_repair(dry_run):
     and checks their status in the scheduler queue. Processes that are neither queued nor scheduled and have no
     corresponding process task are considered zombies and will be revived.
     """
-    from aiida.engine.processes.control import get_active_processes
     from aiida.engine.scheduler import get_scheduler_client
     from aiida.manage import get_manager
+    from aiida.orm import Computer, ProcessNode, QueryBuilder
+    from aiida.tools.query.calculation import CalculationQueryBuilder
 
     # Get scheduler client and verify scheduler is running
     scheduler_client = get_scheduler_client()
@@ -585,8 +586,20 @@ def process_repair(dry_run):
         echo.echo_critical('Scheduler is not running. Start it with: verdi scheduler start')
 
     # Get active processes
-    active_processes = get_active_processes(project='id')
-    set_active_processes = set(active_processes)
+    filters = CalculationQueryBuilder().get_filters(process_state=('created', 'waiting', 'running'))
+    qb = QueryBuilder()
+    qb.append(ProcessNode, filters=filters, project=['id'], tag='process')
+    active_processes = qb.all(flat=True)
+
+    # Get computer labels for processes that have computers
+    pid_to_computer: dict[int, str | None] = {pid: None for pid in active_processes}
+    if active_processes:
+        qb2 = QueryBuilder()
+        qb2.append(ProcessNode, filters={'id': {'in': active_processes}}, project=['id'], tag='process')
+        qb2.append(Computer, with_node='process', project=['label'])
+        # This query only returns processes that HAVE a computer
+        for pid, computer_label in qb2.all():
+            pid_to_computer[pid] = computer_label
 
     echo.echo_info(f'Active processes: {len(active_processes)}')
 
@@ -634,7 +647,10 @@ def process_repair(dry_run):
     failed_count = 0
     for pid in zombie_processes:
         try:
-            process_controller.continue_process(pid)
+            # Get computer_label for scheduler routing
+            computer_label = pid_to_computer.get(pid)
+            metadata = {'computer_label': computer_label} if computer_label else None
+            process_controller.continue_process(pid, metadata=metadata)
             echo.echo_report(f'Revived process `{pid}`')
             revived_count += 1
         except Exception as exc:

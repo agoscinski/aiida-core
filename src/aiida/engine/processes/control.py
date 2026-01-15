@@ -88,7 +88,10 @@ def revive_processes(processes: list[ProcessNode], *, wait: bool = False) -> Non
     process_controller = get_manager().get_process_controller()
 
     for process in processes:
-        future = process_controller.continue_process(process.pk, nowait=not wait, no_reply=False)
+        # Get computer_label for scheduler routing (if process has a computer)
+        computer_label = process.computer.label if process.computer else None
+        metadata = {'computer_label': computer_label} if computer_label else None
+        future = process_controller.continue_process(process.pk, nowait=not wait, no_reply=False, metadata=metadata)
 
         if future:
             response = future.result()  # type: ignore[union-attr]

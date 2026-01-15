@@ -287,26 +287,38 @@ def scheduler_status():
 
     queue_dir = config_path / 'scheduler' / 'queue'
 
-    echo.echo(f'  {"Computer":<28} {"Limit":>8} {"Queued":>8}')
-    echo.echo('  ' + '-' * 46)
+    echo.echo(f'  {"Computer":<24} {"Limit":>6} {"Running":>8} {"Queued":>8}')
+    echo.echo('  ' + '-' * 50)
 
+    total_running = 0
     total_queued = 0
     for computer_label in sorted(limits.keys()):
         limit = limits[computer_label]
 
-        # Count queued processes
+        # Count queued and running processes
         computer_dir = queue_dir / computer_label
+        running_count = 0
+        queued_count = 0
         if computer_dir.exists():
-            queue_files = list(computer_dir.glob('proc_*.json'))
-            queued_count = len(queue_files)
-        else:
-            queued_count = 0
+            import json
+            for proc_file in computer_dir.glob('proc_*.json'):
+                try:
+                    with open(proc_file) as f:
+                        proc_data = json.load(f)
+                    status = proc_data.get('status', 'pending')
+                    if status == 'running':
+                        running_count += 1
+                    else:
+                        queued_count += 1
+                except (json.JSONDecodeError, OSError):
+                    queued_count += 1  # Count broken files as queued
 
+        total_running += running_count
         total_queued += queued_count
-        echo.echo(f'  {computer_label:<28} {limit:>8} {queued_count:>8}')
+        echo.echo(f'  {computer_label:<24} {limit:>6} {running_count:>8} {queued_count:>8}')
 
-    echo.echo('  ' + '-' * 46)
-    echo.echo(f'  {"Total":<28} {"":>8} {total_queued:>8}')
+    echo.echo('  ' + '-' * 50)
+    echo.echo(f'  {"Total":<24} {"":>6} {total_running:>8} {total_queued:>8}')
     echo.echo('')
 
 

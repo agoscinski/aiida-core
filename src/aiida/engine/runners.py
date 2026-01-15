@@ -30,7 +30,7 @@ from aiida.plugins.utils import PluginVersionProvider
 
 from . import transports, utils
 from .processes import Process, ProcessBuilder, ProcessState, futures
-from .processes.calcjobs import manager
+from .processes.calcjobs import CalcJob, manager
 
 __all__ = ('Runner',)
 
@@ -199,7 +199,11 @@ class Runner:
             assert self.controller is not None, 'runner does not have a controller'
             self.persister.save_checkpoint(process_inited)
             process_inited.close()
-            self.controller.continue_process(process_inited.pid, nowait=False, no_reply=True)
+            # Get computer_label from CalcJob processes for scheduler optimization
+            metadata = None
+            if isinstance(process_inited, CalcJob):
+                metadata = {'computer_label': process_inited.get_computer_label()}
+            self.controller.continue_process(process_inited.pid, nowait=False, no_reply=True, metadata=metadata)
         else:
             self.loop.create_task(process_inited.step_until_terminated())
 
