@@ -736,7 +736,7 @@ class ProcessScheduler:
         self._try_submit_next(queue_id)
 
     def _try_submit_next(self, queue_id: str) -> None:
-        """Try to submit next queued process.
+        """Try to submit queued processes up to the limit.
 
         :param queue_id: Queue identifier
         """
@@ -763,26 +763,30 @@ class ProcessScheduler:
             LOGGER.debug(f'Queue {queue_id} still at limit ({current}/{limit})')
             return
 
-        # Get next pending process
-        pending = queue.get_pending()
-        if not pending:
-            LOGGER.debug(f'No pending process for {queue_id}')
-            return
+        # Submit processes until we reach the limit or run out of pending
+        while current < limit:
+            # Get next pending process
+            pending = queue.get_pending()
+            if not pending:
+                LOGGER.debug(f'No pending process for {queue_id}')
+                break
 
-        # Submit via broker
-        try:
-            pid = pending['message']['pid']
-            message = pending['message']['message']
-            self._handle_task_message(message)
+            # Submit via broker
+            try:
+                pid = pending['message']['pid']
+                message = pending['message']['message']
+                self._handle_task_message(message)
 
-            # Mark as running
-            queue.mark_running(pending['id'])
-            self._running_counts[queue_id] = current + 1
+                # Mark as running
+                queue.mark_running(pending['id'])
+                current += 1
+                self._running_counts[queue_id] = current
 
-            LOGGER.info(f'Submitted queued process {pid} to {queue_id} ({current + 1}/{limit})')
+                LOGGER.info(f'Submitted queued process {pid} to {queue_id} ({current}/{limit})')
 
-        except Exception as exc:
-            LOGGER.error(f'Failed to submit process: {exc}')
+            except Exception as exc:
+                LOGGER.error(f'Failed to submit process: {exc}')
+                break
 
     def run_maintenance(self) -> None:
         """Run periodic maintenance tasks.
@@ -1002,6 +1006,20 @@ class ProcessScheduler:
                     if state in ['finished', 'failed', 'killed', 'excepted']:
                         LOGGER.debug(f'Removing stale queue entry for completed process {pid}')
                         queue.remove_by_pid(pid)
+
+            # Synchronize running count with actual tracked PIDs
+            # This handles cases where count got out of sync (e.g., process counted but not tracked)
+            # Re-fetch after processing completions above
+            current_memory_pids = self._running_pids.get(queue_id, set())
+            current_running_pids = set(queue.get_running_pids())
+            actual_running = len(current_memory_pids | current_running_pids)
+            current_count = self._running_counts.get(queue_id, 0)
+            if current_count > actual_running:
+                LOGGER.warning(
+                    f'Running count mismatch for {queue_id}: count={current_count}, '
+                    f'actual tracked={actual_running}. Correcting count.'
+                )
+                self._running_counts[queue_id] = actual_running
 
     def get_status(self) -> dict:
         """Get scheduler status for CLI display.
