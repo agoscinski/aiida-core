@@ -315,6 +315,31 @@ class PipeBrokerCommunicator:
         )
         LOGGER.info(f'Unregistered broker {self._broker_id} from discovery')
 
+    def sanitize_message(self, message: dict, worker_id: str) -> None:
+        """Sanitize message before sending to worker.
+
+        Updates reply_pipe if the original pipe no longer exists.
+
+        :param message: Message dict to sanitize (modified in place)
+        :param worker_id: Target worker ID
+        """
+        comm_data = message.get('communication', {})
+        reply_pipe = comm_data.get('reply_pipe')
+        if reply_pipe:
+            if not Path(reply_pipe).exists():
+                # Look up worker's reply pipe from discovery
+                workers = discovery.discover_workers(self._profile_name, check_alive=False)
+                for worker in workers:
+                    if worker.get('process_id') == worker_id or worker.get('worker_id') == worker_id:
+                        worker_reply_pipe = worker.get('reply_pipe')
+                        LOGGER.debug(
+                            f'Reply pipe no longer exists: {reply_pipe}, '
+                            f'updating to worker reply pipe: {worker_reply_pipe}'
+                        )
+                        comm_data['reply_pipe'] = worker_reply_pipe
+                        message['communication'] = comm_data
+                        break
+
     def close(self) -> None:
         """Close the communicator and cleanup resources."""
         if self._closed:

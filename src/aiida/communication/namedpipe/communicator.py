@@ -273,7 +273,9 @@ class PipeCommunicator(kiwipy.Communicator):
         message = {
             'type': 'task',
             'correlation_id': correlation_id,
-            'reply_pipe': str(self._reply_pipe_path) if not no_reply else None,
+            'communication': {
+                'reply_pipe': str(self._reply_pipe_path) if not no_reply else None,
+            },
             'body': task,
         }
 
@@ -312,7 +314,9 @@ class PipeCommunicator(kiwipy.Communicator):
         message = {
             'type': 'rpc',
             'correlation_id': correlation_id,
-            'reply_pipe': str(self._reply_pipe_path),
+            'communication': {
+                'reply_pipe': str(self._reply_pipe_path),
+            },
             'body': msg,
         }
 
@@ -493,11 +497,14 @@ class PipeCommunicator(kiwipy.Communicator):
             if message is None:
                 return
 
+            # Extract communication-specific data
+            comm_data = message.get('communication', {})
+            reply_pipe = comm_data.get('reply_pipe')
+
             # Execute task using parent class method
-            result_future = self.fire_task(message.get('body'), no_reply=message.get('reply_pipe') is None)
+            result_future = self.fire_task(message.get('body'), no_reply=reply_pipe is None)
 
             # Send reply if requested
-            reply_pipe = message.get('reply_pipe')
             if reply_pipe and result_future:
                 self._send_task_reply(reply_pipe, message['correlation_id'], result_future)
 
@@ -526,7 +533,9 @@ class PipeCommunicator(kiwipy.Communicator):
                 self._send_message(reply_pipe, response)
             except (BrokenPipeError, FileNotFoundError, OSError) as exc:
                 # Client's reply pipe is gone (likely the client died) - this is expected
-                LOGGER.debug(f'Reply pipe unavailable ({type(exc).__name__}), client may have disconnected: {reply_pipe}')
+                LOGGER.debug(
+                    f'Reply pipe unavailable ({type(exc).__name__}), client may have disconnected: {reply_pipe}'
+                )
             except Exception as exc:
                 LOGGER.exception(f'Error sending task reply: {exc}')
 
@@ -623,13 +632,16 @@ class PipeCommunicator(kiwipy.Communicator):
             if message is None:
                 return
 
+            # Extract communication-specific data
+            comm_data = message.get('communication', {})
+            reply_pipe = comm_data.get('reply_pipe')
+
             # Execute RPC using parent class method (gets the right subscriber)
             # Note: RPC messages in this implementation don't specify recipient in the message,
             # because they're sent directly to the recipient's pipe
             result_future = self.fire_rpc(self._worker_id, message.get('body'))
 
             # Send reply
-            reply_pipe = message.get('reply_pipe')
             if reply_pipe:
                 self._send_rpc_reply(reply_pipe, message['correlation_id'], result_future)
 
@@ -658,7 +670,9 @@ class PipeCommunicator(kiwipy.Communicator):
                 self._send_message(reply_pipe, response)
             except (BrokenPipeError, FileNotFoundError, OSError) as exc:
                 # Client's reply pipe is gone (likely the client died) - this is expected
-                LOGGER.debug(f'Reply pipe unavailable ({type(exc).__name__}), client may have disconnected: {reply_pipe}')
+                LOGGER.debug(
+                    f'Reply pipe unavailable ({type(exc).__name__}), client may have disconnected: {reply_pipe}'
+                )
             except Exception as exc:
                 LOGGER.exception(f'Error sending RPC reply: {exc}')
 

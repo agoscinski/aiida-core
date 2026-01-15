@@ -1,4 +1,48 @@
-"""Message serialization and framing utilities for named pipe communication."""
+"""Message serialization and framing utilities for named pipe communication.
+
+Message Format
+==============
+
+Messages are dictionaries with the following standard fields:
+
+    {
+        'type': str,              # Message type: 'task', 'rpc', 'broadcast', etc.
+        'correlation_id': str,    # Unique ID for request/response correlation
+        'body': dict,             # The actual message payload (plumpy task data)
+        'communication': dict,    # Transport-specific metadata (optional)
+    }
+
+The ``communication`` Field
+---------------------------
+
+The ``communication`` field contains implementation-specific information needed
+by the communication layer. This separates transport concerns from business logic.
+
+For named pipe communication::
+
+    'communication': {
+        'reply_pipe': str,    # Path to the reply pipe for responses
+    }
+
+Other communication implementations (e.g., RabbitMQ) may use different fields
+or ignore this section entirely since AMQP handles reply routing internally.
+
+This design allows:
+- Plumpy/AiiDA to remain transport-agnostic
+- Each transport to include its own routing metadata
+- Clean separation between message content and delivery mechanism
+
+Routing (``_routing``)
+----------------------
+
+The ``_routing`` field is used by the scheduler/broker to route messages::
+
+    '_routing': {
+        'target_worker': str,  # Worker ID to send the task to
+    }
+
+This is added by the ProcessScheduler before sending to workers.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +50,7 @@ import json
 import struct
 import typing as t
 
-__all__ = ('serialize', 'deserialize', 'deserialize_from_fd')
+__all__ = ('deserialize', 'deserialize_from_fd', 'serialize')
 
 
 def serialize(message: dict, encoder: t.Callable | None = None) -> bytes:

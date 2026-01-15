@@ -74,7 +74,9 @@ class SchedulerClient:
             query = {
                 'type': 'query_queue_status',
                 'pids': pids,
-                'reply_pipe': str(reply_pipe_path),
+                'communication': {
+                    'reply_pipe': str(reply_pipe_path),
+                },
             }
 
             # Send query to scheduler

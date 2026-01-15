@@ -139,3 +139,15 @@ class BrokerCommunicator(Protocol):
         :return: Number of successful sends
         """
         ...
+
+    def sanitize_message(self, message: dict, worker_id: str) -> None:
+        """Sanitize message before sending to worker.
+
+        This method allows the communicator to fix up any transport-specific
+        parts of the message before sending. For example, updating reply
+        endpoints if the original client is no longer reachable.
+
+        :param message: Message dict to sanitize (modified in place)
+        :param worker_id: Target worker ID
+        """
+        ...

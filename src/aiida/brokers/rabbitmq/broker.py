@@ -222,3 +222,11 @@ class RabbitmqBroker:
         This is a no-op for RabbitMQ.
         """
         pass
+
+    def sanitize_message(self, message: dict, worker_id: str) -> None:
+        """Sanitize message before sending to worker.
+
+        RabbitMQ handles reply routing via AMQP - no sanitization needed.
+        This is a no-op for RabbitMQ.
+        """
+        pass

@@ -13,11 +13,12 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import threading
 from pathlib import Path
 
 from aiida.communication.namedpipe import discovery
 
-__all__ = ('ProcessScheduler', 'ProcessSchedulerConfig', 'ProcessQueue')
+__all__ = ('ProcessQueue', 'ProcessScheduler', 'ProcessSchedulerConfig')
 
 LOGGER = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class ProcessQueue:
         self.queue_id = queue_id
         self.queue_dir = queue_dir
         self.queue_dir.mkdir(parents=True, exist_ok=True)
-        self._lock = __import__('threading').Lock()
+        self._lock = threading.Lock()
 
     def enqueue(self, message: dict) -> str:
         """Add process to queue.
@@ -567,8 +568,8 @@ class ProcessScheduler:
         # Get worker identifier (worker_id for executor, process_id for discovery)
         worker_id = worker.get('worker_id', worker.get('process_id', 'unknown'))
 
-        # Sanitize reply pipe
-        self._sanitize_reply_pipe(worker_message, worker)
+        # Sanitize message (e.g., update reply endpoints if needed)
+        self._communicator.sanitize_message(worker_message, worker_id)
 
         # Add routing header for communicator
         worker_message['_routing'] = {'target_worker': worker_id}
@@ -583,28 +584,7 @@ class ProcessScheduler:
             LOGGER.debug(f'Distributed task {task_id} to worker {worker_id}')
 
         except (BrokenPipeError, FileNotFoundError, OSError, ValueError) as exc:
-            LOGGER.warning(
-                f'Worker {worker_id} unavailable ({type(exc).__name__}), ' f'requeueing task {task_id}'
-            )
-
-    def _sanitize_reply_pipe(self, message: dict, worker: dict) -> None:
-        """Update reply_pipe in message if original no longer exists.
-
-        If the original reply pipe is gone (client died), update it to point to
-        the worker's reply pipe so the result can still be delivered.
-
-        :param message: Task message (modified in place)
-        :param worker: Worker info dict
-        """
-        reply_pipe = message.get('reply_pipe')
-        if reply_pipe:
-            if not Path(reply_pipe).exists():
-                worker_reply_pipe = worker.get('reply_pipe')
-                LOGGER.debug(
-                    f'Reply pipe no longer exists: {reply_pipe}, '
-                    f'updating to worker reply pipe: {worker_reply_pipe}'
-                )
-                message['reply_pipe'] = worker_reply_pipe
+            LOGGER.warning(f'Worker {worker_id} unavailable ({type(exc).__name__}), ' f'requeueing task {task_id}')
 
     def _fanout_broadcast(self, message: dict) -> None:
         """Fanout broadcast message to all workers.
@@ -623,7 +603,7 @@ class ProcessScheduler:
         :return: Computer label if queue_id is for a computer, None otherwise
         """
         if queue_id.startswith('COMPUTER__'):
-            return queue_id[len('COMPUTER__'):]
+            return queue_id[len('COMPUTER__') :]
         return None
 
     def _schedule_process(self, pid: int, message: dict) -> None:
@@ -987,7 +967,9 @@ class ProcessScheduler:
             all_running_pids = list(memory_pids | running_pids)
             if all_running_pids:
                 qb = QueryBuilder()
-                qb.append(ProcessNode, filters={'id': {'in': all_running_pids}}, project=['id', 'attributes.process_state'])
+                qb.append(
+                    ProcessNode, filters={'id': {'in': all_running_pids}}, project=['id', 'attributes.process_state']
+                )
 
                 for pid, state in qb.all():
                     if state in ['finished', 'failed', 'killed', 'excepted']:
@@ -997,7 +979,9 @@ class ProcessScheduler:
             # Check pending processes - remove stale entries (no completion handling needed)
             if pending_pids:
                 qb = QueryBuilder()
-                qb.append(ProcessNode, filters={'id': {'in': list(pending_pids)}}, project=['id', 'attributes.process_state'])
+                qb.append(
+                    ProcessNode, filters={'id': {'in': list(pending_pids)}}, project=['id', 'attributes.process_state']
+                )
 
                 for pid, state in qb.all():
                     if state in ['finished', 'failed', 'killed', 'excepted']:
@@ -1116,14 +1100,15 @@ class ProcessScheduler:
         Receives query message and sends response back via reply pipe.
 
         Message format:
-            Request: {'type': 'query_queue_status', 'pids': [1, 2, 3], 'reply_pipe': '/path'}
+            Request: {'type': 'query_queue_status', 'pids': [1, 2, 3], 'communication': {'reply_pipe': '/path'}}
             Response: {'type': 'queue_status_response', 'status': {1: 'queued', 2: None, ...}}
 
         :param message: Query message dict
         """
         from aiida.communication.namedpipe import messages, utils
 
-        reply_pipe = message.get('reply_pipe')
+        comm_data = message.get('communication', {})
+        reply_pipe = comm_data.get('reply_pipe')
         if not reply_pipe:
             LOGGER.warning('Queue status query missing reply_pipe, ignoring')
             return
