@@ -11,7 +11,7 @@ import kiwipy
 from kiwipy import communications
 from plumpy.futures import unwrap_kiwi_future
 
-from aiida.brokers import Broker
+from aiida.brokers import BrokerCommunicator
 from aiida.common.exceptions import AiidaException
 from aiida.common.log import AIIDA_LOGGER
 from aiida.engine.daemon.client import DaemonException, get_daemon_client
@@ -38,7 +38,7 @@ def get_active_processes(paused: bool = False, project: str | list[str] = '*') -
     return builder.all(flat=True)
 
 
-def iterate_process_tasks(broker: Broker) -> collections.abc.Iterator[kiwipy.rmq.RmqIncomingTask]:
+def iterate_process_tasks(broker: BrokerCommunicator) -> collections.abc.Iterator[kiwipy.rmq.RmqIncomingTask]:
     """Return the list of process pks that have a process task in the RabbitMQ process queue.
 
     :returns: A list of process pks that have a corresponding process task with RabbitMQ.
@@ -47,7 +47,7 @@ def iterate_process_tasks(broker: Broker) -> collections.abc.Iterator[kiwipy.rmq
         yield task
 
 
-def get_process_tasks(broker: Broker) -> list[int]:
+def get_process_tasks(broker: BrokerCommunicator) -> list[int]:
     """Return the list of process pks that have a process task in the RabbitMQ process queue.
 
     :returns: A list of process pks that have a corresponding process task with RabbitMQ.
@@ -88,7 +88,13 @@ def revive_processes(processes: list[ProcessNode], *, wait: bool = False) -> Non
     process_controller = get_manager().get_process_controller()
 
     for process in processes:
-        future = process_controller.continue_process(process.pk, nowait=not wait, no_reply=False)
+        # Get queue identifier for scheduler routing
+        # CalcJobs have a computer, others (WorkChains) don't
+        if process.computer is not None:
+            queue_id = f'COMPUTER__{process.computer.label}'
+        else:
+            queue_id = 'LOCAL'
+        future = process_controller.continue_process(process.pk, nowait=not wait, no_reply=False, metadata={'queue_id': queue_id})
 
         if future:
             response = future.result()  # type: ignore[union-attr]

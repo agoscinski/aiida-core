@@ -31,6 +31,7 @@ from aiida.cmdline.commands import (
     cmd_rabbitmq,
     cmd_restapi,
     cmd_run,
+    cmd_scheduler,
     cmd_setup,
     cmd_shell,
     cmd_status,

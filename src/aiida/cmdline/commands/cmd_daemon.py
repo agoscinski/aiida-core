@@ -271,10 +271,14 @@ def start_circus(foreground, number):
 
 
 @verdi_daemon.command('worker')
+@click.option('--worker-id', type=str, help='Worker identifier (for executor management)')
 @decorators.with_dbenv()
 @decorators.requires_broker
-def worker():
-    """Run a single daemon worker in the current interpreter."""
+def worker(worker_id):
+    """Run a single daemon worker in the current interpreter.
+
+    This command is typically called by the executor, not manually.
+    """
     from aiida.engine.daemon.worker import start_daemon_worker
 
-    start_daemon_worker(foreground=True)
+    start_daemon_worker(foreground=True, worker_id=worker_id)

@@ -468,8 +468,7 @@ class Config:
         :param storage_backend: The entry point to the :class:`aiida.orm.implementation.storage_backend.StorageBackend`
             implementation to use for the storage.
         :param storage_config: The configuration necessary to initialise and connect to the storage backend.
-        :param broker_backend: The entry point to the :class:`aiida.brokers.Broker` implementation to use for the
-            message broker.
+        :param broker_backend: The entry point to the broker implementation to use for the message broker.
         :param broker_config: The configuration necessary to initialise and connect to the broker.
         :returns: The created profile.
         :raises ValueError: If the profile already exists.
@@ -478,7 +477,6 @@ class Config:
         :raises EntryPointError: If the ``storage_backend`` does not have an associated entry point.
         :raises StorageMigrationError: If the storage cannot be initialised.
         """
-        from aiida.brokers import Broker
         from aiida.orm.implementation.storage_backend import StorageBackend
         from aiida.plugins.entry_point import load_entry_point
 
@@ -500,14 +498,9 @@ class Config:
 
         if broker_backend is not None:
             try:
-                broker_cls = load_entry_point('aiida.brokers', broker_backend)
+                load_entry_point('aiida.brokers', broker_backend)
             except EntryPointError as exception:
                 raise ValueError(f'The entry point `{broker_backend}` could not be loaded.') from exception
-            else:
-                if not issubclass(broker_cls, Broker):
-                    raise TypeError(
-                        f'The `broker_backend={broker_backend}` is not a subclass of `aiida.brokers.broker.Broker`.'
-                    )
 
         profile = Profile(
             name,

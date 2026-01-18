@@ -6,7 +6,7 @@ from .broker import *
 from .rabbitmq import *
 
 __all__ = (
-    'Broker',
+    'BrokerCommunicator',
     'RabbitmqBroker',
 )
 

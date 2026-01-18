@@ -175,7 +175,6 @@ class Process(PlumpyProcess):
         from aiida.manage import manager
 
         self._runner = runner if runner is not None else manager.get_manager().get_runner()
-        # assert self._runner.communicator is not None, 'communicator not set for runner'
 
         super().__init__(
             inputs=self.spec().inputs.serialize(inputs),
@@ -610,6 +609,27 @@ class Process(PlumpyProcess):
             return None
 
         return orm.load_node(pk=self._parent_pid)  # type: ignore[return-value]
+
+    def get_computer_label(self) -> str:
+        """Get the computer label for this process.
+
+        Returns "localhost" by default for processes without a computer.
+        CalcJob overrides this to return the actual Computer.label.
+
+        :return: computer label string
+
+        """
+        return 'localhost'
+
+    def get_queue_identifier(self) -> str:
+        """Get the queue identifier for this process.
+
+        Returns 'LOCAL' by default for processes without a computer (WorkChains, CalcFunctions).
+        CalcJob overrides this to return 'COMPUTER__<computer_label>'.
+
+        :return: queue identifier string
+        """
+        return 'LOCAL'
 
     @classmethod
     def build_process_type(cls) -> str:
