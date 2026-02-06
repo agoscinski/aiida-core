@@ -1,18 +1,15 @@
-"""Generic broker interface module"""
+"""ZeroMQ-based message broker for AiiDA."""
 
 # AUTO-GENERATED
 
 # fmt: off
 
 from .broker import *
-from .rabbitmq import *
-from .zmq import *
+from .defaults import *
 
 __all__ = (
     'BROKER_DEFAULTS',
     'RPC_TIMEOUT',
-    'Broker',
-    'RabbitmqBroker',
     'ZmqBroker',
     'get_zmq_config',
 )
