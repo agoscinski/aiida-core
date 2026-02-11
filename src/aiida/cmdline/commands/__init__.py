@@ -18,6 +18,7 @@ from aiida.cmdline.commands import (
     cmd_code,
     cmd_computer,
     cmd_config,
+    cmd_coordinator,
     cmd_daemon,
     cmd_data,
     cmd_devel,

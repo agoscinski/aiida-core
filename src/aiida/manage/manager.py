@@ -306,8 +306,20 @@ class Manager:
             if entry_point == 'rabbitmq':
                 entry_point = 'core.rabbitmq'
 
-            broker_cls = BrokerFactory(entry_point)
-            self._broker = broker_cls(self._profile)
+            try:
+                broker_cls = BrokerFactory(entry_point)
+                self._broker = broker_cls(self._profile)
+            except ConnectionError as exc:
+                # Enhance error message for named pipe broker
+                if entry_point == 'core.namedpipe':
+                    raise ConnectionError(
+                        f'Named pipe coordinator for profile `{self._profile.name}` is not running. '
+                        f'Start it with: verdi coordinator start\n'
+                        f'Original error: {exc}'
+                    ) from exc
+                else:
+                    # Re-raise for other brokers
+                    raise
 
         return self._broker
 
@@ -460,6 +472,14 @@ class Manager:
 
         assert runner.communicator is not None, 'communicator not set for runner'
         runner.communicator.add_task_subscriber(task_receiver)
+
+        # Add a dummy broadcast subscriber to ensure broadcast pipe is created for daemon workers
+        # This is needed for named pipe broker where pipes are created on-demand
+        def _broadcast_handler(communicator, body, sender, subject, correlation_id):
+            """Dummy broadcast handler to ensure broadcast pipe exists."""
+            pass
+
+        runner.communicator.add_broadcast_subscriber(_broadcast_handler)
 
         return runner
 

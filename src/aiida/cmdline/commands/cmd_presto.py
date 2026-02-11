@@ -218,10 +218,11 @@ def verdi_presto(
     try:
         broker_config = detect_rabbitmq_config()
     except ConnectionError as exception:
-        echo.echo_report(f'RabbitMQ server not found ({exception}): configuring the profile without a broker.')
-        echo.echo_report(f'See {docs.URL_NO_BROKER} for details on the limitations of running without a broker.')
+        echo.echo_report(f'RabbitMQ server not found ({exception}): profile will use named pipe broker.')
+        echo.echo_report('Start the coordinator with: verdi coordinator start')
+        broker_backend = 'core.namedpipe'
     else:
-        echo.echo_report('RabbitMQ server detected: configuring the profile with a broker.')
+        echo.echo_report('RabbitMQ server detected: configuring the profile with RabbitMQ broker.')
         broker_backend = 'core.rabbitmq'
 
     try:

@@ -128,7 +128,18 @@ def verdi_status(print_traceback, no_rmq):
         )
 
     # Getting the broker status
-    broker = manager.get_broker()
+    try:
+        broker = manager.get_broker()
+    except ConnectionError as exc:
+        # Named pipe broker coordinator not running
+        print_status(ServiceStatus.ERROR, 'broker', str(exc), print_traceback=print_traceback)
+        exit_code = ExitCode.CRITICAL
+        broker = None
+    except Exception as exc:
+        message = 'Unable to get broker'
+        print_status(ServiceStatus.ERROR, 'broker', message, exception=exc, print_traceback=print_traceback)
+        exit_code = ExitCode.CRITICAL
+        broker = None
 
     if broker:
         try:
@@ -139,21 +150,15 @@ def verdi_status(print_traceback, no_rmq):
             exit_code = ExitCode.CRITICAL
         else:
             print_status(ServiceStatus.UP, 'broker', broker)
-    else:
-        print_status(
-            ServiceStatus.WARNING,
-            'broker',
-            f'No broker defined for this profile: certain functionality not available. See {URL_NO_BROKER}',
-        )
 
     # Getting the daemon status
     try:
         status = manager.get_daemon_client().get_status()
-    except ConfigurationError:
+    except ConfigurationError as exc:
         print_status(
             ServiceStatus.WARNING,
             'daemon',
-            'No broker defined for this profile: daemon is not available. See {URL_NO_BROKER}',
+            f'Daemon not available: {exc}',
         )
     except DaemonNotRunningException as exception:
         print_status(ServiceStatus.WARNING, 'daemon', str(exception))
