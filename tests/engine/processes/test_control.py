@@ -125,8 +125,9 @@ def test_revive(monkeypatch, aiida_code_installed, submit_and_await):
     assert node.is_finished_ok
 
 
+@pytest.mark.requires_rmq
 class TestGetQueueNameFromNode:
-    """Tests for :func:`aiida.engine.processes.control.get_queue_name_from_node`."""
+    """Tests for :func:`aiida.engine.processes.control.get_queue_name_from_node` (requires broker)."""
 
     @pytest.mark.usefixtures('aiida_profile_clean')
     def test_root_workchain(self):

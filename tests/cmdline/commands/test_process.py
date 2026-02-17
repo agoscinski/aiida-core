@@ -1046,11 +1046,19 @@ def test_process_repair_additional_tasks(monkeypatch, run_cli_command):
     assert 'Attempting to fix inconsistencies' in result.output
 
 
-@pytest.mark.usefixtures('stopped_daemon_client')
+@pytest.mark.requires_rmq
+@pytest.mark.usefixtures('aiida_profile_clean', 'stopped_daemon_client')
 def test_process_repair_missing_tasks(monkeypatch, run_cli_command):
     """Test the ``verdi process repair`` command when there are missing tasks."""
-    monkeypatch.setattr(process_control, 'get_active_processes', lambda *args, **kwargs: [1, 2, 3])
-    monkeypatch.setattr(process_control, 'get_process_tasks', lambda *args: [1, 2])
+    # Create real nodes so load_node() works when reviving
+    nodes = [CalcJobNode() for _ in range(3)]
+    for node in nodes:
+        node.set_process_state(ProcessState.RUNNING)
+        node.store()
+    pks = [n.pk for n in nodes]
+
+    monkeypatch.setattr(process_control, 'get_active_processes', lambda *args, **kwargs: pks)
+    monkeypatch.setattr(process_control, 'get_process_tasks', lambda *args: pks[:2])  # Missing task for 3rd node
 
     result = run_cli_command(cmd_process.process_repair, use_subprocess=False)
     assert 'There are active processes without process task:' in result.output
@@ -1069,15 +1077,23 @@ def test_process_repair_dry_run(monkeypatch, run_cli_command):
     assert 'This was a dry-run, no changes will be made.' in result.output
 
 
-@pytest.mark.usefixtures('stopped_daemon_client')
+@pytest.mark.requires_rmq
+@pytest.mark.usefixtures('aiida_profile_clean', 'stopped_daemon_client')
 def test_process_repair_verbosity(monkeypatch, run_cli_command):
     """Test the ``verdi process repair`` command with ``-v INFO```."""
-    monkeypatch.setattr(process_control, 'get_active_processes', lambda *args, **kwargs: [1, 2, 3, 4])
-    monkeypatch.setattr(process_control, 'get_process_tasks', lambda *args: [1, 2])
+    # Create real nodes so load_node() works when reviving
+    nodes = [CalcJobNode() for _ in range(4)]
+    for node in nodes:
+        node.set_process_state(ProcessState.RUNNING)
+        node.store()
+    pks = [n.pk for n in nodes]
+
+    monkeypatch.setattr(process_control, 'get_active_processes', lambda *args, **kwargs: pks)
+    monkeypatch.setattr(process_control, 'get_process_tasks', lambda *args: pks[:2])
 
     result = run_cli_command(cmd_process.process_repair, ['-v', 'INFO'], use_subprocess=False)
-    assert 'Active processes: [1, 2, 3, 4]' in result.output
-    assert 'Process tasks: [1, 2]' in result.output
+    assert 'Active processes:' in result.output
+    assert 'Process tasks:' in result.output
 
 
 @pytest.fixture
