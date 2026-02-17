@@ -468,6 +468,8 @@ class Manager:
             from aiida.manage.configuration import get_config, get_config_option
 
             profile = self.get_profile()
+            if profile is None:
+                raise RuntimeError('Cannot create daemon workers: no profile loaded')
             queue_config = profile.get_queue_config()
 
             # Ensure default queue exists when daemon starts

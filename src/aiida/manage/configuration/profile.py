@@ -160,7 +160,9 @@ class Profile:
             raise ValueError("Queue configuration must include a 'default' queue")
 
         self._attributes.setdefault(self.KEY_PROCESS, {})
-        self._attributes[self.KEY_PROCESS].setdefault(self.KEY_PROCESS_CONFIG, {})
+        # setdefault doesn't help if KEY_PROCESS_CONFIG exists but is None
+        if self._attributes[self.KEY_PROCESS].get(self.KEY_PROCESS_CONFIG) is None:
+            self._attributes[self.KEY_PROCESS][self.KEY_PROCESS_CONFIG] = {}
 
         if queues is None:
             self._attributes[self.KEY_PROCESS][self.KEY_PROCESS_CONFIG].pop('queues', None)
