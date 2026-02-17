@@ -165,6 +165,13 @@ class ProfileStorageConfig(BaseModel, defer_build=True):
     config: Dict[str, Any]
 
 
+class QueueConfig(BaseModel, defer_build=True):
+    """Schema for a named queue configuration."""
+
+    root_workchain_prefetch: int = Field(default=200, description='Maximum concurrent root WorkChains (0 = unlimited).')
+    calcjob_prefetch: int = Field(default=0, description='Maximum concurrent CalcJobs (0 = unlimited).')
+
+
 class ProcessControlConfig(BaseModel, defer_build=True):
     """Schema for the process control configuration of an AiiDA profile."""
 
@@ -176,6 +183,10 @@ class ProcessControlConfig(BaseModel, defer_build=True):
     broker_virtual_host: str = Field('', description='Virtual host to use for the message broker.')
     broker_parameters: dict[str, Any] = Field(
         default_factory=dict, description='Arguments to be encoded as query parameters.'
+    )
+    queues: Optional[Dict[str, QueueConfig]] = Field(
+        default=None,
+        description='Named queue configurations. Keys are queue names (e.g., "default").',
     )
 
 

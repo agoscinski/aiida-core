@@ -143,6 +143,30 @@ class Profile:
         self._attributes[self.KEY_PROCESS][self.KEY_PROCESS_BACKEND] = name
         self._attributes[self.KEY_PROCESS][self.KEY_PROCESS_CONFIG] = config
 
+    def get_queue_config(self) -> Optional[Dict[str, Any]]:
+        """Return the queue configuration if multi-queue mode is enabled.
+
+        :return: The queue configuration dict or None if not configured.
+        """
+        return self.process_control_config.get('queues')
+
+    def set_queue_config(self, queues: Optional[Dict[str, Any]]) -> None:
+        """Set the queue configuration for multi-queue mode.
+
+        :param queues: The queue configuration dict, or None to disable multi-queue mode.
+        :raises ValueError: If queues is not None but doesn't contain a 'default' queue.
+        """
+        if queues is not None and 'default' not in queues:
+            raise ValueError("Queue configuration must include a 'default' queue")
+
+        self._attributes.setdefault(self.KEY_PROCESS, {})
+        self._attributes[self.KEY_PROCESS].setdefault(self.KEY_PROCESS_CONFIG, {})
+
+        if queues is None:
+            self._attributes[self.KEY_PROCESS][self.KEY_PROCESS_CONFIG].pop('queues', None)
+        else:
+            self._attributes[self.KEY_PROCESS][self.KEY_PROCESS_CONFIG]['queues'] = queues
+
     @property
     def options(self):
         self._attributes.setdefault(self.KEY_OPTIONS, {})

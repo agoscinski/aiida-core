@@ -49,7 +49,7 @@ def daemon_client(aiida_profile):
 
 
 @pytest.fixture
-def started_daemon_client(daemon_client: 'DaemonClient'):
+def started_daemon_client(daemon_client: 'DaemonClient', aiida_profile):
     """Ensure that the daemon is running for the test profile and return the associated client.
 
     Usage::
@@ -58,6 +58,26 @@ def started_daemon_client(daemon_client: 'DaemonClient'):
             assert started_daemon_client.is_daemon_running
 
     """
+    from aiida.manage import get_config_option
+    from aiida.manage.configuration import get_config
+
+    # Ensure default queue configuration exists before starting daemon
+    queue_config = aiida_profile.get_queue_config()
+    if queue_config is None or 'default' not in queue_config:
+        default_queue = {
+            'default': {
+                'root_workchain_prefetch': get_config_option('daemon.worker_process_slots'),
+                'calcjob_prefetch': 0,
+            }
+        }
+        if queue_config is None:
+            queue_config = default_queue
+        else:
+            queue_config = {**default_queue, **queue_config}
+        aiida_profile.set_queue_config(queue_config)
+        get_config().update_profile(aiida_profile)
+        get_config().store()
+
     if not daemon_client.is_daemon_running:
         daemon_client.start_daemon()
         assert daemon_client.is_daemon_running

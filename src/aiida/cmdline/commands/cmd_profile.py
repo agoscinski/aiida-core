@@ -162,6 +162,20 @@ def profile_configure_rabbitmq(ctx, /, profile, non_interactive, force, **kwargs
         echo.echo_success('Connected to RabbitMQ with the provided connection parameters')
 
     profile.set_process_controller(name='core.rabbitmq', config=broker_config)
+
+    # Create default queue if not already configured
+    queue_config = profile.get_queue_config() or {}
+    if 'default' not in queue_config:
+        from aiida.manage.configuration import get_config_option
+
+        default_prefetch = get_config_option('daemon.worker_process_slots')
+        queue_config['default'] = {
+            'root_workchain_prefetch': default_prefetch,
+            'calcjob_prefetch': 0,
+        }
+        profile.set_queue_config(queue_config)
+        echo.echo_success('Default queue configuration created.')
+
     ctx.obj.config.update_profile(profile)
     ctx.obj.config.store()
 

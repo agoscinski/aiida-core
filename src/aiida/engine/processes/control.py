@@ -22,6 +22,31 @@ from aiida.tools.query.calculation import CalculationQueryBuilder
 LOGGER = AIIDA_LOGGER.getChild('process_control')
 
 
+def get_queue_name_from_node(node: ProcessNode) -> str:
+    """Determine the full RabbitMQ queue name for a process node.
+
+    :param node: The process node.
+    :return: The full queue name (e.g., 'aiida-{uuid}.default.root-workchain.queue').
+    """
+    from aiida.orm.nodes.process.workflow import WorkChainNode
+
+    # Get the stored user queue name
+    user_queue = node.base.attributes.get(ProcessNode.QUEUE_NAME_KEY, 'default')
+
+    # Determine queue type based on process type and whether it has a caller
+    if isinstance(node, WorkChainNode):
+        if node.caller is None:
+            queue_type = 'root-workchain'
+        else:
+            queue_type = 'nested-workchain'
+    else:
+        queue_type = 'calcjob'
+
+    # Get the full RabbitMQ queue name including the profile prefix
+    broker = get_manager().get_broker()
+    return broker.get_full_queue_name(user_queue, queue_type)
+
+
 class ProcessTimeoutException(AiidaException):
     """Raised when action to communicate with a process times out."""
 
@@ -88,7 +113,8 @@ def revive_processes(processes: list[ProcessNode], *, wait: bool = False) -> Non
     process_controller = get_manager().get_process_controller()
 
     for process in processes:
-        future = process_controller.continue_process(process.pk, nowait=not wait, no_reply=False)
+        queue_name = get_queue_name_from_node(process)
+        future = process_controller.continue_process(process.pk, nowait=not wait, no_reply=False, queue_name=queue_name)
 
         if future:
             response = future.result()  # type: ignore[union-attr]

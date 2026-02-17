@@ -32,6 +32,24 @@ Below is a list with all available subcommands.
       version  Print the current version of an archive's schema.
 
 
+.. _reference:command-line:verdi-broker:
+
+``verdi broker``
+----------------
+
+.. code:: console
+
+    Usage:  [OPTIONS] COMMAND [ARGS]...
+
+      Manage the message broker for the current profile.
+
+    Options:
+      --help  Show this message and exit.
+
+    Commands:
+      queue  Manage process queues.
+
+
 .. _reference:command-line:verdi-calcjob:
 
 ``verdi calcjob``
@@ -377,6 +395,7 @@ Below is a list with all available subcommands.
       play       Play (unpause) paused processes.
       repair     Automatically repair all stuck processes.
       report     Show the log report of processes.
+      set-queue  Change the queue assignment for one or more processes.
       show       Show details of processes.
       status     Show the status of processes.
       watch      Watch the state transitions of processes.

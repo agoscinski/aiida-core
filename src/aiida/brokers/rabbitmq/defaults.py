@@ -10,7 +10,6 @@ from aiida.common.log import AIIDA_LOGGER
 
 LOGGER = AIIDA_LOGGER.getChild('brokers.rabbitmq.defaults')
 
-LAUNCH_QUEUE = 'process.queue'
 MESSAGE_EXCHANGE = 'messages'
 TASK_EXCHANGE = 'tasks'
 
