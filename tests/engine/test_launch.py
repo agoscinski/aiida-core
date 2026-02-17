@@ -328,9 +328,10 @@ class TestLaunchersDryRun:
             assert filename in os.listdir(node.dry_run_info['folder'])
 
 
+@pytest.mark.requires_rmq
 @pytest.mark.usefixtures('aiida_profile_clean')
 class TestProcessQueueRouting:
-    """Tests for process queue routing functionality."""
+    """Tests for process queue routing functionality (requires RabbitMQ broker)."""
 
     @pytest.fixture
     def queue_config(self, aiida_profile):
@@ -448,7 +449,8 @@ class TestProcessQueueRouting:
             mock_process.pid = 123
 
             queue_name = runner._get_nested_queue_name(mock_process)
-            assert queue_name == 'default.calcjob'
+            # Full queue name includes profile prefix, e.g. 'aiida-{uuid}.default.calcjob.queue'
+            assert 'default.calcjob' in queue_name
         finally:
             processes.Process = original_process
 
@@ -481,7 +483,8 @@ class TestProcessQueueRouting:
             mock_process.pid = 456
 
             queue_name = runner._get_nested_queue_name(mock_process)
-            assert queue_name == 'priority.nested-workchain'
+            # Full queue name includes profile prefix
+            assert 'priority.nested-workchain' in queue_name
         finally:
             processes.Process = original_process
 
@@ -513,16 +516,15 @@ class TestProcessQueueRouting:
             mock_process.pid = 789
 
             queue_name = runner._get_nested_queue_name(mock_process)
-            # Should inherit 'priority' from parent
-            assert queue_name == 'priority.calcjob'
+            # Should inherit 'priority' from parent - full name includes profile prefix
+            assert 'priority.calcjob' in queue_name
         finally:
             processes.Process = original_process
 
-    def test_nested_queue_name_no_queue_config(self, manager):
-        """Test _get_nested_queue_name raises when no queue is configured."""
+    def test_nested_queue_name_auto_creates_config(self, manager):
+        """Test _get_nested_queue_name auto-creates queue config when missing."""
         from unittest.mock import MagicMock
 
-        from aiida.common import exceptions
         from aiida.engine import processes
         from aiida.engine.processes.calcjobs import CalcJob
         from aiida.manage.configuration import get_config
@@ -553,7 +555,12 @@ class TestProcessQueueRouting:
             mock_process = MagicMock(spec=CalcJob)
             mock_process.pid = 123
 
-            with pytest.raises(exceptions.InvalidOperation, match='no default queue configured'):
-                runner._get_nested_queue_name(mock_process)
+            # Should auto-create queue config and succeed
+            queue_name = runner._get_nested_queue_name(mock_process)
+            assert 'default.calcjob' in queue_name
+
+            # Verify config was created
+            assert profile.get_queue_config() is not None
+            assert 'default' in profile.get_queue_config()
         finally:
             processes.Process = original_process
