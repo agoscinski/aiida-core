@@ -44,6 +44,8 @@ def get_queue_name_from_node(node: ProcessNode) -> str:
 
     # Get the full RabbitMQ queue name including the profile prefix
     broker = get_manager().get_broker()
+    if broker is None:
+        raise AiidaException('Cannot determine queue name: no broker configured for this profile')
     return broker.get_full_queue_name(user_queue, queue_type)
 
 
