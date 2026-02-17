@@ -326,3 +326,241 @@ class TestLaunchersDryRun:
         assert 'folder' in node.dry_run_info
         for filename in ['path', 'file_one', 'file_two']:
             assert filename in os.listdir(node.dry_run_info['folder'])
+
+
+@pytest.mark.requires_rmq
+@pytest.mark.usefixtures('aiida_profile_clean')
+class TestProcessQueueRouting:
+    """Tests for process queue routing functionality (requires RabbitMQ broker)."""
+
+    @pytest.fixture
+    def queue_config(self, aiida_profile):
+        """Set up queue configuration for tests."""
+        from aiida.manage.configuration import get_config
+
+        profile = aiida_profile
+        profile.set_queue_config(
+            {
+                'default': {'root_workchain_prefetch': 200, 'calcjob_prefetch': 0},
+                'priority': {'root_workchain_prefetch': 50, 'calcjob_prefetch': 0},
+            }
+        )
+        get_config().update_profile(profile)
+        get_config().store()
+        return profile
+
+    def test_process_queue_name_methods(self):
+        """Test Process.set_queue_name() and get_queue_name() methods."""
+        from aiida.engine import Process
+
+        class SimpleProcess(Process):
+            _node_class = orm.WorkflowNode
+
+            @classmethod
+            def define(cls, spec):
+                super().define(spec)
+
+            async def run(self):
+                pass
+
+        proc = SimpleProcess()
+
+        # Initially no queue name set
+        assert proc.get_queue_name() is None
+
+        # Set queue name
+        proc.set_queue_name('default')
+        assert proc.get_queue_name() == 'default'
+
+        # Update queue name
+        proc.set_queue_name('priority')
+        assert proc.get_queue_name() == 'priority'
+
+    def test_submit_stores_queue_name(self, queue_config, arithmetic_add_builder, manager):
+        """Test that submit() stores the queue name on the process node."""
+        from unittest.mock import MagicMock
+
+        from aiida.orm import ProcessNode
+
+        # Get the actual runner and patch its internal _controller
+        runner = manager.get_runner()
+
+        # Store original controller and replace with mock
+        original_controller = runner._controller
+        runner._controller = MagicMock()
+
+        try:
+            node = launch.submit(arithmetic_add_builder)
+
+            # Queue name should be stored on the node
+            queue_name = node.base.attributes.get(ProcessNode.QUEUE_NAME_KEY, None)
+            assert queue_name == 'default'
+        finally:
+            runner._controller = original_controller
+
+    def test_workchain_submit_stores_queue_name(self, queue_config, manager):
+        """Test that submitting a workchain stores the queue name."""
+        from unittest.mock import MagicMock
+
+        from aiida.orm import ProcessNode
+
+        # Get the actual runner and patch its internal _controller
+        runner = manager.get_runner()
+
+        # Store original controller and replace with mock
+        original_controller = runner._controller
+        runner._controller = MagicMock()
+
+        try:
+            node = launch.submit(AddWorkChain, term_a=orm.Int(1), term_b=orm.Int(2))
+
+            # Queue name should be stored on the node
+            queue_name = node.base.attributes.get(ProcessNode.QUEUE_NAME_KEY, None)
+            assert queue_name == 'default'
+        finally:
+            runner._controller = original_controller
+
+    def test_nested_queue_name_calcjob(self, queue_config, manager):
+        """Test _get_nested_queue_name routes CalcJobs correctly."""
+        from unittest.mock import MagicMock
+
+        from aiida.engine import processes
+        from aiida.engine.processes.calcjobs import CalcJob
+
+        runner = manager.get_runner()
+
+        # Mock a process with a queue name
+        class MockProcess:
+            @staticmethod
+            def current():
+                class CurrentProcess:
+                    def get_queue_name(self):
+                        return 'default'
+
+                return CurrentProcess()
+
+        # Store original and replace
+        original_process = processes.Process
+        processes.Process = MockProcess
+
+        try:
+            # Create a mock process that is not a WorkChain
+            mock_process = MagicMock(spec=CalcJob)
+            mock_process.pid = 123
+
+            queue_name = runner._get_nested_queue_name(mock_process)
+            # Full queue name includes profile prefix, e.g. 'aiida-{uuid}.default.calcjob.queue'
+            assert 'default.calcjob' in queue_name
+        finally:
+            processes.Process = original_process
+
+    def test_nested_queue_name_workchain(self, queue_config, manager):
+        """Test _get_nested_queue_name routes WorkChains correctly."""
+        from unittest.mock import MagicMock
+
+        from aiida.engine import processes
+        from aiida.engine.processes.workchains import WorkChain
+
+        runner = manager.get_runner()
+
+        # Mock a process with a queue name
+        class MockProcess:
+            @staticmethod
+            def current():
+                class CurrentProcess:
+                    def get_queue_name(self):
+                        return 'priority'
+
+                return CurrentProcess()
+
+        # Store original and replace
+        original_process = processes.Process
+        processes.Process = MockProcess
+
+        try:
+            # Create a mock process that is a WorkChain
+            mock_process = MagicMock(spec=WorkChain)
+            mock_process.pid = 456
+
+            queue_name = runner._get_nested_queue_name(mock_process)
+            # Full queue name includes profile prefix
+            assert 'priority.nested-workchain' in queue_name
+        finally:
+            processes.Process = original_process
+
+    def test_nested_queue_name_inherits_parent_queue(self, queue_config, manager):
+        """Test _get_nested_queue_name inherits parent's queue name."""
+        from unittest.mock import MagicMock
+
+        from aiida.engine import processes
+        from aiida.engine.processes.calcjobs import CalcJob
+
+        runner = manager.get_runner()
+
+        # Mock a process with a custom queue name
+        class MockProcess:
+            @staticmethod
+            def current():
+                class CurrentProcess:
+                    def get_queue_name(self):
+                        return 'priority'
+
+                return CurrentProcess()
+
+        # Store original and replace
+        original_process = processes.Process
+        processes.Process = MockProcess
+
+        try:
+            mock_process = MagicMock(spec=CalcJob)
+            mock_process.pid = 789
+
+            queue_name = runner._get_nested_queue_name(mock_process)
+            # Should inherit 'priority' from parent - full name includes profile prefix
+            assert 'priority.calcjob' in queue_name
+        finally:
+            processes.Process = original_process
+
+    def test_nested_queue_name_auto_creates_config(self, manager):
+        """Test _get_nested_queue_name auto-creates queue config when missing."""
+        from unittest.mock import MagicMock
+
+        from aiida.engine import processes
+        from aiida.engine.processes.calcjobs import CalcJob
+        from aiida.manage.configuration import get_config
+
+        # Remove queue config
+        profile = manager.get_profile()
+        profile.set_queue_config(None)
+        get_config().update_profile(profile)
+        get_config().store()
+
+        runner = manager.get_runner()
+
+        # Mock a process with no queue name
+        class MockProcess:
+            @staticmethod
+            def current():
+                class CurrentProcess:
+                    def get_queue_name(self):
+                        return None
+
+                return CurrentProcess()
+
+        # Store original and replace
+        original_process = processes.Process
+        processes.Process = MockProcess
+
+        try:
+            mock_process = MagicMock(spec=CalcJob)
+            mock_process.pid = 123
+
+            # Should auto-create queue config and succeed
+            queue_name = runner._get_nested_queue_name(mock_process)
+            assert 'default.calcjob' in queue_name
+
+            # Verify config was created
+            assert profile.get_queue_config() is not None
+            assert 'default' in profile.get_queue_config()
+        finally:
+            processes.Process = original_process

@@ -176,7 +176,10 @@ class Runner:
     def submit(self, process: TYPE_SUBMIT_PROCESS, inputs: dict[str, Any] | None = None, **kwargs: Any):
         """Submit the process with the supplied inputs to this runner immediately returning control to the interpreter.
 
-        The return value will be the calculation node of the submitted process
+        The return value will be the calculation node of the submitted process.
+
+        Note: When called from within a WorkChain (nested submission), nested WorkChains are
+        routed to the nested-workchain queue and CalcJobs to the calcjob queue.
 
         :param process: the process class to submit
         :param inputs: the inputs to be passed to the process
@@ -199,11 +202,69 @@ class Runner:
             assert self.controller is not None, 'runner does not have a controller'
             self.persister.save_checkpoint(process_inited)
             process_inited.close()
-            self.controller.continue_process(process_inited.pid, nowait=False, no_reply=True)
+            # Route to appropriate queue based on process type
+            queue_name = self._get_nested_queue_name(process_inited)
+            self.controller.continue_process(process_inited.pid, nowait=False, no_reply=True, queue_name=queue_name)
         else:
             self.loop.create_task(process_inited.step_until_terminated())
 
         return process_inited.node
+
+    def _get_nested_queue_name(self, process_inited: 'Process') -> str:
+        """Get the queue name for nested process submissions.
+
+        Routes nested WorkChains to the nested-workchain queue (unlimited) and
+        CalcJobs to the calcjob queue (unlimited). The user queue name is inherited
+        from the parent process.
+
+        :param process_inited: The initialized process being submitted.
+        :return: The full RabbitMQ queue name (e.g., 'aiida-{uuid}.default.calcjob.queue').
+        :raises exceptions.InvalidOperation: If queue is not configured for the profile.
+        """
+        from aiida.brokers.rabbitmq.defaults import DEFAULT_USER_QUEUE
+        from aiida.engine.processes.workchains import WorkChain
+        from aiida.manage import get_manager
+
+        from .processes import Process
+
+        manager = get_manager()
+
+        # Ensure default queue is configured
+        profile = manager.get_profile()
+        queue_config = profile.get_queue_config() or {}
+        if DEFAULT_USER_QUEUE not in queue_config:
+            from aiida.manage.configuration import get_config, get_config_option
+
+            default_queue = {
+                DEFAULT_USER_QUEUE: {
+                    'root_workchain_prefetch': get_config_option('daemon.worker_process_slots'),
+                    'calcjob_prefetch': 0,
+                }
+            }
+            queue_config = {**default_queue, **queue_config}
+            profile.set_queue_config(queue_config)
+            get_config().update_profile(profile)
+            get_config().store()
+
+        # Get the parent process's user queue name
+        current_process = Process.current()
+        user_queue = current_process.get_queue_name() if current_process else DEFAULT_USER_QUEUE
+
+        if user_queue is None:
+            user_queue = DEFAULT_USER_QUEUE
+
+        # Store queue name on the new process for its nested submissions
+        process_inited.set_queue_name(user_queue)
+
+        # Route based on submitted process type
+        if isinstance(process_inited, WorkChain):
+            queue_type = 'nested-workchain'
+        else:
+            queue_type = 'calcjob'
+
+        # Get the full RabbitMQ queue name including the profile prefix
+        broker = manager.get_broker()
+        return broker.get_full_queue_name(user_queue, queue_type)
 
     def schedule(
         self, process: TYPE_SUBMIT_PROCESS, inputs: dict[str, Any] | None = None, **kwargs: Any

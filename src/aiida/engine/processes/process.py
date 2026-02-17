@@ -262,6 +262,24 @@ class Process(PlumpyProcess):
         except (AssertionError, AttributeError):
             return AttributeDict()
 
+    def set_queue_name(self, queue_name: str) -> None:
+        """Store the user queue name this process is running on.
+
+        :param queue_name: The user queue name (e.g., 'default').
+        """
+        from aiida.orm import ProcessNode
+
+        self.node.base.attributes.set(ProcessNode.QUEUE_NAME_KEY, queue_name)
+
+    def get_queue_name(self) -> str | None:
+        """Get the user queue name this process is running on.
+
+        :return: The user queue name, or None if not set.
+        """
+        from aiida.orm import ProcessNode
+
+        return self.node.base.attributes.get(ProcessNode.QUEUE_NAME_KEY, None)
+
     def _save_checkpoint(self) -> None:
         """Save the current state in a chechpoint if persistence is enabled and the process state is not terminal
 
