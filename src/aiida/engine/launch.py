@@ -19,6 +19,9 @@ from aiida.common.log import AIIDA_LOGGER
 from aiida.manage import manager
 from aiida.orm import ProcessNode
 
+if t.TYPE_CHECKING:
+    from aiida.brokers.rabbitmq.defaults import QueueType
+
 from .processes.builder import ProcessBuilder
 from .processes.functions import FunctionProcess
 from .processes.process import Process
@@ -33,28 +36,29 @@ TYPE_SUBMIT_PROCESS = t.Union[Process, t.Type[Process], ProcessBuilder]
 LOGGER = AIIDA_LOGGER.getChild('engine.launch')
 
 
-def _determine_queue_type(process_class: t.Type[Process]) -> str:
+def _determine_queue_type(process_class: t.Type[Process]) -> 'QueueType':
     """Determine which queue type a process should be routed to.
 
     :param process_class: The process class being submitted.
-    :return: Queue type identifier ('root-workchain' or 'calcjob').
+    :return: Queue type (ROOT_WORKCHAIN or CALCJOB).
     """
+    from aiida.brokers.rabbitmq.defaults import QueueType
     from aiida.engine.processes.calcjobs import CalcJob
     from aiida.engine.processes.workchains import WorkChain
 
     # CalcJobs always go to calcjob queue
     if issubclass(process_class, CalcJob):
-        return 'calcjob'
+        return QueueType.CALCJOB
 
     # WorkChains at top level go to root-workchain queue
     if issubclass(process_class, WorkChain):
-        return 'root-workchain'
+        return QueueType.ROOT_WORKCHAIN
 
     # Default to calcjob queue for other process types (e.g., work functions)
-    return 'calcjob'
+    return QueueType.CALCJOB
 
 
-def _get_queue_info_for_submit(process_inited: Process) -> tuple[str, str] | None:
+def _get_queue_info_for_submit(process_inited: Process) -> 'tuple[str, QueueType] | None':
     """Get the queue info (user_queue, queue_type) for submitting a top-level process.
 
     :param process_inited: The initialized process instance.

@@ -221,7 +221,7 @@ class Runner:
         :return: The full RabbitMQ queue name (e.g., 'aiida-{uuid}.default.calcjob.queue').
         :raises exceptions.InvalidOperation: If queue is not configured for the profile.
         """
-        from aiida.brokers.rabbitmq.defaults import DEFAULT_USER_QUEUE
+        from aiida.brokers.rabbitmq.defaults import DEFAULT_USER_QUEUE, QueueType
         from aiida.engine.processes.workchains import WorkChain
         from aiida.manage import get_manager
 
@@ -258,9 +258,9 @@ class Runner:
 
         # Route based on submitted process type
         if isinstance(process_inited, WorkChain):
-            queue_type = 'nested-workchain'
+            queue_type = QueueType.NESTED_WORKCHAIN
         else:
-            queue_type = 'calcjob'
+            queue_type = QueueType.CALCJOB
 
         # Get the full RabbitMQ queue name including the profile prefix
         broker = manager.get_broker()

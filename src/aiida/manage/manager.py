@@ -498,7 +498,7 @@ class Manager:
                 for queue_type in broker.get_queue_types():
                     task_queue = broker.get_task_queue(queue_type, user_queue)
                     task_queue.add_task_subscriber(wrapped_receiver)
-                    self.logger.info(f'Daemon subscribed to queue: {user_queue}.{queue_type}')
+                    self.logger.info(f'Daemon subscribed to queue: {user_queue}.{queue_type.value}')
         else:
             runner.communicator.add_task_subscriber(task_receiver)
 

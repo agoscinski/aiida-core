@@ -28,7 +28,7 @@ def get_queue_name_from_node(node: ProcessNode) -> str:
     :param node: The process node.
     :return: The full queue name (e.g., 'aiida-{uuid}.default.root-workchain.queue').
     """
-    from aiida.brokers.rabbitmq.defaults import DEFAULT_USER_QUEUE
+    from aiida.brokers.rabbitmq.defaults import DEFAULT_USER_QUEUE, QueueType
     from aiida.orm.nodes.process.workflow import WorkChainNode
 
     # Get the stored user queue name
@@ -37,11 +37,11 @@ def get_queue_name_from_node(node: ProcessNode) -> str:
     # Determine queue type based on process type and whether it has a caller
     if isinstance(node, WorkChainNode):
         if node.caller is None:
-            queue_type = 'root-workchain'
+            queue_type = QueueType.ROOT_WORKCHAIN
         else:
-            queue_type = 'nested-workchain'
+            queue_type = QueueType.NESTED_WORKCHAIN
     else:
-        queue_type = 'calcjob'
+        queue_type = QueueType.CALCJOB
 
     # Get the full RabbitMQ queue name including the profile prefix
     broker = get_manager().get_broker()
