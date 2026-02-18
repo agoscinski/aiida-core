@@ -5,6 +5,9 @@ from __future__ import annotations
 import functools
 import typing as t
 
+# typing.assert_never available since 3.11
+from typing_extensions import assert_never
+
 from aiida.brokers.broker import Broker
 from aiida.common.log import AIIDA_LOGGER
 from aiida.manage.configuration import get_config_option
@@ -136,17 +139,17 @@ class RabbitmqBroker(Broker):
 
         return parse(self.get_communicator().server_properties['version'])
 
-    def get_queue_config(self, queue_name: str) -> 'QueueConfig | None':
+    def get_queue_config(self, queue_name: str) -> 'QueueConfig':
         """Get the queue configuration by name.
 
         :param queue_name: The queue name.
-        :return: The queue configuration or None if not configured.
+        :return: The queue configuration (defaults if not configured).
         """
+        from aiida.manage.configuration.config import QueueConfig
+
         queues = self._profile.get_queue_config()
         if queues is None or queue_name not in queues:
-            return None
-
-        from aiida.manage.configuration.config import QueueConfig
+            return QueueConfig()
 
         return QueueConfig(**queues[queue_name])
 
@@ -157,15 +160,19 @@ class RabbitmqBroker(Broker):
         :param queue_name: The queue name.
         :return: The prefetch count for the queue (0 means unlimited).
         """
-        if queue_type == QueueType.ROOT_WORKCHAIN:
-            # Root workchains have a configurable limit to prevent deadlocks
-            queue_config = self.get_queue_config(queue_name)
-            if queue_config is not None:
-                return queue_config.root_workchain_prefetch
-            return get_config_option('daemon.worker_process_slots')
+        queue_config = self.get_queue_config(queue_name)
 
-        # nested-workchain and calcjob are unlimited
-        return 0
+        if queue_type == QueueType.ROOT_WORKCHAIN:
+            return queue_config.root_workchain_prefetch
+
+        elif queue_type == QueueType.CALCJOB:
+            return queue_config.calcjob_prefetch
+
+        elif queue_type == QueueType.NESTED_WORKCHAIN:
+            return 0
+
+        else:
+            assert_never(queue_type)
 
     def get_task_queue(self, queue_type: QueueType, user_queue: str) -> 'RmqThreadTaskQueue':
         """Get a task queue by type and user queue name.
