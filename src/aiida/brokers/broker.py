@@ -48,7 +48,7 @@ class Broker:
         """
 
     @abc.abstractmethod
-    def get_task_queue(self, queue_type: str, user_queue: str = 'default'):
+    def get_task_queue(self, queue_type: str, user_queue: str):
         """Get a task queue by type and user queue name.
 
         :param queue_type: The queue type.

@@ -135,10 +135,10 @@ class RabbitmqBroker(Broker):
 
         return parse(self.get_communicator().server_properties['version'])
 
-    def get_queue_config(self, queue_name: str = 'default') -> 'QueueConfig | None':
+    def get_queue_config(self, queue_name: str) -> 'QueueConfig | None':
         """Get the queue configuration by name.
 
-        :param queue_name: The queue name (default: 'default').
+        :param queue_name: The queue name.
         :return: The queue configuration or None if not configured.
         """
         queues = self._profile.get_queue_config()
@@ -149,11 +149,11 @@ class RabbitmqBroker(Broker):
 
         return QueueConfig(**queues[queue_name])
 
-    def get_prefetch_count(self, queue_type: str, queue_name: str = 'default') -> int:
+    def get_prefetch_count(self, queue_type: str, queue_name: str) -> int:
         """Get the prefetch count for a queue type.
 
         :param queue_type: The queue type ('root-workchain', 'nested-workchain', or 'calcjob').
-        :param queue_name: The queue name (default: 'default').
+        :param queue_name: The queue name.
         :return: The prefetch count for the queue (0 means unlimited).
         """
         if queue_type == 'root-workchain':
@@ -166,11 +166,11 @@ class RabbitmqBroker(Broker):
         # nested-workchain and calcjob are unlimited
         return 0
 
-    def get_task_queue(self, queue_type: str, user_queue: str = 'default') -> 'RmqThreadTaskQueue':
+    def get_task_queue(self, queue_type: str, user_queue: str) -> 'RmqThreadTaskQueue':
         """Get a task queue by type and user queue name.
 
         :param queue_type: The queue type ('root-workchain', 'nested-workchain', or 'calcjob').
-        :param user_queue: The user-defined queue name (default: 'default').
+        :param user_queue: The user-defined queue name.
         :return: The task queue instance.
         """
         cache_key = f'{user_queue}.{queue_type}'
