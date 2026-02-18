@@ -70,8 +70,10 @@ class RabbitmqBroker(Broker):
 
         from aiida.orm.utils import serialize
 
+        from .defaults import DEFAULT_USER_QUEUE
+
         # Use calcjob queue as the default task queue for the communicator
-        default_task_queue = get_queue_name(self._prefix, 'default', 'calcjob')
+        default_task_queue = get_queue_name(self._prefix, DEFAULT_USER_QUEUE, 'calcjob')
 
         self._communicator = RmqThreadCommunicator.connect(
             connection_params={'url': self.get_url()},

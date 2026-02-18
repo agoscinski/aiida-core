@@ -697,14 +697,15 @@ def daemon_client(aiida_profile):
 @pytest.fixture()
 def started_daemon_client(daemon_client, aiida_profile):
     """Ensure that the daemon is running for the test profile and return the associated client."""
+    from aiida.brokers.rabbitmq.defaults import DEFAULT_USER_QUEUE
     from aiida.manage import get_config_option
     from aiida.manage.configuration import get_config
 
     # Ensure default queue configuration exists before starting daemon
     queue_config = aiida_profile.get_queue_config()
-    if queue_config is None or 'default' not in queue_config:
+    if queue_config is None or DEFAULT_USER_QUEUE not in queue_config:
         default_queue = {
-            'default': {
+            DEFAULT_USER_QUEUE: {
                 'root_workchain_prefetch': get_config_option('daemon.worker_process_slots'),
                 'calcjob_prefetch': 0,
             }
