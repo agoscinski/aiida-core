@@ -223,6 +223,7 @@ class Runner:
         """
         from aiida.brokers.rabbitmq.defaults import DEFAULT_USER_QUEUE, QueueType
         from aiida.engine.processes.workchains import WorkChain
+        from aiida.manage import get_manager
 
         from .processes import Process
 
@@ -243,7 +244,7 @@ class Runner:
             queue_type = QueueType.CALCJOB
 
         # Get the full RabbitMQ queue name including the profile prefix
-        broker = manager.get_broker()
+        broker = get_manager().get_broker()
         return broker.get_full_queue_name(user_queue, queue_type)
 
     def schedule(
