@@ -166,10 +166,18 @@ class ProfileStorageConfig(BaseModel, defer_build=True):
 
 
 class QueueConfig(BaseModel, defer_build=True):
-    """Schema for a named queue configuration."""
+    """Schema for a named queue configuration.
 
-    root_workchain_prefetch: int = Field(default=200, description='Maximum concurrent root WorkChains (0 = unlimited).')
-    calcjob_prefetch: int = Field(default=0, description='Maximum concurrent CalcJobs (0 = unlimited).')
+    Note: Prefetch limits are per daemon worker, not global. With N workers,
+    the effective limit is N * prefetch_count.
+    """
+
+    root_workchain_prefetch: int = Field(
+        default=200, description='Maximum concurrent root WorkChains per daemon worker (0 = unlimited).'
+    )
+    calcjob_prefetch: int = Field(
+        default=0, description='Maximum concurrent CalcJobs per daemon worker (0 = unlimited).'
+    )
 
 
 class ProcessControlConfig(BaseModel, defer_build=True):
