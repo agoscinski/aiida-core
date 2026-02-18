@@ -58,26 +58,8 @@ def started_daemon_client(daemon_client: 'DaemonClient', aiida_profile):
             assert started_daemon_client.is_daemon_running
 
     """
-    from aiida.brokers.rabbitmq.defaults import DEFAULT_USER_QUEUE
-    from aiida.manage import get_config_option
-    from aiida.manage.configuration import get_config
-
-    # Ensure default queue configuration exists before starting daemon
-    queue_config = aiida_profile.get_queue_config()
-    if queue_config is None or DEFAULT_USER_QUEUE not in queue_config:
-        default_queue = {
-            DEFAULT_USER_QUEUE: {
-                'root_workchain_prefetch': get_config_option('daemon.worker_process_slots'),
-                'calcjob_prefetch': 0,
-            }
-        }
-        if queue_config is None:
-            queue_config = default_queue
-        else:
-            queue_config = {**default_queue, **queue_config}
-        aiida_profile.set_queue_config(queue_config)
-        get_config().update_profile(aiida_profile)
-        get_config().store()
+    # Ensure queue config is initialized (get_queue_config initializes default if needed)
+    aiida_profile.get_queue_config()
 
     if not daemon_client.is_daemon_running:
         daemon_client.start_daemon()

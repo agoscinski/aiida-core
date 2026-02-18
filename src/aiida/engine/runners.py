@@ -223,28 +223,8 @@ class Runner:
         """
         from aiida.brokers.rabbitmq.defaults import DEFAULT_USER_QUEUE, QueueType
         from aiida.engine.processes.workchains import WorkChain
-        from aiida.manage import get_manager
 
         from .processes import Process
-
-        manager = get_manager()
-
-        # Ensure default queue is configured
-        profile = manager.get_profile()
-        queue_config = profile.get_queue_config() or {}
-        if DEFAULT_USER_QUEUE not in queue_config:
-            from aiida.manage.configuration import get_config, get_config_option
-
-            default_queue = {
-                DEFAULT_USER_QUEUE: {
-                    'root_workchain_prefetch': get_config_option('daemon.worker_process_slots'),
-                    'calcjob_prefetch': 0,
-                }
-            }
-            queue_config = {**default_queue, **queue_config}
-            profile.set_queue_config(queue_config)
-            get_config().update_profile(profile)
-            get_config().store()
 
         # Get the parent process's user queue name
         current_process = Process.current()

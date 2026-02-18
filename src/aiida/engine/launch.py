@@ -63,22 +63,12 @@ def _get_queue_info_for_submit(process_inited: Process) -> 'tuple[str, QueueType
 
     :param process_inited: The initialized process instance.
     :return: Tuple of (user_queue, queue_type), or None if no broker is configured.
-    :raises InvalidOperation: If queue is not configured for the profile.
     """
     broker = manager.get_manager().get_broker()
     if broker is None:
         return None
 
     from aiida.brokers.rabbitmq.defaults import DEFAULT_USER_QUEUE
-
-    # Validate that default queue is configured
-    profile = manager.get_manager().get_profile()
-    queue_config = profile.get_queue_config() or {}
-    if DEFAULT_USER_QUEUE not in queue_config:
-        raise InvalidOperation(
-            f'Cannot submit: no {DEFAULT_USER_QUEUE!r} queue configured for this profile. '
-            'Create one with: verdi broker queue create'
-        )
 
     user_queue = DEFAULT_USER_QUEUE  # For now, always use the default queue
     queue_type = _determine_queue_type(type(process_inited))

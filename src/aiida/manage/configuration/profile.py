@@ -143,12 +143,21 @@ class Profile:
         self._attributes[self.KEY_PROCESS][self.KEY_PROCESS_BACKEND] = name
         self._attributes[self.KEY_PROCESS][self.KEY_PROCESS_CONFIG] = config
 
-    def get_queue_config(self) -> Optional[Dict[str, Any]]:
-        """Return the queue configuration if multi-queue mode is enabled.
+    def get_queue_config(self) -> Dict[str, Any]:
+        """Return the queue configuration.
 
-        :return: The queue configuration dict or None if not configured.
+        If no queue configuration exists, initializes with the default queue.
+        The default will be persisted when the profile config is next saved.
+
+        :return: The queue configuration dict.
         """
-        return self.process_control_config.get('queues')
+        from aiida.brokers.rabbitmq.defaults import DEFAULT_USER_QUEUE
+
+        queues = self.process_control_config.get('queues')
+        if queues is None:
+            queues = {DEFAULT_USER_QUEUE: {}}
+            self.set_queue_config(queues)
+        return queues
 
     def set_queue_config(self, queues: Optional[Dict[str, Any]]) -> None:
         """Set the queue configuration for multi-queue mode.
