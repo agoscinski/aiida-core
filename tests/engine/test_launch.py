@@ -398,6 +398,32 @@ class TestProcessQueueRouting:
         finally:
             runner._controller = original_controller
 
+    def test_submit_to_custom_queue(self, queue_config, arithmetic_add_builder, manager):
+        """Test that submit() with queue parameter routes to the specified queue."""
+        from unittest.mock import MagicMock
+
+        from aiida.orm import ProcessNode
+
+        runner = manager.get_runner()
+
+        original_controller = runner._controller
+        mock_controller = MagicMock()
+        runner._controller = mock_controller
+
+        try:
+            node = launch.submit(arithmetic_add_builder, queue='priority')
+
+            # Queue name should be stored on the node
+            queue_name = node.base.attributes.get(ProcessNode.QUEUE_NAME_KEY, None)
+            assert queue_name == 'priority'
+
+            # Verify continue_process was called with the correct queue
+            mock_controller.continue_process.assert_called_once()
+            call_kwargs = mock_controller.continue_process.call_args.kwargs
+            assert 'priority' in call_kwargs['queue_name']
+        finally:
+            runner._controller = original_controller
+
     def test_workchain_submit_stores_queue_name(self, queue_config, manager):
         """Test that submitting a workchain stores the queue name."""
         from unittest.mock import MagicMock
