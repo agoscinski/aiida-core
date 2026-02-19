@@ -104,15 +104,20 @@ def revive_processes(processes: list[ProcessNode], *, wait: bool = False) -> Non
 
 
 def play_processes(
-    processes: list[ProcessNode] | None = None, *, all_entries: bool = False, timeout: float = 5.0
+    processes: list[ProcessNode] | None = None, *, all_entries: bool = False, timeout: float = 5.0, wait: bool = False
 ) -> None:
     """Play (unpause) paused processes.
+
+    This function unpauses processes that were previously paused. When a process is paused,
+    it releases its task from the RabbitMQ queue to free up prefetch slots. Playing the process
+    unpauses the node and resubmits the task to the queue for the daemon to pick up.
 
     .. note:: Requires the daemon to be running, or processes will be unresponsive.
 
     :param processes: List of processes to play.
     :param all_entries: Play all paused processes.
     :param timeout: Raise a ``ProcessTimeoutException`` if the process does not respond within this amount of seconds.
+    :param wait: Set to ``True`` to wait for a response, for ``False`` the action is fire-and-forget.
     :raises ``ProcessTimeoutException``: If the processes do not respond within the timeout.
     """
     if not get_daemon_client().is_daemon_running:
@@ -128,8 +133,26 @@ def play_processes(
         LOGGER.report('no active processes selected.')
         return
 
-    controller = get_manager().get_process_controller()
-    _perform_actions(processes, controller.play_process, 'play', 'playing', timeout)
+    process_controller = get_manager().get_process_controller()
+
+    for process in processes:
+        # First unpause the node - this signals to the ProcessLauncher that the process should be played
+        process.unpause()
+
+        # Resubmit the task to the queue using continue_process
+        future = process_controller.continue_process(process.pk, nowait=not wait, no_reply=False)
+
+        if future:
+            response = future.result()  # type: ignore[union-attr]
+        else:
+            response = None
+
+        if response and hasattr(response, 'done') and response.done():
+            LOGGER.info(f'Message to play Process<{process.pk}> received successfully.')
+        elif response:
+            LOGGER.warning(f'Failed to deliver play message to Process<{process.pk}>: {response}')
+        else:
+            LOGGER.info(f'Play message sent for Process<{process.pk}>')
 
 
 def pause_processes(
