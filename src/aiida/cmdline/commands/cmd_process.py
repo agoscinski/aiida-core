@@ -508,10 +508,16 @@ def process_watch(broker, processes, most_recent_node):
 
 @verdi_process.command('repair')
 @options.DRY_RUN()
+@click.option(
+    '--queue',
+    type=str,
+    default=None,
+    help='Target user queue for revived processes. If not specified, uses the queue stored on each process.',
+)
 @decorators.only_if_daemon_not_running()
 @decorators.with_manager
 @decorators.with_broker
-def process_repair(manager, broker, dry_run):
+def process_repair(manager, broker, dry_run, queue):
     """Automatically repair all stuck processes.
 
     N.B.: This command requires the daemon to be stopped.
@@ -573,15 +579,94 @@ def process_repair(manager, broker, dry_run):
 
     # Revive zombie processes that no longer have a process task
     from aiida.engine.processes.control import get_queue_name_from_node
-    from aiida.orm import load_node
+    from aiida.orm import ProcessNode, load_node
 
     process_controller = manager.get_process_controller()
     for pid in set_active_processes:
         if pid not in set_process_tasks:
             node = load_node(pid)
-            queue_name = get_queue_name_from_node(node)
+
+            if queue is not None:
+                # Override queue and update the node's attribute
+                node.base.attributes.set(ProcessNode.QUEUE_NAME_KEY, queue)
+                queue_name = get_queue_name_from_node(node)
+            else:
+                queue_name = get_queue_name_from_node(node)
+
             process_controller.continue_process(pid, queue_name=queue_name)
-            echo.echo_report(f'Revived process `{pid}`')
+            echo.echo_report(f'Revived process `{pid}` on queue `{queue_name}`')
+
+
+@verdi_process.command('set-queue')
+@click.argument('processes', nargs=-1, type=int, required=True)
+@click.option('--queue', type=str, required=True, help='Target user queue name (e.g., "default").')
+@decorators.with_manager
+@decorators.with_broker
+def process_set_queue(manager, broker, processes, queue):
+    """Change the queue assignment for one or more processes.
+
+    This will consume any existing task for the process from RabbitMQ,
+    update the process's queue attribute, and re-submit it to the new queue.
+
+    This command can be run while the daemon is running. It atomically consumes
+    the task before the daemon can process it.
+
+    PROCESSES are the PKs of the processes to reassign.
+    """
+    from aiida.engine.processes.control import get_queue_name_from_node, iterate_process_tasks
+    from aiida.orm import ProcessNode, load_node
+
+    # Validate queue exists
+    profile = manager.get_profile()
+    queue_config = profile.get_queue_config() or {}
+    if queue not in queue_config:
+        echo.echo_critical(f'Queue "{queue}" does not exist. Available queues: {list(queue_config.keys())}')
+
+    # Build a set of PIDs we want to move
+    pids_to_move = set(processes)
+
+    # First, consume any existing tasks for these processes
+    consumed_pids = set()
+    for task in iterate_process_tasks(broker):
+        pid = task.body.get('args', {}).get('pid', None)
+        if pid in pids_to_move:
+            with task.processing() as outcome:
+                outcome.set_result(False)
+            consumed_pids.add(pid)
+            echo.echo_report(f'Consumed existing task for process `{pid}`')
+
+    # Now update each process and re-submit
+    process_controller = manager.get_process_controller()
+    for pid in processes:
+        try:
+            node = load_node(pid)
+        except Exception as e:
+            echo.echo_warning(f'Could not load process `{pid}`: {e}')
+            continue
+
+        if node.is_terminated:
+            echo.echo_warning(f'Process `{pid}` is already terminated, skipping.')
+            continue
+
+        # Only re-submit if we actually consumed the task from the queue.
+        # If we didn't find the task, it means either:
+        # - The daemon already picked it up (process will run soon)
+        # - The task was lost (use `verdi process repair` instead)
+        # In both cases, re-submitting would risk creating duplicate tasks.
+        if pid not in consumed_pids:
+            echo.echo_warning(
+                f'Process `{pid}` task was not found in queue. '
+                f'It may already be picked up by daemon. Use `verdi process repair` if stuck. Skipping.'
+            )
+            continue
+
+        # Update the queue attribute
+        node.base.attributes.set(ProcessNode.QUEUE_NAME_KEY, queue)
+
+        # Get the full queue name and re-submit
+        queue_name = get_queue_name_from_node(node)
+        process_controller.continue_process(pid, queue_name=queue_name)
+        echo.echo_success(f'Moved process `{pid}` to queue `{queue_name}`')
 
 
 @verdi_process.command('dump')
