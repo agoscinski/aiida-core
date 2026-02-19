@@ -7,6 +7,7 @@ How-To Guides
 
    interact
    daemon
+   queues
    plugins_install
    run_codes
    run_workflows

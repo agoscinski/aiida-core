@@ -384,6 +384,12 @@ The function will submit the calculation to the daemon and immediately return co
 
     The ``await_processes`` function will loop every ``wait_interval`` seconds and check whether all processes (represented by the ``ProcessNode`` in the ``nodes`` list) have terminated.
 
+.. seealso::
+
+    When submitting processes to the daemon, they are routed through RabbitMQ message queues.
+    You can control which queue a process is submitted to using the ``queue`` parameter: ``submit(process, inputs, queue='hpc-gpu')``.
+    For details on queue configuration and routing, see :ref:`topics:broker`.
+
 
 The ``run`` function is called identically:
 
