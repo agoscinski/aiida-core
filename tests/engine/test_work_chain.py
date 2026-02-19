@@ -1661,3 +1661,89 @@ def test_illegal_override_run():
 
             async def run(self):
                 pass
+
+
+class AutoPausePausingChild(WorkChain):
+    """A child workchain that pauses itself immediately."""
+
+    @classmethod
+    def define(cls, spec):
+        super().define(spec)
+        spec.outline(cls.do_pause, cls.finalize)
+
+    def do_pause(self):
+        self.pause()
+
+    def finalize(self):
+        pass
+
+
+class AutoPauseQuickChild(WorkChain):
+    """A child workchain that completes immediately."""
+
+    @classmethod
+    def define(cls, spec):
+        super().define(spec)
+        spec.outline(cls.do_step)
+
+    def do_step(self):
+        pass
+
+
+class AutoPauseParentWorkChain(WorkChain):
+    """Parent workchain that submits two children - one pauses, one completes quickly."""
+
+    @classmethod
+    def define(cls, spec):
+        super().define(spec)
+        spec.outline(cls.submit_children, cls.finalize)
+
+    def submit_children(self):
+        # Submit one child that pauses and one that completes immediately
+        # The pausing child is submitted first to ensure it starts first
+        pausing = self.submit(AutoPausePausingChild)
+        quick = self.submit(AutoPauseQuickChild)
+        return ToContext(pausing=pausing, quick=quick)
+
+    def finalize(self):
+        pass
+
+
+@pytest.mark.requires_rmq
+class TestWorkChainAutoPause:
+    """Test that a WorkChain automatically pauses when a child is paused and all other children have terminated."""
+
+    @pytest.fixture(autouse=True)
+    def init_profile(self):
+        """Initialize the profile."""
+        assert Process.current() is None
+        yield
+        assert Process.current() is None
+
+    def test_parent_pauses_when_child_paused_others_terminated(self):
+        """Test that parent WorkChain pauses when one child is paused and all others have terminated.
+
+        The auto-pause logic in _on_awaitable_finished triggers when a child terminates.
+        Test flow:
+        1. Parent submits two children: one that pauses itself, one that completes immediately
+        2. Quick child completes and its callback fires
+        3. Callback sees pausing child is paused and all others terminated
+        4. Parent auto-pauses
+        """
+        runner = get_manager().get_runner()
+        process = AutoPauseParentWorkChain()
+
+        runner.schedule(process)
+
+        # Wait for the parent to auto-pause (triggered when quick child completes
+        # and detects the other child is paused)
+        runner.loop.run_until_complete(run_until_paused(process))
+
+        # Verify the parent is paused with correct status
+        assert process.paused
+        assert process.node.paused
+        assert process.node.process_status is not None
+        assert 'paused' in process.node.process_status.lower()
+
+        # Clean up
+        process.kill()
