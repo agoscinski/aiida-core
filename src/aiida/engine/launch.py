@@ -58,10 +58,13 @@ def _determine_queue_type(process_class: t.Type[Process]) -> 'QueueType':
     return QueueType.CALCJOB
 
 
-def _get_queue_info_for_submit(process_inited: Process) -> 'tuple[str, QueueType] | None':
+def _get_queue_info_for_submit(
+    process_inited: Process, user_queue: str | None = None
+) -> 'tuple[str, QueueType] | None':
     """Get the queue info (user_queue, queue_type) for submitting a top-level process.
 
     :param process_inited: The initialized process instance.
+    :param user_queue: Optional user queue name. If None, uses the default queue.
     :return: Tuple of (user_queue, queue_type), or None if no broker is configured.
     """
     broker = manager.get_manager().get_broker()
@@ -70,7 +73,8 @@ def _get_queue_info_for_submit(process_inited: Process) -> 'tuple[str, QueueType
 
     from aiida.brokers.rabbitmq.defaults import DEFAULT_USER_QUEUE
 
-    user_queue = DEFAULT_USER_QUEUE  # For now, always use the default queue
+    if user_queue is None:
+        user_queue = DEFAULT_USER_QUEUE
     queue_type = _determine_queue_type(type(process_inited))
     return (user_queue, queue_type)
 
@@ -126,6 +130,7 @@ def submit(
     process: TYPE_SUBMIT_PROCESS,
     inputs: dict[str, t.Any] | None = None,
     *,
+    queue: str | None = None,
     wait: bool = False,
     wait_interval: int = 5,
     **kwargs: t.Any,
@@ -139,6 +144,7 @@ def submit(
 
     :param process: the process class, instance or builder to submit
     :param inputs: the input dictionary to be passed to the process
+    :param queue: the user queue name to submit to (default: 'default'). Must be created with `verdi broker queue create`.
     :param wait: when set to ``True``, the submission will be blocking and wait for the process to complete at which
         point the function returns the calculation node.
     :param wait_interval: the number of seconds to wait between checking the state of the process when ``wait=True``.
@@ -182,7 +188,7 @@ def submit(
     # Determine queue routing for multi-queue mode
     # Since we verified runner.controller exists above, broker must also exist,
     # so _get_queue_info_for_submit will return a valid tuple (not None)
-    queue_info = _get_queue_info_for_submit(process_inited)
+    queue_info = _get_queue_info_for_submit(process_inited, user_queue=queue)
     assert queue_info is not None, 'Queue info must be set when broker is configured'
     user_queue, queue_type = queue_info
     process_inited.set_queue_name(user_queue)  # Store for nested submissions
