@@ -21,7 +21,9 @@ import os
 import shutil
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+
+PrefetchLimit = Union[int, Literal['UNLIMITED']]
 
 from pydantic import (
     BaseModel,
@@ -172,11 +174,11 @@ class QueueConfig(BaseModel, defer_build=True):
     the effective limit is N * prefetch_count.
     """
 
-    root_workchain_prefetch: int = Field(
-        default=200, description='Maximum concurrent root WorkChains per daemon worker (0 = unlimited).'
+    root_workchain_prefetch: PrefetchLimit = Field(
+        default=200, description='Maximum concurrent root WorkChains per daemon worker ("UNLIMITED" for no limit).'
     )
-    calcjob_prefetch: int = Field(
-        default=0, description='Maximum concurrent CalcJobs per daemon worker (0 = unlimited).'
+    calcjob_prefetch: PrefetchLimit = Field(
+        default='UNLIMITED', description='Maximum concurrent CalcJobs per daemon worker ("UNLIMITED" for no limit).'
     )
 
 

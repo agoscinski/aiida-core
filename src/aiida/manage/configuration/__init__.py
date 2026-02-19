@@ -247,7 +247,7 @@ def _create_default_queue(config: 'Config', profile: 'Profile') -> None:
     queue_config = {
         'default': {
             'root_workchain_prefetch': default_prefetch,
-            'calcjob_prefetch': 0,  # 0 means unlimited
+            'calcjob_prefetch': 'UNLIMITED',
         }
     }
 

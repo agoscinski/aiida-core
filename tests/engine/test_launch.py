@@ -341,8 +341,8 @@ class TestProcessQueueRouting:
         profile = aiida_profile
         profile.set_queue_config(
             {
-                'default': {'root_workchain_prefetch': 200, 'calcjob_prefetch': 0},
-                'priority': {'root_workchain_prefetch': 50, 'calcjob_prefetch': 0},
+                'default': {'root_workchain_prefetch': 200, 'calcjob_prefetch': 'UNLIMITED'},
+                'priority': {'root_workchain_prefetch': 50, 'calcjob_prefetch': 'UNLIMITED'},
             }
         )
         get_config().update_profile(profile)
