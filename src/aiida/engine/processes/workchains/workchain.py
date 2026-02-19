@@ -398,6 +398,9 @@ class WorkChain(Process, metaclass=Protect):
         The awaitable will be effectuated on the context of the work chain and removed from the internal list. If all
         awaitables have been dealt with, the work chain process is resumed.
 
+        If at least one child is paused and all other children have terminated, the work chain will pause itself.
+        When the paused children are later played and complete, the work chain will automatically resume.
+
         :param awaitable: an Awaitable instance
         """
         self.logger.info('received callback that awaitable %d has terminated', awaitable.pk)
@@ -407,6 +410,7 @@ class WorkChain(Process, metaclass=Protect):
         except (exceptions.MultipleObjectsError, exceptions.NotExistent):
             raise ValueError(f'provided pk<{awaitable.pk}> could not be resolved to a valid Node instance')
 
+        # Resolve the awaitable first
         if awaitable.outputs:
             value = {entry.link_label: entry.node for entry in node.base.links.get_outgoing()}
         else:
@@ -414,5 +418,31 @@ class WorkChain(Process, metaclass=Protect):
 
         self._resolve_awaitable(awaitable, value)
 
+        # Check if any remaining awaitable children are paused while all others have terminated.
+        # If so, pause the workchain to wait for the paused children to be played.
+        paused_pks = []
+        all_others_terminated = True
+
+        for a in self._awaitables:
+            try:
+                child = load_node(a.pk)
+            except (exceptions.MultipleObjectsError, exceptions.NotExistent):
+                continue
+
+            if child.paused:
+                paused_pks.append(a.pk)
+            elif not child.is_terminated:
+                all_others_terminated = False
+
+        if paused_pks and all_others_terminated:
+            self.logger.info(
+                'pausing workchain because child processes %s are paused and all others have terminated', paused_pks
+            )
+            self.pause(f'Child processes {paused_pks} are paused')
+            return
+
+        # Resume if all awaitables are resolved, or if we were paused and can now continue
         if self.state == ProcessState.WAITING and not self._awaitables:
+            if self.paused:
+                self.play()
             self.resume()
