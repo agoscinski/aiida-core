@@ -77,6 +77,7 @@ class Process(PlumpyProcess):
     _cancelling_scheduler_job: asyncio.Task | None = None
     _node_class = orm.ProcessNode
     _spec_class = ProcessSpec
+    _task_released: bool = False  # Set when paused to signal step_until_terminated to exit
 
     SINGLE_OUTPUT_LINKNAME: str = 'result'
 
@@ -555,12 +556,29 @@ class Process(PlumpyProcess):
         super().on_paused(msg)
         self._save_checkpoint()
         self.node.pause()
+        # Signal step_until_terminated to exit and release the task from the queue
+        self._task_released = True
 
     @override
     def on_playing(self) -> None:
         """The Process was unpaused so remove the paused attribute on the process node"""
         super().on_playing()
         self.node.unpause()
+
+    @override
+    async def step_until_terminated(self) -> None:
+        """Step the process until it is terminated or paused with task release.
+
+        This overrides the plumpy method to exit the loop when the process is paused
+        and the task should be released from the queue. This allows the daemon worker
+        to acknowledge the task and free the prefetch slot, while the process can be
+        continued later via play_processes().
+        """
+        while not self.has_terminated():
+            if self._task_released:
+                self.logger.info('Process<%s> paused and task released from queue', self.node.pk)
+                return
+            await self.step()
 
     @override
     def on_output_emitting(self, output_port: str, value: Any) -> None:
