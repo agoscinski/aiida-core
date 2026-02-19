@@ -143,6 +143,18 @@ Submitting a work chain instead of directly running it not only makes it easier 
 
     As of AiiDA v1.5.0, it is possible to submit both work *chains* and work *functions* to the daemon. Older versions only allow the submission of work *chains*, whereas work *functions* cannot be submitted to the daemon, and hence can only be *run*.
 
+Submitting to a specific queue
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, processes are submitted to the ``default`` queue.
+You can submit to a different queue using the ``queue`` parameter:
+
+.. code-block:: python
+
+    workchain_node = submit(MultiplyAddWorkChain, inputs, queue='hpc-gpu')
+
+For more details on creating and managing queues, see :ref:`how-to:queues`.
+
 If you are unfamiliar with the inputs of a particular ``WorkChain``, a convenient tool for setting up the work chain is the :ref:`process builder<topics:processes:usage:builder>`.
 This can be obtained by using the ``get_builder()`` method, which is implemented for every ``CalcJob`` and ``WorkChain``:
 

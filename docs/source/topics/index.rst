@@ -11,6 +11,7 @@ Topics
    workflows/index
    provenance/index
    daemon
+   broker
    data_types
    database
    repository
