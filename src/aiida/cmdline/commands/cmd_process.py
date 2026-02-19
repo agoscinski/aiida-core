@@ -572,10 +572,15 @@ def process_repair(manager, broker, dry_run):
             echo.echo_report(f'Acknowledged task `{pid}`')
 
     # Revive zombie processes that no longer have a process task
+    from aiida.engine.processes.control import get_queue_name_from_node
+    from aiida.orm import load_node
+
     process_controller = manager.get_process_controller()
     for pid in set_active_processes:
         if pid not in set_process_tasks:
-            process_controller.continue_process(pid)
+            node = load_node(pid)
+            queue_name = get_queue_name_from_node(node)
+            process_controller.continue_process(pid, queue_name=queue_name)
             echo.echo_report(f'Revived process `{pid}`')
 
 

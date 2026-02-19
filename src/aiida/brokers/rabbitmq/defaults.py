@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 import os
 import typing as t
 
@@ -10,9 +11,17 @@ from aiida.common.log import AIIDA_LOGGER
 
 LOGGER = AIIDA_LOGGER.getChild('brokers.rabbitmq.defaults')
 
-LAUNCH_QUEUE = 'process.queue'
 MESSAGE_EXCHANGE = 'messages'
 TASK_EXCHANGE = 'tasks'
+DEFAULT_USER_QUEUE = 'default'  # Default user queue name for multi-queue routing
+
+
+class QueueType(enum.Enum):
+    """Queue types for RabbitMQ task routing."""
+
+    ROOT_WORKCHAIN = 'root-workchain'
+    NESTED_WORKCHAIN = 'nested-workchain'
+    CALCJOB = 'calcjob'
 
 BROKER_DEFAULTS = AttributeDict(
     {

@@ -19,6 +19,9 @@ from aiida.common.log import AIIDA_LOGGER
 from aiida.manage import manager
 from aiida.orm import ProcessNode
 
+if t.TYPE_CHECKING:
+    from aiida.brokers.rabbitmq.defaults import QueueType
+
 from .processes.builder import ProcessBuilder
 from .processes.functions import FunctionProcess
 from .processes.process import Process
@@ -31,6 +34,49 @@ TYPE_RUN_PROCESS = t.Union[Process, t.Type[Process], ProcessBuilder]
 # run can also be process function, but it is not clear what type this should be
 TYPE_SUBMIT_PROCESS = t.Union[Process, t.Type[Process], ProcessBuilder]
 LOGGER = AIIDA_LOGGER.getChild('engine.launch')
+
+
+def _determine_queue_type(process_class: t.Type[Process]) -> 'QueueType':
+    """Determine which queue type a process should be routed to.
+
+    :param process_class: The process class being submitted.
+    :return: Queue type (ROOT_WORKCHAIN or CALCJOB).
+    """
+    from aiida.brokers.rabbitmq.defaults import QueueType
+    from aiida.engine.processes.calcjobs import CalcJob
+    from aiida.engine.processes.workchains import WorkChain
+
+    # CalcJobs always go to calcjob queue
+    if issubclass(process_class, CalcJob):
+        return QueueType.CALCJOB
+
+    # WorkChains at top level go to root-workchain queue
+    if issubclass(process_class, WorkChain):
+        return QueueType.ROOT_WORKCHAIN
+
+    # Default to calcjob queue for other process types (e.g., work functions)
+    return QueueType.CALCJOB
+
+
+def _get_queue_info_for_submit(
+    process_inited: Process, user_queue: str | None = None
+) -> 'tuple[str, QueueType] | None':
+    """Get the queue info (user_queue, queue_type) for submitting a top-level process.
+
+    :param process_inited: The initialized process instance.
+    :param user_queue: Optional user queue name. If None, uses the default queue.
+    :return: Tuple of (user_queue, queue_type), or None if no broker is configured.
+    """
+    broker = manager.get_manager().get_broker()
+    if broker is None:
+        return None
+
+    from aiida.brokers.rabbitmq.defaults import DEFAULT_USER_QUEUE
+
+    if user_queue is None:
+        user_queue = DEFAULT_USER_QUEUE
+    queue_type = _determine_queue_type(type(process_inited))
+    return (user_queue, queue_type)
 
 
 def run(process: TYPE_RUN_PROCESS, inputs: dict[str, t.Any] | None = None, **kwargs: t.Any) -> dict[str, t.Any]:
@@ -84,6 +130,7 @@ def submit(
     process: TYPE_SUBMIT_PROCESS,
     inputs: dict[str, t.Any] | None = None,
     *,
+    queue: str | None = None,
     wait: bool = False,
     wait_interval: int = 5,
     **kwargs: t.Any,
@@ -97,6 +144,7 @@ def submit(
 
     :param process: the process class, instance or builder to submit
     :param inputs: the input dictionary to be passed to the process
+    :param queue: the user queue name to submit to (default: 'default'). Must be created with `verdi broker queue create`.
     :param wait: when set to ``True``, the submission will be blocking and wait for the process to complete at which
         point the function returns the calculation node.
     :param wait_interval: the number of seconds to wait between checking the state of the process when ``wait=True``.
@@ -137,11 +185,23 @@ def submit(
     if not process_inited.metadata.store_provenance:
         raise InvalidOperation('cannot submit a process with `store_provenance=False`')
 
+    # Determine queue routing for multi-queue mode
+    # Since we verified runner.controller exists above, broker must also exist,
+    # so _get_queue_info_for_submit will return a valid tuple (not None)
+    queue_info = _get_queue_info_for_submit(process_inited, user_queue=queue)
+    assert queue_info is not None, 'Queue info must be set when broker is configured'
+    user_queue, queue_type = queue_info
+    process_inited.set_queue_name(user_queue)  # Store for nested submissions
+
+    # Get the full RabbitMQ queue name including the profile prefix
+    broker = manager.get_manager().get_broker()
+    full_queue_name = broker.get_full_queue_name(user_queue, queue_type)
+
     runner.persister.save_checkpoint(process_inited)
     process_inited.close()
 
     # Do not wait for the future's result, because in the case of a single worker this would cock-block itself
-    runner.controller.continue_process(process_inited.pid, nowait=False, no_reply=True)
+    runner.controller.continue_process(process_inited.pid, nowait=False, no_reply=True, queue_name=full_queue_name)
     node = process_inited.node
 
     if not wait:

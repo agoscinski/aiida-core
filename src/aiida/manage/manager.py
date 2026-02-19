@@ -459,7 +459,29 @@ class Manager:
         )
 
         assert runner.communicator is not None, 'communicator not set for runner'
-        runner.communicator.add_task_subscriber(task_receiver)
+
+        # Subscribe to queues
+        broker = self.get_broker()
+        if broker is not None:
+            from plumpy.communications import convert_to_comm
+
+            from aiida.manage.configuration import get_config, get_config_option
+
+            profile = self.get_profile()
+            if profile is None:
+                raise RuntimeError('Cannot create daemon workers: no profile loaded')
+            queue_config = profile.get_queue_config()
+
+            # Wrap the async task_receiver for proper event loop handling
+            wrapped_receiver = convert_to_comm(task_receiver, runner_loop)
+
+            for user_queue in queue_config.keys():
+                for queue_type in broker.get_queue_types():
+                    task_queue = broker.get_task_queue(queue_type, user_queue)
+                    task_queue.add_task_subscriber(wrapped_receiver)
+                    self.logger.info(f'Daemon subscribed to queue: {user_queue}.{queue_type.value}')
+        else:
+            runner.communicator.add_task_subscriber(task_receiver)
 
         return runner
 

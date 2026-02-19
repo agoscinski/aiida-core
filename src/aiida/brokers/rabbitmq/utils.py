@@ -46,17 +46,6 @@ def get_rmq_url(protocol=None, username=None, password=None, host=None, port=Non
     return urlunparse((scheme, netloc, path, parameters, query, fragment))
 
 
-def get_launch_queue_name(prefix=None):
-    """Return the launch queue name with an optional prefix.
-
-    :returns: launch queue name
-    """
-    if prefix is not None:
-        return f'{prefix}.{defaults.LAUNCH_QUEUE}'
-
-    return defaults.LAUNCH_QUEUE
-
-
 def get_message_exchange_name(prefix):
     """Return the message exchange name for a given prefix.
 
@@ -71,3 +60,14 @@ def get_task_exchange_name(prefix):
     :returns: task exchange name
     """
     return f'{prefix}.{defaults.TASK_EXCHANGE}'
+
+
+def get_queue_name(prefix: str, user_queue: str, queue_type: str) -> str:
+    """Return the queue name for a given prefix, user queue, and queue type.
+
+    :param prefix: the profile-specific prefix (e.g., 'aiida-{uuid}')
+    :param user_queue: the user-defined queue name (e.g., 'default')
+    :param queue_type: the queue type (e.g., 'root-workchain', 'calcjob')
+    :returns: full queue name like 'aiida-{uuid}.default.root-workchain.queue'
+    """
+    return f'{prefix}.{user_queue}.{queue_type}.queue'

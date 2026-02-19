@@ -49,7 +49,7 @@ def daemon_client(aiida_profile):
 
 
 @pytest.fixture
-def started_daemon_client(daemon_client: 'DaemonClient'):
+def started_daemon_client(daemon_client: 'DaemonClient', aiida_profile):
     """Ensure that the daemon is running for the test profile and return the associated client.
 
     Usage::
@@ -58,6 +58,9 @@ def started_daemon_client(daemon_client: 'DaemonClient'):
             assert started_daemon_client.is_daemon_running
 
     """
+    # Ensure queue config is initialized (get_queue_config initializes default if needed)
+    aiida_profile.get_queue_config()
+
     if not daemon_client.is_daemon_running:
         daemon_client.start_daemon()
         assert daemon_client.is_daemon_running

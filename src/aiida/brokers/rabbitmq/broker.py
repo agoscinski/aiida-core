@@ -5,15 +5,20 @@ from __future__ import annotations
 import functools
 import typing as t
 
+# typing.assert_never available since 3.11
+from typing_extensions import assert_never
+
 from aiida.brokers.broker import Broker
 from aiida.common.log import AIIDA_LOGGER
 from aiida.manage.configuration import get_config_option
 
-from .utils import get_launch_queue_name, get_message_exchange_name, get_task_exchange_name
+from .defaults import QueueType
+from .utils import get_message_exchange_name, get_queue_name, get_task_exchange_name
 
 if t.TYPE_CHECKING:
-    from kiwipy.rmq import RmqThreadCommunicator
+    from kiwipy.rmq import RmqThreadCommunicator, RmqThreadTaskQueue
 
+    from aiida.manage.configuration.config import QueueConfig
     from aiida.manage.configuration.profile import Profile
 
 LOGGER = AIIDA_LOGGER.getChild('broker.rabbitmq')
@@ -31,6 +36,7 @@ class RabbitmqBroker(Broker):
         """
         self._profile = profile
         self._communicator: 'RmqThreadCommunicator' | None = None
+        self._task_queues: dict[str, 'RmqThreadTaskQueue'] = {}
         self._prefix = f'aiida-{self._profile.uuid}'
 
     def __str__(self):
@@ -46,9 +52,13 @@ class RabbitmqBroker(Broker):
             self._communicator = None
 
     def iterate_tasks(self):
-        """Return an iterator over the tasks in the launch queue."""
-        for task in self.get_communicator().task_queue(get_launch_queue_name(self._prefix)):
-            yield task
+        """Return an iterator over the tasks in all process queues."""
+        queue_config = self._profile.get_queue_config() or {}
+        for user_queue in queue_config.keys():
+            for queue_type in self.get_queue_types():
+                task_queue = self.get_task_queue(queue_type, user_queue)
+                for task in task_queue:
+                    yield task
 
     def get_communicator(self) -> 'RmqThreadCommunicator':
         if self._communicator is None:
@@ -64,13 +74,18 @@ class RabbitmqBroker(Broker):
 
         from aiida.orm.utils import serialize
 
+        from .defaults import DEFAULT_USER_QUEUE, QueueType
+
+        # Use calcjob queue as the default task queue for the communicator
+        default_task_queue = get_queue_name(self._prefix, DEFAULT_USER_QUEUE, QueueType.CALCJOB.value)
+
         self._communicator = RmqThreadCommunicator.connect(
             connection_params={'url': self.get_url()},
             message_exchange=get_message_exchange_name(self._prefix),
             encoder=functools.partial(serialize.serialize, encoding='utf-8'),
             decoder=serialize.deserialize_unsafe,
             task_exchange=get_task_exchange_name(self._prefix),
-            task_queue=get_launch_queue_name(self._prefix),
+            task_queue=default_task_queue,
             task_prefetch_count=get_config_option('daemon.worker_process_slots'),
             async_task_timeout=get_config_option('rmq.task_timeout'),
             # This is needed because the verdi commands will call this function and when called in unit tests the
@@ -123,3 +138,75 @@ class RabbitmqBroker(Broker):
         from packaging.version import parse
 
         return parse(self.get_communicator().server_properties['version'])
+
+    def get_queue_config(self, queue_name: str) -> 'QueueConfig':
+        """Get the queue configuration by name.
+
+        :param queue_name: The queue name.
+        :return: The queue configuration (defaults if not configured).
+        """
+        from aiida.manage.configuration.config import QueueConfig
+
+        queues = self._profile.get_queue_config()
+        if queues is None or queue_name not in queues:
+            return QueueConfig()
+
+        return QueueConfig(**queues[queue_name])
+
+    def get_prefetch_count(self, queue_type: QueueType, queue_name: str) -> int:
+        """Get the prefetch count for a queue type.
+
+        :param queue_type: The queue type.
+        :param queue_name: The queue name.
+        :return: The prefetch count for the queue (0 means unlimited in RabbitMQ).
+        """
+        queue_config = self.get_queue_config(queue_name)
+
+        if queue_type == QueueType.ROOT_WORKCHAIN:
+            limit = queue_config.root_workchain_prefetch
+        elif queue_type == QueueType.CALCJOB:
+            limit = queue_config.calcjob_prefetch
+        elif queue_type == QueueType.NESTED_WORKCHAIN:
+            return 0  # Always unlimited
+        else:
+            assert_never(queue_type)
+
+        # Convert UNLIMITED to 0 for RabbitMQ
+        return 0 if limit == 'UNLIMITED' else limit
+
+    def get_task_queue(self, queue_type: QueueType, user_queue: str) -> 'RmqThreadTaskQueue':
+        """Get a task queue by type and user queue name.
+
+        :param queue_type: The queue type.
+        :param user_queue: The user-defined queue name.
+        :return: The task queue instance.
+        """
+        cache_key = f'{user_queue}.{queue_type.value}'
+        if cache_key in self._task_queues:
+            return self._task_queues[cache_key]
+
+        rmq_queue_name = get_queue_name(self._prefix, user_queue, queue_type.value)
+        prefetch_count = self.get_prefetch_count(queue_type, user_queue)
+
+        task_queue = self.get_communicator().task_queue(rmq_queue_name, prefetch_count=prefetch_count)
+        self._task_queues[cache_key] = task_queue
+        return task_queue
+
+    def get_queue_types(self) -> list[QueueType]:
+        """Get the list of queue types.
+
+        :return: List of queue types.
+        """
+        return list(QueueType)
+
+    def get_full_queue_name(self, user_queue: str, queue_type: QueueType) -> str:
+        """Get the full RabbitMQ queue name for routing.
+
+        This returns the complete queue name including the profile prefix,
+        which is needed when sending tasks to specific queues.
+
+        :param user_queue: The user-defined queue name (e.g., 'default').
+        :param queue_type: The queue type.
+        :return: The full queue name (e.g., 'aiida-{uuid}.default.calcjob.queue').
+        """
+        return get_queue_name(self._prefix, user_queue, queue_type.value)

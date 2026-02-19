@@ -21,7 +21,9 @@ import os
 import shutil
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+
+PrefetchLimit = Union[int, Literal['UNLIMITED']]
 
 from pydantic import (
     BaseModel,
@@ -165,6 +167,21 @@ class ProfileStorageConfig(BaseModel, defer_build=True):
     config: Dict[str, Any]
 
 
+class QueueConfig(BaseModel, defer_build=True):
+    """Schema for a named queue configuration.
+
+    Note: Prefetch limits are per daemon worker, not global. With N workers,
+    the effective limit is N * prefetch_count.
+    """
+
+    root_workchain_prefetch: PrefetchLimit = Field(
+        default=200, description='Maximum concurrent root WorkChains per daemon worker ("UNLIMITED" for no limit).'
+    )
+    calcjob_prefetch: PrefetchLimit = Field(
+        default='UNLIMITED', description='Maximum concurrent CalcJobs per daemon worker ("UNLIMITED" for no limit).'
+    )
+
+
 class ProcessControlConfig(BaseModel, defer_build=True):
     """Schema for the process control configuration of an AiiDA profile."""
 
@@ -176,6 +193,10 @@ class ProcessControlConfig(BaseModel, defer_build=True):
     broker_virtual_host: str = Field('', description='Virtual host to use for the message broker.')
     broker_parameters: dict[str, Any] = Field(
         default_factory=dict, description='Arguments to be encoded as query parameters.'
+    )
+    queues: Optional[Dict[str, QueueConfig]] = Field(
+        default=None,
+        description='Named queue configurations. Keys are queue names (e.g., "default").',
     )
 
 

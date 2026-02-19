@@ -236,6 +236,26 @@ def create_default_user(
     return user
 
 
+def _create_default_queue(config: 'Config', profile: 'Profile') -> None:
+    """Create the default queue configuration for a profile.
+
+    :param config: The config instance.
+    :param profile: The profile to create the queue for.
+    """
+    default_prefetch = get_config_option('daemon.worker_process_slots')
+
+    queue_config = {
+        'default': {
+            'root_workchain_prefetch': default_prefetch,
+            'calcjob_prefetch': 'UNLIMITED',
+        }
+    }
+
+    profile.set_queue_config(queue_config)
+    config.update_profile(profile)
+    config.store()
+
+
 def create_profile(
     config: 'Config',
     *,
@@ -275,6 +295,10 @@ def create_profile(
     )
 
     create_default_user(profile, email, first_name, last_name, institution)
+
+    # Create default queue configuration if broker is configured
+    if broker_backend is not None:
+        _create_default_queue(config, profile)
 
     return profile
 
