@@ -55,11 +55,21 @@ class TestDbBackend(Enum):
     PSQL = 'psql'
 
 
+class TestBrokerBackend(Enum):
+    """Options for the '--broker-backend' CLI argument when running pytest."""
+
+    RMQ = 'rmq'
+    ZMQ = 'zmq'
+    NONE = 'none'
+
+
 def pytest_collection_modifyitems(items, config):
     """Automatically generate markers for certain tests.
 
     Most notably, we add the 'presto' marker for all tests that
-    are not marked with either requires_rmq or requires_psql.
+    are not marked with requires_rmq, requires_psql, or nightly.
+    Tests marked requires_broker are included in presto since ZMQ
+    broker is available without external services.
     """
     filepath_psqldos = Path(__file__).parent / 'storage' / 'psql_dos'
     filepath_django = Path(__file__).parent / 'storage' / 'psql_dos' / 'migrations' / 'django_branch'
@@ -73,6 +83,24 @@ def pytest_collection_modifyitems(items, config):
         else:
             config.option.markexpr = 'not requires_psql'
 
+    # Handle broker backend selection
+    broker_backend = config.option.broker_backend
+
+    # If using ZMQ, skip tests that specifically require RabbitMQ (requires_rmq marker)
+    # but allow tests with requires_broker marker (they work with any broker)
+    if broker_backend is TestBrokerBackend.ZMQ:
+        if config.option.markexpr != '':
+            config.option.markexpr += ' and (not requires_rmq)'
+        else:
+            config.option.markexpr = 'not requires_rmq'
+
+    # If no broker, skip all tests that require any broker (both RMQ-specific and general broker tests)
+    if broker_backend is TestBrokerBackend.NONE:
+        if config.option.markexpr != '':
+            config.option.markexpr += ' and (not requires_broker) and (not requires_rmq)'
+        else:
+            config.option.markexpr = 'not requires_broker and not requires_rmq'
+
     for item in items:
         filepath_item = Path(item.fspath)
 
@@ -80,17 +108,23 @@ def pytest_collection_modifyitems(items, config):
         if filepath_item.is_relative_to(filepath_django) or filepath_item.is_relative_to(filepath_sqla):
             item.add_marker('nightly')
 
-        # Add 'requires_rmq' for all tests that depend 'daemon_client' and its dependant fixtures
+        # Add 'requires_broker' for tests that depend on 'daemon_client' fixture (works with RMQ or ZMQ)
         if 'daemon_client' in item.fixturenames:
-            item.add_marker('requires_rmq')
+            item.add_marker('requires_broker')
 
         # All tests in 'storage/psql_dos' require PostgreSQL
         if filepath_item.is_relative_to(filepath_psqldos):
             item.add_marker('requires_psql')
 
-        # Add 'presto' marker to all tests that require neither PostgreSQL nor RabbitMQ services.
+        # Add 'presto' marker to tests that don't need external services.
+        # Tests with requires_broker ARE included (ZMQ broker needs no external service).
+        # Tests with requires_rmq, requires_psql, or nightly are excluded.
         markers = [marker.name for marker in item.iter_markers()]
-        if 'requires_rmq' not in markers and 'requires_psql' not in markers and 'nightly' not in markers:
+        if (
+            'requires_rmq' not in markers
+            and 'requires_psql' not in markers
+            and 'nightly' not in markers
+        ):
             item.add_marker('presto')
 
 
@@ -107,6 +141,19 @@ def db_backend_type(string):
         raise pytest.UsageError(msg)
 
 
+def broker_backend_type(string):
+    """Conversion function for the custom '--broker-backend' pytest CLI option
+
+    :param string: String provided by the user via CLI
+    :returns: BrokerBackend enum corresponding to user input string
+    """
+    try:
+        return TestBrokerBackend(string)
+    except ValueError:
+        msg = f"Invalid --broker-backend option '{string}'\nMust be one of: {tuple(b.value for b in TestBrokerBackend)}"
+        raise pytest.UsageError(msg)
+
+
 def pytest_addoption(parser):
     parser.addoption(
         '--db-backend',
@@ -116,22 +163,42 @@ def pytest_addoption(parser):
         help=f'Database backend to be used for tests {tuple(db.value for db in TestDbBackend)}',
         type=db_backend_type,
     )
+    parser.addoption(
+        '--broker-backend',
+        action='store',
+        default=TestBrokerBackend.RMQ,
+        required=False,
+        help=f'Broker backend to be used for tests {tuple(b.value for b in TestBrokerBackend)}',
+        type=broker_backend_type,
+    )
 
 
 @pytest.fixture(scope='session')
 def aiida_profile(pytestconfig, aiida_config, aiida_profile_factory, config_psql_dos, config_sqlite_dos):
-    """Create and load a profile with ``core.psql_dos`` as a storage backend and RabbitMQ as the broker.
+    """Create and load a profile with the specified storage and broker backends.
 
     This overrides the ``aiida_profile`` fixture provided by ``aiida-core`` which runs with ``core.sqlite_dos`` and
     without broker. However, tests in this package make use of the daemon which requires a broker and the tests should
     be run against the main storage backend, which is ``core.sqlite_dos``.
+
+    The broker backend can be selected via the ``--broker-backend`` CLI option:
+    - ``rmq``: Use RabbitMQ (default, requires RabbitMQ service)
+    - ``zmq``: Use ZeroMQ (no external service required)
+    - ``none``: No broker (limited functionality, no daemon support)
     """
     marker_opts = pytestconfig.getoption('-m')
     db_backend = pytestconfig.getoption('--db-backend')
+    broker_backend = pytestconfig.getoption('--broker-backend')
 
-    # We use RabbitMQ broker by default unless 'presto' marker is specified
-    broker = 'core.rabbitmq'
-    if 'not requires_rmq' in marker_opts or 'presto' in marker_opts:
+    # Determine broker based on CLI option and markers
+    if 'presto' in marker_opts:
+        # Presto tests use ZMQ broker (no external service required)
+        broker = 'core.zmq'
+    elif broker_backend is TestBrokerBackend.RMQ:
+        broker = 'core.rabbitmq'
+    elif broker_backend is TestBrokerBackend.ZMQ:
+        broker = 'core.zmq'
+    else:  # TestBrokerBackend.NONE
         broker = None
 
     if db_backend is TestDbBackend.SQLITE:
@@ -147,7 +214,19 @@ def aiida_profile(pytestconfig, aiida_config, aiida_profile_factory, config_psql
     with aiida_profile_factory(
         aiida_config, storage_backend=storage, storage_config=config, broker_backend=broker
     ) as profile:
-        yield profile
+        # Start ZMQ broker service if using ZMQ backend
+        if broker == 'core.zmq':
+            broker_instance = get_manager().get_broker()
+            if broker_instance is not None and hasattr(broker_instance, 'controller'):
+                broker_instance.controller.start()
+                try:
+                    yield profile
+                finally:
+                    broker_instance.controller.stop()
+            else:
+                yield profile
+        else:
+            yield profile
 
 
 @pytest.fixture()
