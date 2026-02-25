@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import typing as t
 
 from aiida.common.exceptions import AiidaException
@@ -12,6 +13,20 @@ if t.TYPE_CHECKING:
 
 class ManagementApiConnectionError(AiidaException):
     """Raised when no connection can be made to the management HTTP API."""
+
+
+@dataclasses.dataclass(frozen=True)
+class QueueStats:
+    """Statistics for a RabbitMQ queue."""
+
+    messages_ready: int
+    """Number of messages ready to be delivered."""
+
+    messages_unacknowledged: int
+    """Number of messages delivered but not yet acknowledged."""
+
+    consumers: int
+    """Number of consumers subscribed to the queue."""
 
 
 class RabbitmqManagementClient:
@@ -95,3 +110,19 @@ class RabbitmqManagementClient:
         except ManagementApiConnectionError:
             return False
         return True
+
+    def get_queue_stats(self, queue_name: str) -> QueueStats | None:
+        """Get statistics for a specific queue.
+
+        :param queue_name: The name of the queue.
+        :returns: Queue statistics or ``None`` if the queue doesn't exist.
+        """
+        response = self.request('queues/{virtual_host}/{queue}', url_params={'queue': queue_name})
+        if response.status_code == 200:
+            data = response.json()
+            return QueueStats(
+                messages_ready=data.get('messages_ready', 0),
+                messages_unacknowledged=data.get('messages_unacknowledged', 0),
+                consumers=data.get('consumers', 0),
+            )
+        return None

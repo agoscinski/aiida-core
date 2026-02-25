@@ -7,7 +7,7 @@ from aiida.engine import ProcessState
 from aiida.engine.launch import submit
 from aiida.engine.processes import control
 from aiida.orm import Int
-from tests.utils.processes import WaitProcess
+from tests.utils.processes import DummyProcess, WaitProcess
 
 
 @pytest.mark.usefixtures('aiida_profile_clean', 'started_daemon_client')
@@ -123,3 +123,62 @@ def test_revive(monkeypatch, aiida_code_installed, submit_and_await):
     # should timeout and raise an exception
     submit_and_await(node)
     assert node.is_finished_ok
+
+
+@pytest.mark.requires_rmq
+@pytest.mark.usefixtures('aiida_profile_clean', 'started_daemon_client')
+def test_pause_releases_task_slot(aiida_profile, rabbitmq_client, submit_and_await):
+    """Test that when a process is paused, it releases the RabbitMQ task slot.
+
+    This test verifies the pause-release-task feature:
+    1. Submit a WaitProcess that blocks a task slot while waiting
+    2. Verify the slot is blocked (messages_unacknowledged = 1)
+    3. Pause the process
+    4. Verify the slot is released (messages_unacknowledged = 0)
+    5. Submit another process and verify it can run
+
+    Uses the RabbitMQ Management API to verify unacknowledged message counts.
+    """
+    from aiida.brokers.rabbitmq.utils import get_launch_queue_name
+
+    # Get queue name
+    prefix = f'aiida-{aiida_profile.uuid}'
+    queue_name = get_launch_queue_name(prefix)
+
+    # Check initial state - queue should be empty
+    initial_stats = rabbitmq_client.get_queue_stats(queue_name)
+    if initial_stats:
+        assert initial_stats.messages_unacknowledged == 0, 'Queue should start with no unacknowledged messages'
+
+    # Submit WaitProcess - it will block a task slot while waiting
+    node1 = submit(WaitProcess)
+    submit_and_await(node1, ProcessState.WAITING)
+    assert not node1.paused, 'Process should not be paused yet'
+
+    # Verify the slot is blocked (task is unacknowledged while process is waiting)
+    stats_while_waiting = rabbitmq_client.get_queue_stats(queue_name)
+    if stats_while_waiting:
+        assert stats_while_waiting.messages_unacknowledged == 1, (
+            'While waiting, task should be unacknowledged (slot blocked)'
+        )
+
+    # Pause the process - this should release the task slot
+    control.pause_processes([node1], timeout=float('inf'))
+    assert node1.paused, 'Process should be paused'
+
+    # Verify the slot is released after pause
+    stats_after_pause = rabbitmq_client.get_queue_stats(queue_name)
+    if stats_after_pause:
+        assert stats_after_pause.messages_unacknowledged == 0, (
+            'After pause, task should be acknowledged (slot released)'
+        )
+
+    # Submit a second process - with the slot released, it should be able to run
+    node2 = submit(DummyProcess)
+    submit_and_await(node2, ProcessState.FINISHED)
+    assert node2.is_finished_ok, 'Second process should complete successfully'
+
+    # Final check - queue should still have no unacknowledged messages
+    final_stats = rabbitmq_client.get_queue_stats(queue_name)
+    if final_stats:
+        assert final_stats.messages_unacknowledged == 0, 'Queue should have no unacknowledged messages at end'

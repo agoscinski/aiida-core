@@ -1202,3 +1202,16 @@ def setup_duplicate_group():
         return dupl_group
 
     return _setup_duplicate_group
+
+
+@pytest.fixture
+def rabbitmq_client(aiida_profile):
+    """Create a RabbitMQ management API client for the current profile."""
+    from aiida.brokers.rabbitmq import client
+
+    yield client.RabbitmqManagementClient(
+        username=aiida_profile.process_control_config['broker_username'],
+        password=aiida_profile.process_control_config['broker_password'],
+        hostname=aiida_profile.process_control_config['broker_host'],
+        virtual_host=aiida_profile.process_control_config['broker_virtual_host'],
+    )

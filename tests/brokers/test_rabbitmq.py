@@ -150,16 +150,6 @@ def test_duplicate_subscriber_identifier(aiida_code_installed, started_daemon_cl
     assert f'A subscriber with the process id<{node.pk}> already exists' in daemon_log
 
 
-@pytest.fixture
-def rabbitmq_client(aiida_profile):
-    yield client.RabbitmqManagementClient(
-        username=aiida_profile.process_control_config['broker_username'],
-        password=aiida_profile.process_control_config['broker_password'],
-        hostname=aiida_profile.process_control_config['broker_host'],
-        virtual_host=aiida_profile.process_control_config['broker_virtual_host'],
-    )
-
-
 class TestRabbitmqManagementClient:
     """Tests for the :class:`aiida.brokers.rabbitmq.client.RabbitmqManagementClient`."""
 
