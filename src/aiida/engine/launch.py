@@ -79,6 +79,34 @@ def run_get_pk(process: TYPE_RUN_PROCESS, inputs: dict[str, t.Any] | None = None
 
     return runner.run_get_pk(process, inputs, **kwargs)
 
+def _auto_start_scheduler():
+    """Auto-start the scheduler daemon for named pipe broker.
+
+    Uses the scheduler API directly to start the daemon process.
+    """
+    from pathlib import Path
+
+    from aiida.communication.namedpipe import discovery
+    from aiida.engine.scheduler.process_scheduler_service import start_daemon
+    from aiida.manage.manager import get_manager
+
+    manager_inst = get_manager()
+    profile = manager_inst.get_profile()
+
+    # Only start scheduler for named pipe broker
+    if profile.process_control_backend != 'core.namedpipe':
+        return
+
+    # Check if scheduler is already running
+    if discovery.discover_broker(profile.name):
+        return
+
+    # Start scheduler daemon
+    config = manager_inst.get_config()
+    config_path = Path(config.dirpath) / 'profiles' / profile.name
+    start_daemon(profile_name=profile.name, config_path=config_path)
+
+
 
 def submit(
     process: TYPE_SUBMIT_PROCESS,
@@ -112,6 +140,8 @@ def submit(
     if is_process_scoped() and not isinstance(Process.current(), FunctionProcess):
         raise InvalidOperation('Cannot use top-level `submit` from within another process, use `self.submit` instead')
 
+    _auto_start_scheduler()
+
     runner = manager.get_manager().get_runner()
 
     if runner.controller is None:
@@ -140,8 +170,12 @@ def submit(
     runner.persister.save_checkpoint(process_inited)
     process_inited.close()
 
+    # Get queue identifier for scheduler routing
+    queue_id = process_inited.get_queue_identifier()
+
     # Do not wait for the future's result, because in the case of a single worker this would cock-block itself
-    runner.controller.continue_process(process_inited.pid, nowait=False, no_reply=True)
+    runner.controller.continue_process(process_inited.pid, nowait=False, no_reply=True, metadata={'queue_id': queue_id})
+
     node = process_inited.node
 
     if not wait:

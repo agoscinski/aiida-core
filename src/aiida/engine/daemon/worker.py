@@ -39,12 +39,21 @@ async def shutdown_worker(runner: Runner) -> None:
     LOGGER.info('Daemon worker stopped')
 
 
-def start_daemon_worker(foreground: bool = False, profile_name: Union[str, None] = None) -> None:
+def start_daemon_worker(
+    foreground: bool = False, profile_name: Union[str, None] = None, worker_id: Union[str, None] = None
+) -> None:
     """Start a daemon worker for the currently configured profile.
 
     :param foreground: If true, the logging will be configured to write to stdout, otherwise it will be configured to
         write to the daemon log file.
+    :param profile_name: The profile name to use (defaults to current profile).
+    :param worker_id: Optional worker identifier (for executor management).
     """
+    # Store worker_id in environment for communicator to use
+    if worker_id is not None:
+        import os
+
+        os.environ['AIIDA_WORKER_ID'] = worker_id
 
     daemon_client = get_daemon_client(profile_name)
     configure_logging(with_orm=True, daemon=not foreground, daemon_log_file=daemon_client.daemon_log_file)

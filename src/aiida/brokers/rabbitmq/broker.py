@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import functools
 import typing as t
+from typing import Callable
 
-from aiida.brokers.broker import Broker
 from aiida.common.log import AIIDA_LOGGER
 from aiida.manage.configuration import get_config_option
 
@@ -21,7 +21,7 @@ LOGGER = AIIDA_LOGGER.getChild('broker.rabbitmq')
 __all__ = ('RabbitmqBroker',)
 
 
-class RabbitmqBroker(Broker):
+class RabbitmqBroker:
     """Implementation of the message broker interface using RabbitMQ through ``kiwipy``."""
 
     def __init__(self, profile: Profile) -> None:
@@ -123,3 +123,110 @@ class RabbitmqBroker(Broker):
         from packaging.version import parse
 
         return parse(self.get_communicator().server_properties['version'])
+
+    # Stub implementations for BrokerCommunicator methods
+    # RabbitMQ broker uses kiwipy.RmqThreadCommunicator which has different architecture
+
+    def start(self) -> None:
+        """Start the broker (not applicable for RabbitMQ)."""
+        # RabbitMQ broker doesn't need explicit start - connection happens in get_communicator()
+        pass
+
+    def is_closed(self) -> bool:
+        """Check if broker is closed.
+
+        :return: True if closed, False otherwise.
+        """
+        return self._communicator is None or self._communicator.is_closed()
+
+    def add_task_subscriber(
+        self,
+        callback: Callable[[dict], None],
+        identifier: str | None = None,
+    ) -> str:
+        """Register callback for incoming task messages.
+
+        :raises NotImplementedError: RabbitMQ broker uses kiwipy's add_task_subscriber.
+        """
+        raise NotImplementedError(
+            'RabbitMQ broker does not support this method directly. '
+            'Use get_communicator().add_task_subscriber() instead.'
+        )
+
+    def add_broadcast_subscriber(
+        self,
+        callback: Callable[[dict], None],
+        identifier: str | None = None,
+    ) -> str:
+        """Register callback for incoming broadcast messages.
+
+        :raises NotImplementedError: RabbitMQ broker uses kiwipy's add_broadcast_subscriber.
+        """
+        raise NotImplementedError(
+            'RabbitMQ broker does not support this method directly. '
+            'Use get_communicator().add_broadcast_subscriber() instead.'
+        )
+
+    def remove_task_subscriber(self, identifier: str) -> None:
+        """Remove a task subscriber by identifier.
+
+        :raises NotImplementedError: RabbitMQ broker uses kiwipy's remove_task_subscriber.
+        """
+        raise NotImplementedError(
+            'RabbitMQ broker does not support this method directly. '
+            'Use get_communicator().remove_task_subscriber() instead.'
+        )
+
+    def remove_broadcast_subscriber(self, identifier: str) -> None:
+        """Remove a broadcast subscriber by identifier.
+
+        :raises NotImplementedError: RabbitMQ broker uses kiwipy's remove_broadcast_subscriber.
+        """
+        raise NotImplementedError(
+            'RabbitMQ broker does not support this method directly. '
+            'Use get_communicator().remove_broadcast_subscriber() instead.'
+        )
+
+    def task_send(self, message: dict) -> None:
+        """Send a task message to a specific worker.
+
+        :raises NotImplementedError: RabbitMQ broker uses kiwipy's task_send.
+        """
+        raise NotImplementedError(
+            'RabbitMQ broker does not support this method directly. '
+            'Use get_communicator().task_send() instead.'
+        )
+
+    def broadcast_send(self, message: dict) -> int:
+        """Send broadcast message to all workers.
+
+        :raises NotImplementedError: RabbitMQ broker uses kiwipy's broadcast_send.
+        """
+        raise NotImplementedError(
+            'RabbitMQ broker does not support this method directly. '
+            'Use get_communicator().broadcast_send() instead.'
+        )
+
+    def register_in_discovery(self) -> None:
+        """Register this communicator in the discovery system.
+
+        RabbitMQ does not use file-based discovery - it uses AMQP message routing.
+        This is a no-op for RabbitMQ.
+        """
+        pass
+
+    def unregister_from_discovery(self) -> None:
+        """Unregister this communicator from the discovery system.
+
+        RabbitMQ does not use file-based discovery - it uses AMQP message routing.
+        This is a no-op for RabbitMQ.
+        """
+        pass
+
+    def sanitize_message(self, message: dict, worker_id: str) -> None:
+        """Sanitize message before sending to worker.
+
+        RabbitMQ handles reply routing via AMQP - no sanitization needed.
+        This is a no-op for RabbitMQ.
+        """
+        pass

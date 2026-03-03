@@ -199,7 +199,9 @@ class Runner:
             assert self.controller is not None, 'runner does not have a controller'
             self.persister.save_checkpoint(process_inited)
             process_inited.close()
-            self.controller.continue_process(process_inited.pid, nowait=False, no_reply=True)
+            # Get queue identifier for scheduler routing
+            queue_id = process_inited.get_queue_identifier()
+            self.controller.continue_process(process_inited.pid, nowait=False, no_reply=True, metadata={'queue_id': queue_id})
         else:
             self.loop.create_task(process_inited.step_until_terminated())
 

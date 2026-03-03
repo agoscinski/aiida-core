@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from kiwipy.rmq import RmqThreadCommunicator
     from plumpy.process_comms import RemoteProcessThreadController
 
-    from aiida.brokers.broker import Broker
+    from aiida.brokers.broker import BrokerCommunicator
     from aiida.engine.daemon.client import DaemonClient
     from aiida.engine.persistence import AiiDAPersister
     from aiida.engine.runners import Runner
@@ -71,7 +71,7 @@ class Manager:
         from aiida.common.log import AIIDA_LOGGER
 
         # note: the config currently references the global variables
-        self._broker: Optional['Broker'] = None
+        self._broker: Optional['BrokerCommunicator'] = None
         self._profile: Optional['Profile'] = None
         self._profile_storage: Optional['StorageBackend'] = None
         self._daemon_client: Optional['DaemonClient'] = None
@@ -285,8 +285,8 @@ class Manager:
 
         return self._profile_storage
 
-    def get_broker(self) -> 'Broker' | None:
-        """Return an instance of :class:`aiida.brokers.broker.Broker` if the profile defines a broker.
+    def get_broker(self) -> 'BrokerCommunicator' | None:
+        """Return an instance of :class:`aiida.brokers.broker.BrokerCommunicator` if the profile defines a broker.
 
         :returns: The broker of the profile, or ``None`` if the profile doesn't define one.
         """
@@ -306,8 +306,20 @@ class Manager:
             if entry_point == 'rabbitmq':
                 entry_point = 'core.rabbitmq'
 
-            broker_cls = BrokerFactory(entry_point)
-            self._broker = broker_cls(self._profile)
+            try:
+                broker_cls = BrokerFactory(entry_point)
+                self._broker = broker_cls(self._profile)
+            except ConnectionError as exc:
+                # Enhance error message for named pipe broker
+                if entry_point == 'core.namedpipe':
+                    raise ConnectionError(
+                        f'Scheduler for profile `{self._profile.name}` is not running. '
+                        f'Start it with: verdi scheduler start\n'
+                        f'Original error: {exc}'
+                    ) from exc
+                else:
+                    # Re-raise for other brokers
+                    raise
 
         return self._broker
 
@@ -460,6 +472,14 @@ class Manager:
 
         assert runner.communicator is not None, 'communicator not set for runner'
         runner.communicator.add_task_subscriber(task_receiver)
+
+        # Add a dummy broadcast subscriber to ensure broadcast pipe is created for daemon workers
+        # This is needed for named pipe broker where pipes are created on-demand
+        def _broadcast_handler(communicator, body, sender, subject, correlation_id):
+            """Dummy broadcast handler to ensure broadcast pipe exists."""
+            pass
+
+        runner.communicator.add_broadcast_subscriber(_broadcast_handler)
 
         return runner
 
