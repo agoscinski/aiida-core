@@ -34,7 +34,7 @@ async def shutdown_worker(runner: Runner) -> None:
 
     await asyncio.gather(*tasks, return_exceptions=True)
 
-    runner.close()
+    get_manager().reset_profile()
 
     LOGGER.info('Daemon worker stopped')
 
