@@ -7,7 +7,9 @@ from .rabbitmq import *
 
 __all__ = (
     'Broker',
+    'QueueType',
     'RabbitmqBroker',
+    'TaskQueue',
 )
 
 # fmt: on

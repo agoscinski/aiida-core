@@ -123,3 +123,89 @@ def test_revive(monkeypatch, aiida_code_installed, submit_and_await):
     # should timeout and raise an exception
     submit_and_await(node)
     assert node.is_finished_ok
+
+
+@pytest.mark.requires_rmq
+class TestGetQueueNameFromNode:
+    """Tests for :func:`aiida.engine.processes.control.get_queue_name_from_node` (requires broker)."""
+
+    @pytest.mark.usefixtures('aiida_profile_clean')
+    def test_root_workchain(self):
+        """Test queue name for root workchain (no caller)."""
+        from aiida.orm import WorkChainNode
+
+        node = WorkChainNode()
+        node.store()
+
+        # No caller means root workchain - full name includes profile prefix
+        queue_name = control.get_queue_name_from_node(node)
+        assert 'default.root-workchain.queue' in queue_name
+        assert queue_name.startswith('aiida-')
+
+    @pytest.mark.usefixtures('aiida_profile_clean')
+    def test_nested_workchain(self):
+        """Test queue name for nested workchain (has caller)."""
+        from aiida.common.links import LinkType
+        from aiida.orm import WorkChainNode
+
+        parent = WorkChainNode()
+        parent.store()
+
+        child = WorkChainNode()
+        child.base.links.add_incoming(parent, LinkType.CALL_WORK, 'child')
+        child.store()
+
+        # Has caller means nested workchain - full name includes profile prefix
+        queue_name = control.get_queue_name_from_node(child)
+        assert 'default.nested-workchain.queue' in queue_name
+        assert queue_name.startswith('aiida-')
+
+    @pytest.mark.usefixtures('aiida_profile_clean')
+    def test_calcjob(self):
+        """Test queue name for CalcJob."""
+        from aiida.orm import CalcJobNode
+
+        node = CalcJobNode()
+        node.store()
+
+        queue_name = control.get_queue_name_from_node(node)
+        assert 'default.calcjob.queue' in queue_name
+        assert queue_name.startswith('aiida-')
+
+    @pytest.mark.usefixtures('aiida_profile_clean')
+    def test_custom_user_queue(self):
+        """Test queue name with custom user queue stored on node."""
+        from aiida.orm import CalcJobNode, ProcessNode
+
+        node = CalcJobNode()
+        node.base.attributes.set(ProcessNode.QUEUE_NAME_KEY, 'priority')
+        node.store()
+
+        queue_name = control.get_queue_name_from_node(node)
+        assert 'priority.calcjob.queue' in queue_name
+        assert queue_name.startswith('aiida-')
+
+    @pytest.mark.usefixtures('aiida_profile_clean')
+    def test_custom_queue_workchain(self):
+        """Test queue name with custom user queue for workchain."""
+        from aiida.common.links import LinkType
+        from aiida.orm import ProcessNode, WorkChainNode
+
+        parent = WorkChainNode()
+        parent.base.attributes.set(ProcessNode.QUEUE_NAME_KEY, 'high-priority')
+        parent.store()
+
+        # Root workchain with custom queue - full name includes profile prefix
+        queue_name = control.get_queue_name_from_node(parent)
+        assert 'high-priority.root-workchain.queue' in queue_name
+        assert queue_name.startswith('aiida-')
+
+        child = WorkChainNode()
+        child.base.links.add_incoming(parent, LinkType.CALL_WORK, 'child')
+        child.base.attributes.set(ProcessNode.QUEUE_NAME_KEY, 'high-priority')
+        child.store()
+
+        # Nested workchain with custom queue - full name includes profile prefix
+        queue_name = control.get_queue_name_from_node(child)
+        assert 'high-priority.nested-workchain.queue' in queue_name
+        assert queue_name.startswith('aiida-')

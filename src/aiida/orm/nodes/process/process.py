@@ -161,6 +161,7 @@ class ProcessNode(Sealable, Node):
     PROCESS_STATE_KEY = 'process_state'
     PROCESS_STATUS_KEY = 'process_status'
     METADATA_INPUTS_KEY: str = 'metadata_inputs'
+    QUEUE_NAME_KEY = '_aiida_queue_name'
 
     _unstorable_message = 'only Data, WorkflowNode, CalculationNode or their subclasses can be stored'
 
@@ -186,6 +187,7 @@ class ProcessNode(Sealable, Node):
             cls.PROCESS_LABEL_KEY,
             cls.PROCESS_STATE_KEY,
             cls.PROCESS_STATUS_KEY,
+            cls.QUEUE_NAME_KEY,
         )
 
     class Model(Node.Model, Sealable.Model):
