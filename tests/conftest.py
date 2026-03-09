@@ -49,46 +49,161 @@ P = ParamSpec('P')
 
 
 def _get_open_fds():
-    """Return a dict of {fd_number: target_path} for currently open file descriptors."""
-    fd_dir = pathlib.Path('/dev/fd')
+    """Return a dict of {fd_number: description} for currently open file descriptors.
+
+    Uses ``lsof`` to get detailed info (type, name) for each FD.
+    """
+    import sys
+
+    pid = os.getpid()
     fds = {}
-    for entry in fd_dir.iterdir():
-        try:
-            fd_num = int(entry.name)
+
+    if sys.platform == 'linux':
+        fd_dir = pathlib.Path(f'/proc/{pid}/fd')
+        for entry in fd_dir.iterdir():
             try:
+                fd_num = int(entry.name)
                 target = os.readlink(str(entry))
-            except OSError:
-                target = '<unknown>'
-            fds[fd_num] = target
-        except (ValueError, OSError):
-            continue
+                fds[fd_num] = target
+            except (ValueError, OSError):
+                continue
+    else:
+        try:
+            result = subprocess.run(['lsof', '-p', str(pid), '-F', 'ftni'], capture_output=True, text=True, timeout=10)
+            current_fd = None
+            parts = []
+            for line in result.stdout.splitlines():
+                if line.startswith('f') and line[1:].isdigit():
+                    if current_fd is not None:
+                        fds[current_fd] = ' '.join(parts) if parts else '<unknown>'
+                    current_fd = int(line[1:])
+                    parts = []
+                elif current_fd is not None:
+                    if line.startswith('t'):
+                        parts.append(line[1:])
+                    elif line.startswith('n'):
+                        parts.append(line[1:])
+            if current_fd is not None:
+                fds[current_fd] = ' '.join(parts) if parts else '<unknown>'
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            fd_dir = pathlib.Path('/dev/fd')
+            for entry in fd_dir.iterdir():
+                try:
+                    fds[int(entry.name)] = '<unknown>'
+                except (ValueError, OSError):
+                    continue
+
     return fds
 
 
 def pytest_configure(config):
     if os.environ.get('AIIDA_CHECK_FD_LEAKS'):
-        config._fd_check_before = _get_open_fds()
-        count = len(config._fd_check_before)
-        print(f'\nFD CHECK: {count} open file descriptors at session start')
+        config._fd_leak_reports = []
+        config._fd_trace_stacks = os.environ.get('AIIDA_FD_LEAK_TRACE', '')
+        config._fd_session_before = _get_open_fds()
+
+
+def _install_fd_trackers(item):
+    """Monkey-patch socket/os to capture stack traces for new FDs."""
+    import socket
+    import traceback
+
+    traces = {}
+    item._fd_traces = traces
+
+    _orig_socket_init = socket.socket.__init__
+
+    def _traced_socket_init(self, *args, **kwargs):
+        _orig_socket_init(self, *args, **kwargs)
+        try:
+            fd = self.fileno()
+            traces[fd] = ''.join(traceback.format_stack())
+        except Exception:
+            pass
+
+    socket.socket.__init__ = _traced_socket_init
+    item._orig_socket_init = _orig_socket_init
+
+    _orig_os_pipe = os.pipe
+
+    def _traced_os_pipe():
+        r, w = _orig_os_pipe()
+        stack = ''.join(traceback.format_stack())
+        traces[r] = stack
+        traces[w] = stack
+        return r, w
+
+    os.pipe = _traced_os_pipe
+    item._orig_os_pipe = _orig_os_pipe
+
+
+def _uninstall_fd_trackers(item):
+    """Restore original socket/os functions."""
+    import socket
+
+    if hasattr(item, '_orig_socket_init'):
+        socket.socket.__init__ = item._orig_socket_init
+    if hasattr(item, '_orig_os_pipe'):
+        os.pipe = item._orig_os_pipe
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item):
+    """Wrap the test call phase to snapshot FDs after fixture setup but before/after the test body."""
+    if not hasattr(item.config, '_fd_leak_reports'):
+        yield
+        return
+
+    if item.config._fd_trace_stacks:
+        _install_fd_trackers(item)
+
+    fds_before = _get_open_fds()
+    yield
+
+    traces = {}
+    if hasattr(item, '_fd_traces'):
+        traces = item._fd_traces
+        _uninstall_fd_trackers(item)
+
+    fds_after = _get_open_fds()
+    new_fds = {fd: desc for fd, desc in fds_after.items() if fd not in fds_before}
+
+    if new_fds:
+        item.config._fd_leak_reports.append((item.nodeid, new_fds, traces))
 
 
 def pytest_unconfigure(config):
-    fds_before = getattr(config, '_fd_check_before', None)
-    if fds_before is None:
+    reports = getattr(config, '_fd_leak_reports', None)
+    if reports is None:
         return
 
-    fds_after = _get_open_fds()
-    leaked = {fd: path for fd, path in fds_after.items() if fd not in fds_before}
-    closed = {fd: path for fd, path in fds_before.items() if fd not in fds_after}
-
     print(f'\n{"=" * 60}')
-    print(f'FD CHECK: {len(fds_before)} FDs at start, {len(fds_after)} FDs at end')
-    print(f'FD CHECK: +{len(leaked)} new, -{len(closed)} closed, net {len(leaked) - len(closed):+d}')
 
-    if leaked:
-        print('FD CHECK: Leaked file descriptors:')
-        for fd in sorted(leaked):
-            print(f'  fd={fd} -> {leaked[fd]}')
+    # Per-test leaks (FDs opened during test body and not closed)
+    if reports:
+        print(f'FD LEAK: {len(reports)} test(s) leaked file descriptors:')
+        for nodeid, new_fds, traces in reports:
+            fds_str = ', '.join(f'fd={fd} -> {desc}' for fd, desc in sorted(new_fds.items()))
+            print(f'  {nodeid} (+{len(new_fds)} FDs: {fds_str})')
+            for fd in sorted(new_fds):
+                if fd in traces:
+                    print(f'    fd={fd} opened at:')
+                    for line in traces[fd].strip().splitlines():
+                        print(f'      {line}')
+    else:
+        print('FD CHECK: No per-test file descriptor leaks detected.')
+
+    # Session-level leaks (FDs opened during session and not closed by fixture teardown)
+    session_before = getattr(config, '_fd_session_before', None)
+    if session_before is not None:
+        session_after = _get_open_fds()
+        session_leaked = {fd: desc for fd, desc in session_after.items() if fd not in session_before}
+        if session_leaked:
+            print(f'\nFD LEAK (session): {len(session_leaked)} FD(s) opened during session were not closed:')
+            for fd in sorted(session_leaked):
+                print(f'  fd={fd} -> {session_leaked[fd]}')
+        else:
+            print('\nFD CHECK (session): No session-level FD leaks detected.')
 
     print(f'{"=" * 60}')
 
@@ -540,10 +655,9 @@ def config_with_profile(config_with_profile_factory):
     yield config_with_profile_factory()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def manager():
     """Get the ``Manager`` instance of the currently loaded profile."""
-
     return get_manager()
 
 
