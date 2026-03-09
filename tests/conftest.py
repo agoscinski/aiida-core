@@ -48,6 +48,51 @@ pytest_plugins = ['aiida.tools.pytest_fixtures', 'sphinx.testing.fixtures']
 P = ParamSpec('P')
 
 
+def _get_open_fds():
+    """Return a dict of {fd_number: target_path} for currently open file descriptors."""
+    fd_dir = pathlib.Path('/dev/fd')
+    fds = {}
+    for entry in fd_dir.iterdir():
+        try:
+            fd_num = int(entry.name)
+            try:
+                target = os.readlink(str(entry))
+            except OSError:
+                target = '<unknown>'
+            fds[fd_num] = target
+        except (ValueError, OSError):
+            continue
+    return fds
+
+
+def pytest_configure(config):
+    if os.environ.get('AIIDA_CHECK_FD_LEAKS'):
+        config._fd_check_before = _get_open_fds()
+        count = len(config._fd_check_before)
+        print(f'\nFD CHECK: {count} open file descriptors at session start')
+
+
+def pytest_unconfigure(config):
+    fds_before = getattr(config, '_fd_check_before', None)
+    if fds_before is None:
+        return
+
+    fds_after = _get_open_fds()
+    leaked = {fd: path for fd, path in fds_after.items() if fd not in fds_before}
+    closed = {fd: path for fd, path in fds_before.items() if fd not in fds_after}
+
+    print(f'\n{"=" * 60}')
+    print(f'FD CHECK: {len(fds_before)} FDs at start, {len(fds_after)} FDs at end')
+    print(f'FD CHECK: +{len(leaked)} new, -{len(closed)} closed, net {len(leaked) - len(closed):+d}')
+
+    if leaked:
+        print('FD CHECK: Leaked file descriptors:')
+        for fd in sorted(leaked):
+            print(f'  fd={fd} -> {leaked[fd]}')
+
+    print(f'{"=" * 60}')
+
+
 class TestDbBackend(Enum):
     """Options for the '--db-backend' CLI argument when running pytest."""
 
