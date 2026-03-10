@@ -136,22 +136,38 @@ jobs:
 
   tests-presto:
 
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
 
     steps:
     - uses: actions/checkout@v6
 
-    - name: Install graphviz
+    - name: Install graphviz (Linux)
+      if: runner.os == 'Linux'
       run: sudo apt update && sudo apt install graphviz
+
+    - name: Install graphviz (macOS)
+      if: runner.os == 'macOS'
+      run: brew install graphviz
 
     - name: Install aiida-core
       uses: ./.github/actions/install-aiida-core
       with:
-        python-version: '3.14'
+        python-version: '3.12'
 
     - name: Setup SSH on localhost
       run: .github/workflows/setup_ssh.sh
+
+    - name: Enable SSH (Remote Login)
+      if: runner.os == 'macOS'
+      run: |
+        sudo systemsetup -setremotelogin on
+        sudo dscl . -change /Users/runner UserShell /usr/bin/false /bin/bash
 
     - name: Run test suite
       env:
