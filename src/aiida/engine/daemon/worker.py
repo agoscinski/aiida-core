@@ -34,8 +34,10 @@ async def shutdown_worker(runner: Runner) -> None:
 
     await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Close every open connection
-    get_manager().reset_profile()
+    # Close storage but keep event loop running since this task is running
+    # within one
+    get_manager().reset_broker()
+    get_manager().reset_profile_storage()
 
     LOGGER.info('Daemon worker stopped')
 
