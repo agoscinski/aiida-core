@@ -262,6 +262,14 @@ class Runner:
             try:
                 signal.signal(signal.SIGINT, kill_process)
                 signal.signal(signal.SIGTERM, kill_process)
+                if getattr(self._loop, '_stopping', False):
+                    LOGGER.error(
+                        'Loop._stopping is True before execute() for process %s. '
+                        'Pending tasks: %s',
+                        process_inited.pid,
+                        asyncio.all_tasks(self._loop) if hasattr(asyncio, 'all_tasks') else 'N/A',
+                    )
+                self._loop.set_debug(True)
                 process_inited.execute()
             finally:
                 signal.signal(signal.SIGINT, original_handler_int)

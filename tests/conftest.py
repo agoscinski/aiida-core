@@ -60,6 +60,11 @@ def _reset_runner(request):
     manager = get_manager()
     runner_before = manager._runner
     loop_was_running = runner_before is not None and runner_before.loop.is_running()
+    if runner_before is not None and getattr(runner_before.loop, '_stopping', False):
+        raise ValueError(
+            '_reset_runner: loop._stopping was True BEFORE test %s\n'
+            'Runner was created at:\n%s' % (request.node.nodeid, runner_before._creation_traceback)
+        )
     yield
     runner = manager._runner
     if runner is not None and runner._closed:
@@ -75,6 +80,11 @@ def _reset_runner(request):
     if runner is not None and loop_was_running and not runner.loop.is_running():
         raise ValueError(
             '_reset_runner: runner event loop was stopped during test %s\n'
+            'Runner was created at:\n%s' % (request.node.nodeid, runner._creation_traceback)
+        )
+    if runner is not None and getattr(runner.loop, '_stopping', False):
+        raise ValueError(
+            '_reset_runner: loop._stopping was True AFTER test %s\n'
             'Runner was created at:\n%s' % (request.node.nodeid, runner._creation_traceback)
         )
     #else:
