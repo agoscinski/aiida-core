@@ -168,6 +168,9 @@ jobs:
       run: |
         sudo systemsetup -setremotelogin on
         sudo dscl . -create /Users/runner UserShell /bin/bash
+        sudo sed -i '' 's/^#MaxStartups.*/MaxStartups 100/' /etc/ssh/sshd_config
+        sudo sed -i '' 's/^#MaxSessions.*/MaxSessions 100/' /etc/ssh/sshd_config
+        sudo launchctl stop com.openssh.sshd
 
     - name: Run test suite
       env:
