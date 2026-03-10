@@ -62,9 +62,16 @@ def _reset_runner(request):
     runner = manager._runner
     if runner is not None and runner._closed:
         raise ValueError(
-            '_reset_runner: runner was already closed before reset_runner() in test %s', request.node.nodeid
+            '_reset_runner: runner was already closed before reset_runner() in test %s' % request.node.nodeid
         )
-        manager._runner = None
+    if runner is not None and runner.loop.is_closed():
+        raise ValueError(
+            '_reset_runner: runner event loop was already closed before reset_runner() in test %s' % request.node.nodeid
+        )
+    if runner is not None and not runner.loop.is_running():
+        raise ValueError(
+            '_reset_runner: runner event loop was stopped before reset_runner() in test %s' % request.node.nodeid
+        )
     #else:
     #    manager.reset_runner()
 
