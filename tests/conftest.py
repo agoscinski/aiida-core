@@ -61,13 +61,12 @@ def _reset_runner(request):
     manager = get_manager()
     runner = manager._runner
     if runner is not None and runner._closed:
-        import logging
-        logging.getLogger('tests').warning(
+        raise ValueError(
             '_reset_runner: runner was already closed before reset_runner() in test %s', request.node.nodeid
         )
         manager._runner = None
-    else:
-        manager.reset_runner()
+    #else:
+    #    manager.reset_runner()
 
 
 def pytest_collection_modifyitems(items, config):
