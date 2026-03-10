@@ -87,6 +87,18 @@ def _reset_runner(request):
             '_reset_runner: loop._stopping was True AFTER test %s\n'
             'Runner was created at:\n%s' % (request.node.nodeid, runner._creation_traceback)
         )
+    if runner is not None:
+        ready_queue = getattr(runner.loop, '_ready', None)
+        if ready_queue:
+            stale = [
+                h for h in ready_queue
+                if getattr(getattr(h, '_callback', None), '__name__', '') == '_run_until_complete_cb'
+            ]
+            if stale:
+                raise ValueError(
+                    '_reset_runner: %d stale _run_until_complete_cb in ready queue AFTER test %s\n'
+                    'Runner was created at:\n%s' % (len(stale), request.node.nodeid, runner._creation_traceback)
+                )
     #else:
     #    manager.reset_runner()
 

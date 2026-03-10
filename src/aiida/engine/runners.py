@@ -262,56 +262,8 @@ class Runner:
             try:
                 signal.signal(signal.SIGINT, kill_process)
                 signal.signal(signal.SIGTERM, kill_process)
-                if getattr(self._loop, '_stopping', False):
-                    LOGGER.error(
-                        'Loop._stopping is True before execute() for process %s. '
-                        'Pending tasks: %s',
-                        process_inited.pid,
-                        asyncio.all_tasks(self._loop) if hasattr(asyncio, 'all_tasks') else 'N/A',
-                    )
-                self._loop.set_debug(True)
 
-                # Log ready queue contents before execute
-                ready_queue = getattr(self._loop, '_ready', None)
-                if ready_queue:
-                    LOGGER.warning(
-                        'Ready queue has %d items before execute() for process %s: %s',
-                        len(ready_queue),
-                        process_inited.pid,
-                        [(repr(h._callback), repr(getattr(h._callback, '__self__', None))) for h in ready_queue],
-                    )
-
-                # Monkey-patch loop.stop() to capture traceback of caller
-                import traceback as _tb
-
-                _original_stop = self._loop.stop
-                _stop_count = [0]
-
-                def _traced_stop():
-                    _stop_count[0] += 1
-                    # Inspect the _run_until_complete_cb's bound future
-                    frame = _tb.extract_stack()
-                    caller_info = frame[-2] if len(frame) >= 2 else None
-                    LOGGER.error(
-                        'loop.stop() call #%d during execute() for process %s\n'
-                        'Caller: %s\n'
-                        'Traceback:\n%s\n'
-                        'All tasks: %s\n'
-                        'Ready queue size: %d',
-                        _stop_count[0],
-                        process_inited.pid,
-                        caller_info,
-                        ''.join(_tb.format_stack()),
-                        [repr(t) for t in asyncio.all_tasks(self._loop)] if hasattr(asyncio, 'all_tasks') else 'N/A',
-                        len(getattr(self._loop, '_ready', [])),
-                    )
-                    _original_stop()
-
-                self._loop.stop = _traced_stop  # type: ignore[method-assign]
-                try:
-                    process_inited.execute()
-                finally:
-                    self._loop.stop = _original_stop  # type: ignore[method-assign]
+                process_inited.execute()
             finally:
                 signal.signal(signal.SIGINT, original_handler_int)
                 signal.signal(signal.SIGTERM, original_handler_term)
