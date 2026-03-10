@@ -168,9 +168,11 @@ jobs:
       run: |
         sudo systemsetup -setremotelogin on
         sudo dscl . -create /Users/runner UserShell /bin/bash
+        # Stop launchd-managed sshd (throttles connections) and run standalone
+        sudo launchctl bootout system/com.openssh.sshd || true
         echo 'MaxStartups 100' | sudo tee -a /etc/ssh/sshd_config
         echo 'MaxSessions 100' | sudo tee -a /etc/ssh/sshd_config
-        sudo launchctl kickstart -k system/com.openssh.sshd
+        sudo /usr/sbin/sshd
 
     - name: Run test suite
       env:
