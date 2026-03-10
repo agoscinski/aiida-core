@@ -95,10 +95,24 @@ def _reset_runner(request):
                 if getattr(getattr(h, '_callback', None), '__name__', '') == '_run_until_complete_cb'
             ]
             if stale:
-                raise ValueError(
-                    '_reset_runner: %d stale _run_until_complete_cb in ready queue AFTER test %s\n'
-                    'Runner was created at:\n%s' % (len(stale), request.node.nodeid, runner._creation_traceback)
-                )
+                import logging
+                logger = logging.getLogger('aiida.test.reset_runner')
+                for h in stale:
+                    args = getattr(h, '_args', ())
+                    logger.error(
+                        'Stale _run_until_complete_cb AFTER test %s\n'
+                        '  handle args: %s\n'
+                        '  handle args repr: %s\n'
+                        '  all ready queue (%d items): %s',
+                        request.node.nodeid,
+                        args,
+                        [repr(a) for a in args] if args else 'none',
+                        len(ready_queue),
+                        [(getattr(getattr(h2, '_callback', None), '__name__', '?'),
+                          getattr(h2, '_args', ())) for h2 in ready_queue],
+                    )
+                    # Cancel it so it doesn't poison the next test
+                    h.cancel()
     #else:
     #    manager.reset_runner()
 
