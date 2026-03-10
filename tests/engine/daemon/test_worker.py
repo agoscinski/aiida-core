@@ -26,7 +26,7 @@ async def test_shutdown_worker(manager):
         assert runner.is_closed()
     finally:
         # Reset the runner of the manager, because once closed it cannot be reused by other tests.
-        manager._runner = None
+        manager.reset_runner()
 
 
 @pytest.mark.usefixtures('aiida_profile_clean', 'started_daemon_client')
