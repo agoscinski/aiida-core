@@ -160,19 +160,17 @@ jobs:
       with:
         python-version: '3.12'
 
-    - name: Setup SSH on localhost
-      run: .github/workflows/setup_ssh.sh
-
     - name: Enable SSH (Remote Login)
       if: runner.os == 'macOS'
       run: |
         sudo systemsetup -setremotelogin on
         sudo dscl . -create /Users/runner UserShell /bin/bash
-        # Stop launchd-managed sshd (throttles connections) and run standalone
-        sudo launchctl bootout system/com.openssh.sshd || true
-        echo 'MaxStartups 100' | sudo tee -a /etc/ssh/sshd_config
-        echo 'MaxSessions 100' | sudo tee -a /etc/ssh/sshd_config
-        sudo /usr/sbin/sshd
+
+    - name: Setup SSH on localhost
+      run: |
+        .github/workflows/setup_ssh.sh
+        # Verify SSH connectivity
+        ssh -o StrictHostKeyChecking=no localhost echo 'SSH OK'
 
     - name: Run test suite
       env:
