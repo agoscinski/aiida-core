@@ -240,7 +240,31 @@ def _perform_actions(
     # End the current read transaction so that subsequent attribute reads see
     # the state committed by the daemon.  Without this, SQLite's transaction
     # snapshot isolation can cause stale reads after the RPC round-trip.
-    get_manager().get_profile_storage().get_session().commit()
+    session = get_manager().get_profile_storage().get_session()
+    LOGGER.report(f'DEBUG: session.is_active={session.is_active}, in_transaction={session.in_transaction()}, dirty={bool(session.dirty)}, new={bool(session.new)}')
+    session.commit()
+    LOGGER.report('DEBUG: session.commit() completed')
+
+    # Debug: check what raw sqlite3 shows vs SQLAlchemy
+    import json
+    import sqlite3
+    storage = get_manager().get_profile_storage()
+    db_path = getattr(storage, 'filepath_database', None)
+    LOGGER.report(f'DEBUG: db_path={db_path}, storage_class={type(storage).__name__}')
+    for process in processes:
+        pk = process.pk
+        # Completely independent sqlite3 connection (bypasses SQLAlchemy entirely)
+        if db_path:
+            conn = sqlite3.connect(str(db_path))
+            row = conn.execute(f'SELECT attributes FROM db_dbnode WHERE id = {pk}').fetchone()
+            conn.close()
+            if row:
+                raw_attrs = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                LOGGER.report(f'DEBUG: Process<{pk}> direct sqlite3: paused={raw_attrs.get("paused", "NOT_SET")}')
+        # SQLAlchemy ORM read after commit
+        session.expire(process.backend_entity.bare_model)
+        orm_attrs = process.backend_entity.bare_model.attributes
+        LOGGER.report(f'DEBUG: Process<{pk}> ORM after commit+expire: paused={orm_attrs.get("paused", "NOT_SET")}')
 
 
 def _resolve_futures(
