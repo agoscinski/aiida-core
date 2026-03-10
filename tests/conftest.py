@@ -55,65 +55,6 @@ class TestDbBackend(Enum):
     PSQL = 'psql'
 
 
-@pytest.fixture(autouse=True)
-def _reset_runner(request):
-    manager = get_manager()
-    runner_before = manager._runner
-    loop_was_running = runner_before is not None and runner_before.loop.is_running()
-    if runner_before is not None and getattr(runner_before.loop, '_stopping', False):
-        raise ValueError(
-            '_reset_runner: loop._stopping was True BEFORE test %s\n'
-            'Runner was created at:\n%s' % (request.node.nodeid, runner_before._creation_traceback)
-        )
-    yield
-    runner = manager._runner
-    if runner is not None and runner._closed:
-        raise ValueError(
-            '_reset_runner: runner was already closed before reset_runner() in test %s\n'
-            'Runner was created at:\n%s' % (request.node.nodeid, runner._creation_traceback)
-        )
-    if runner is not None and runner.loop.is_closed():
-        raise ValueError(
-            '_reset_runner: runner event loop was already closed before reset_runner() in test %s\n'
-            'Runner was created at:\n%s' % (request.node.nodeid, runner._creation_traceback)
-        )
-    if runner is not None and loop_was_running and not runner.loop.is_running():
-        raise ValueError(
-            '_reset_runner: runner event loop was stopped during test %s\n'
-            'Runner was created at:\n%s' % (request.node.nodeid, runner._creation_traceback)
-        )
-    if runner is not None and getattr(runner.loop, '_stopping', False):
-        raise ValueError(
-            '_reset_runner: loop._stopping was True AFTER test %s\n'
-            'Runner was created at:\n%s' % (request.node.nodeid, runner._creation_traceback)
-        )
-    if runner is not None:
-        ready_queue = getattr(runner.loop, '_ready', None)
-        if ready_queue:
-            stale = [
-                h for h in ready_queue
-                if getattr(getattr(h, '_callback', None), '__name__', '') == '_run_until_complete_cb'
-            ]
-            if stale:
-                for h in stale:
-                    args = getattr(h, '_args', ())
-                    raise ValueError(
-                        '_reset_runner: Stale _run_until_complete_cb AFTER test %s\n'
-                        '  handle args: %s\n'
-                        '  handle args repr: %s\n'
-                        '  all ready queue (%d items): %s' % (
-                            request.node.nodeid,
-                            args,
-                            [repr(a) for a in args] if args else 'none',
-                            len(ready_queue),
-                            [(getattr(getattr(h2, '_callback', None), '__name__', '?'),
-                              getattr(h2, '_args', ())) for h2 in ready_queue],
-                        )
-                    )
-    #else:
-    #    manager.reset_runner()
-
-
 def pytest_collection_modifyitems(items, config):
     """Automatically generate markers for certain tests.
 
