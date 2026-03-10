@@ -559,8 +559,12 @@ class Process(PlumpyProcess):
     @override
     def on_playing(self) -> None:
         """The Process was unpaused so remove the paused attribute on the process node"""
+        import logging
+        _dbg = logging.getLogger('aiida.process_control')
+        _dbg.report(f'DEBUG DAEMON: on_playing() called for Process<{self.node.pk}>')
         super().on_playing()
         self.node.unpause()
+        _dbg.report(f'DEBUG DAEMON: node.unpause() completed for Process<{self.node.pk}>')
 
     @override
     def on_output_emitting(self, output_port: str, value: Any) -> None:
