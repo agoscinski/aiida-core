@@ -167,7 +167,7 @@ jobs:
       if: runner.os == 'macOS'
       run: |
         sudo systemsetup -setremotelogin on
-        sudo dscl . -change /Users/runner UserShell /usr/bin/false /bin/bash
+        sudo dscl . -create /Users/runner UserShell /bin/bash
 
     - name: Run test suite
       env:
