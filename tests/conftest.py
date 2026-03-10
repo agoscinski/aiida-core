@@ -57,8 +57,10 @@ class TestDbBackend(Enum):
 
 @pytest.fixture(autouse=True)
 def _reset_runner(request):
-    yield
     manager = get_manager()
+    runner_before = manager._runner
+    loop_was_running = runner_before is not None and runner_before.loop.is_running()
+    yield
     runner = manager._runner
     if runner is not None and runner._closed:
         raise ValueError(
@@ -68,9 +70,9 @@ def _reset_runner(request):
         raise ValueError(
             '_reset_runner: runner event loop was already closed before reset_runner() in test %s' % request.node.nodeid
         )
-    if runner is not None and not runner.loop.is_running():
+    if runner is not None and loop_was_running and not runner.loop.is_running():
         raise ValueError(
-            '_reset_runner: runner event loop was stopped before reset_runner() in test %s' % request.node.nodeid
+            '_reset_runner: runner event loop was stopped during test %s' % request.node.nodeid
         )
     #else:
     #    manager.reset_runner()
