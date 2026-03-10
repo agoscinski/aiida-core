@@ -7,3 +7,5 @@ ssh-keyscan -H localhost >> "${HOME}/.ssh/known_hosts"
 
 # The permissions on the GitHub runner are 777 which will cause SSH to refuse the keys and cause authentication to fail
 chmod 755 "${HOME}"
+chmod 700 "${HOME}/.ssh"
+chmod 600 "${HOME}/.ssh/authorized_keys"
