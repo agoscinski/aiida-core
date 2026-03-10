@@ -8,6 +8,8 @@
 ###########################################################################
 """Unit tests for the :mod:`aiida.engine.daemon.worker` module."""
 
+import asyncio
+
 import pytest
 
 from aiida.engine.daemon.worker import shutdown_worker
@@ -16,17 +18,12 @@ from aiida.workflows.arithmetic.multiply_add import MultiplyAddWorkChain
 
 
 @pytest.mark.requires_rmq
-@pytest.mark.asyncio
-async def test_shutdown_worker(manager):
+def test_shutdown_worker(manager):
     """Test the ``shutdown_worker`` method."""
     runner = manager.get_runner()
-    await shutdown_worker(runner)
-
-    try:
-        assert runner.is_closed()
-    finally:
-        # Reset the runner of the manager, because once closed it cannot be reused by other tests.
-        manager.reset_runner()
+    runner.loop.create_task(shutdown_worker(runner))
+    runner.loop.run_forever()
+    assert runner.is_closed()
 
 
 @pytest.mark.usefixtures('aiida_profile_clean', 'started_daemon_client')
