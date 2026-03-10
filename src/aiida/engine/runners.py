@@ -90,6 +90,10 @@ class Runner:
         self._persister = persister
         self._plugin_version_provider = PluginVersionProvider()
 
+        import traceback as _tb
+
+        self._creation_traceback = ''.join(_tb.format_stack())
+
         if communicator is not None:
             self._communicator = wrap_communicator(communicator, self._loop)
             self._controller = RemoteProcessThreadController(communicator)
