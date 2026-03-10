@@ -270,7 +270,28 @@ class Runner:
                         asyncio.all_tasks(self._loop) if hasattr(asyncio, 'all_tasks') else 'N/A',
                     )
                 self._loop.set_debug(True)
-                process_inited.execute()
+
+                # Monkey-patch loop.stop() to capture traceback of caller
+                import traceback as _tb
+
+                _original_stop = self._loop.stop
+
+                def _traced_stop():
+                    LOGGER.error(
+                        'loop.stop() called during execute() for process %s\n'
+                        'Traceback:\n%s\n'
+                        'Pending tasks: %s',
+                        process_inited.pid,
+                        ''.join(_tb.format_stack()),
+                        asyncio.all_tasks(self._loop) if hasattr(asyncio, 'all_tasks') else 'N/A',
+                    )
+                    _original_stop()
+
+                self._loop.stop = _traced_stop  # type: ignore[method-assign]
+                try:
+                    process_inited.execute()
+                finally:
+                    self._loop.stop = _original_stop  # type: ignore[method-assign]
             finally:
                 signal.signal(signal.SIGINT, original_handler_int)
                 signal.signal(signal.SIGTERM, original_handler_term)
