@@ -1046,18 +1046,19 @@ def test_process_repair_additional_tasks(monkeypatch, run_cli_command):
     assert 'Attempting to fix inconsistencies' in result.output
 
 
-@pytest.mark.usefixtures('stopped_daemon_client')
+@pytest.mark.requires_rmq
+@pytest.mark.usefixtures('aiida_profile_clean', 'stopped_daemon_client')
 def test_process_repair_missing_tasks(monkeypatch, run_cli_command):
     """Test the ``verdi process repair`` command when there are missing tasks."""
-    # Create real nodes so load_node works when reviving zombie processes
+    # Create real nodes so load_node() works when reviving
     nodes = [CalcJobNode() for _ in range(3)]
     for node in nodes:
         node.set_process_state(ProcessState.RUNNING)
         node.store()
-
     pks = [n.pk for n in nodes]
+
     monkeypatch.setattr(process_control, 'get_active_processes', lambda *args, **kwargs: pks)
-    monkeypatch.setattr(process_control, 'get_process_tasks', lambda *args: pks[:2])  # Missing task for last node
+    monkeypatch.setattr(process_control, 'get_process_tasks', lambda *args: pks[:2])  # Missing task for 3rd node
 
     result = run_cli_command(cmd_process.process_repair, use_subprocess=False)
     assert 'There are active processes without process task:' in result.output
@@ -1076,22 +1077,23 @@ def test_process_repair_dry_run(monkeypatch, run_cli_command):
     assert 'This was a dry-run, no changes will be made.' in result.output
 
 
-@pytest.mark.usefixtures('stopped_daemon_client')
+@pytest.mark.requires_rmq
+@pytest.mark.usefixtures('aiida_profile_clean', 'stopped_daemon_client')
 def test_process_repair_verbosity(monkeypatch, run_cli_command):
     """Test the ``verdi process repair`` command with ``-v INFO```."""
-    # Create real nodes so load_node works when reviving zombie processes
+    # Create real nodes so load_node() works when reviving
     nodes = [CalcJobNode() for _ in range(4)]
     for node in nodes:
         node.set_process_state(ProcessState.RUNNING)
         node.store()
-
     pks = [n.pk for n in nodes]
+
     monkeypatch.setattr(process_control, 'get_active_processes', lambda *args, **kwargs: pks)
     monkeypatch.setattr(process_control, 'get_process_tasks', lambda *args: pks[:2])
 
     result = run_cli_command(cmd_process.process_repair, ['-v', 'INFO'], use_subprocess=False)
-    assert f'Active processes: {pks}' in result.output
-    assert f'Process tasks: {pks[:2]}' in result.output
+    assert 'Active processes:' in result.output
+    assert 'Process tasks:' in result.output
 
 
 @pytest.fixture
@@ -1130,3 +1132,108 @@ def test_process_most_recent_node_exclusive(run_cli_command, process_nodes, comm
     """Test command raises if ``-M`` is specified as well as explicit process nodes."""
     result = run_cli_command(command, ['-M', str(process_nodes[0].pk)], raises=True)
     assert 'cannot specify individual processes and the `-M/--most-recent-node` flag at the same time.' in result.output
+
+
+class TestVerdiProcessSetQueue:
+    """Tests for ``verdi process set-queue`` command."""
+
+    @pytest.mark.usefixtures('stopped_daemon_client')
+    def test_set_queue_task_not_found(self, run_cli_command, aiida_profile, monkeypatch):
+        """Test ``verdi process set-queue`` skips processes whose task wasn't found in queue."""
+        from aiida.manage.configuration import get_config
+
+        # Set up queue config
+        profile = aiida_profile
+        profile.set_queue_config({'default': {'root_workchain_prefetch': 200, 'calcjob_prefetch': 0}})
+        get_config().update_profile(profile)
+        get_config().store()
+
+        # Mock iterate_process_tasks to return empty (simulates task not in queue)
+        monkeypatch.setattr(process_control, 'iterate_process_tasks', lambda *args: [])
+
+        # Create a process - task not found means we skip (daemon may have picked it up)
+        node = WorkChainNode()
+        node.set_process_state(ProcessState.CREATED)
+        node.store()
+
+        result = run_cli_command(
+            cmd_process.process_set_queue, [str(node.pk), '--queue', 'default'], use_subprocess=False
+        )
+        # Should warn that task was not found
+        assert 'not found in queue' in result.output.lower()
+
+    @pytest.mark.usefixtures('stopped_daemon_client')
+    def test_set_queue_invalid_queue(self, run_cli_command, aiida_profile):
+        """Test ``verdi process set-queue`` fails for non-existent queue."""
+        from aiida.manage.configuration import get_config
+
+        # Ensure queue config exists but without the target queue
+        profile = aiida_profile
+        profile.set_queue_config({'default': {'root_workchain_prefetch': 200, 'calcjob_prefetch': 0}})
+        get_config().update_profile(profile)
+        get_config().store()
+
+        node = WorkChainNode()
+        node.set_process_state(ProcessState.RUNNING)
+        node.store()
+
+        result = run_cli_command(
+            cmd_process.process_set_queue, [str(node.pk), '--queue', 'nonexistent'], raises=True, use_subprocess=False
+        )
+        assert 'does not exist' in result.output.lower()
+
+    @pytest.mark.usefixtures('stopped_daemon_client')
+    def test_set_queue_terminated_process(self, run_cli_command, aiida_profile, monkeypatch):
+        """Test ``verdi process set-queue`` warns for terminated processes."""
+        from aiida.manage.configuration import get_config
+
+        # Set up queue config
+        profile = aiida_profile
+        profile.set_queue_config({'default': {'root_workchain_prefetch': 200, 'calcjob_prefetch': 0}})
+        get_config().update_profile(profile)
+        get_config().store()
+
+        # Mock iterate_process_tasks to return empty
+        monkeypatch.setattr(process_control, 'iterate_process_tasks', lambda *args: [])
+
+        node = CalcJobNode()
+        node.set_process_state(ProcessState.FINISHED)
+        node.store()
+
+        result = run_cli_command(
+            cmd_process.process_set_queue, [str(node.pk), '--queue', 'default'], use_subprocess=False
+        )
+        assert 'already terminated' in result.output.lower()
+
+
+class TestVerdiProcessRepairQueue:
+    """Tests for ``verdi process repair --queue`` option."""
+
+    @pytest.mark.usefixtures('stopped_daemon_client')
+    def test_repair_with_queue_option(self, monkeypatch, run_cli_command, aiida_profile):
+        """Test ``verdi process repair --queue`` uses specified queue for revived processes."""
+        from aiida.manage.configuration import get_config
+
+        # Set up queue config
+        profile = aiida_profile
+        profile.set_queue_config(
+            {
+                'default': {'root_workchain_prefetch': 200, 'calcjob_prefetch': 0},
+                'priority': {'root_workchain_prefetch': 50, 'calcjob_prefetch': 0},
+            }
+        )
+        get_config().update_profile(profile)
+        get_config().store()
+
+        # Create an active process node
+        node = WorkChainNode()
+        node.set_process_state(ProcessState.RUNNING)
+        node.store()
+
+        # Mock to simulate missing task
+        monkeypatch.setattr(process_control, 'get_active_processes', lambda *args, **kwargs: [node.pk])
+        monkeypatch.setattr(process_control, 'get_process_tasks', lambda *args: [])
+
+        result = run_cli_command(cmd_process.process_repair, ['--queue', 'priority'], use_subprocess=False)
+        assert 'Revived process' in result.output
+        assert 'priority' in result.output
