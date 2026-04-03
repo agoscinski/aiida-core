@@ -89,8 +89,13 @@ def get_logging_config() -> dict[str, t.Any]:
             'console': {
                 'class': 'logging.StreamHandler',
                 'formatter': 'halfverbose',
+                'level': lambda: get_config_option('logging.terminal_loglevel'),
             },
-            'cli': {'class': 'aiida.cmdline.utils.log.CliHandler', 'formatter': 'cli'},
+            'cli': {
+                'class': 'aiida.cmdline.utils.log.CliHandler',
+                'formatter': 'cli',
+                'level': lambda: get_config_option('logging.terminal_loglevel'),
+            },
         },
         'loggers': {
             'aiida': {
@@ -194,9 +199,11 @@ def configure_logging(with_orm: bool = False, daemon: bool = False, daemon_log_f
         if daemon_log_file is None:
             raise ValueError('daemon_log_file has to be defined when configuring for the daemon')
 
+        from aiida.manage.configuration import get_config_option
+
         config.setdefault('handlers', {})
         config['handlers'][daemon_handler_name] = {
-            'level': 'DEBUG',
+            'level': get_config_option('logging.system_loglevel'),
             'formatter': 'halfverbose',
             'class': 'logging.handlers.RotatingFileHandler',
             'filename': daemon_log_file,
@@ -230,6 +237,8 @@ def configure_logging(with_orm: bool = False, daemon: bool = False, daemon_log_f
         for name, logger in config['loggers'].items():
             if name in ['aiida', 'verdi', 'disk_objectstore']:
                 logger['level'] = CLI_LOG_LEVEL
+        if 'cli' in config['handlers']:
+            config['handlers']['cli']['level'] = CLI_LOG_LEVEL
 
     # Add the `DbLogHandler` if `with_orm` is `True`
     if with_orm:

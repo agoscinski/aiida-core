@@ -194,7 +194,7 @@ class DirectScheduler(BashCliScheduler):
         """
         submit_command = f'(bash {submit_script} > /dev/null 2>&1 & echo $!) &'
 
-        self.logger.info(f'submitting with: {submit_command}')
+        self.logger.debug(f'submitting with: {submit_command}')
 
         return submit_command
 
@@ -375,7 +375,7 @@ class DirectScheduler(BashCliScheduler):
 
         kill_command = f'kill {jobids_str}'
 
-        self.logger.info(f'killing job {jobid}')
+        self.logger.debug(f'killing job {jobid}')
 
         return kill_command
 
