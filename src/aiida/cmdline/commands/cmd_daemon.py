@@ -316,4 +316,5 @@ def broker():
     from aiida.manage.manager import get_manager
 
     profile = get_manager().get_profile()
+    assert profile is not None
     run_broker_service(base_path=get_broker_base_path(profile))
