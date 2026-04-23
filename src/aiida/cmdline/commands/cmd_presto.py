@@ -178,8 +178,8 @@ def verdi_presto(
     * Set a number of configuration options with sensible defaults
 
     By default the command creates a profile that uses SQLite for the database. For the message broker, it automatically
-    checks for RabbitMQ running on localhost. If found, it configures RabbitMQ as the broker. Otherwise, it falls back to
-    the ZMQ broker, which requires no external services and is started automatically with the daemon.
+    checks for RabbitMQ running on localhost. If found, it configures RabbitMQ as the broker. Otherwise, it falls back
+    to the ZMQ broker, which requires no external services and is started automatically with the daemon.
 
     When the `--use-postgres` flag is toggled, the command tries to connect to the PostgreSQL server with connection
     paramaters taken from the `--postgres-hostname`, `--postgres-port`, `--postgres-username` and `--postgres-password`
