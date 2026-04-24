@@ -62,6 +62,11 @@ class Option:
         return self._name.replace('.', '__') not in ProfileOptionsSchema.model_fields
 
     @property
+    def advanced(self) -> bool:
+        """Return True if this option should be hidden from default ``verdi config list`` output."""
+        return self._metadata.get('advanced', False)
+
+    @property
     def _metadata(self) -> dict[str, Any]:
         """Return the JSON schema metadata of the option field."""
         metadata = self._schema if self._schema is not None else self._field.json_schema_extra
