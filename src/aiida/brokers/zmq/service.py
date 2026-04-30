@@ -114,8 +114,14 @@ class ZmqBrokerService:
                 self._server.run_once(poll_timeout)
                 now = time.time()
                 if now - last_status_time >= status_interval:
-                    self._write_status(self._server.get_status())
+                    try:
+                        self._write_status(self._server.get_status())
+                    except Exception as exc:
+                        _LOGGER.exception('Failed to write status: %s', exc)
                     last_status_time = now
+        except Exception:
+            _LOGGER.exception('Broker service crashed')
+            raise
         finally:
             self.stop()
 
@@ -138,6 +144,8 @@ def run_broker_service(base_path: str | Path) -> None:
 
 if __name__ == '__main__':
     import argparse
+
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--base-path', '-b', required=True)

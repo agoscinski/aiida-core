@@ -77,11 +77,13 @@ def start_zmq_broker(broker, timeout: float = 10.0):
     if broker.is_running:
         return
 
+    log_file = broker.base_path / 'broker.log'
+    fh = open(log_file, 'w')
     subprocess.Popen(
         [sys.executable, '-m', 'aiida.brokers.zmq.service', '--base-path', str(broker.base_path)],
         start_new_session=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=fh,
+        stderr=fh,
         stdin=subprocess.DEVNULL,
     )
 
@@ -91,7 +93,7 @@ def start_zmq_broker(broker, timeout: float = 10.0):
             return
         time.sleep(0.1)
 
-    raise TimeoutError(f'ZMQ broker did not start within {timeout}s')
+    raise TimeoutError(f'ZMQ broker did not start within {timeout}s; log: {log_file}')
 
 
 def stop_zmq_broker(broker, timeout: float = 5.0):
