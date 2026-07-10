@@ -72,6 +72,15 @@ class Option:
         metadata = self._schema if self._schema is not None else self._field.json_schema_extra
         return metadata if isinstance(metadata, dict) else {}
 
+    @property
+    def requires_daemon_restart(self) -> bool:
+        """Return whether changing this option requires restarting the daemon.
+
+        :return: Whether the option value is only picked up when daemon processes are started and therefore remains
+            stale in already running workers.
+        """
+        return self._metadata.get('requires_daemon_restart', False)
+
     def validate(self, value: Any) -> Any:
         """Validate a value
 
