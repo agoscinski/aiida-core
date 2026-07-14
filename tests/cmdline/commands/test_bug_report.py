@@ -257,7 +257,10 @@ def test_collect_diagnostics_invalid_config(monkeypatch, tmp_path):
     diagnostics = cmd_bug_report._collect_diagnostics()
 
     assert diagnostics['config'] is None
-    assert diagnostics['config_error'] == "UnicodeDecodeError: 'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte"
+    assert (
+        diagnostics['config_error']
+        == "UnicodeDecodeError: 'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte"
+    )
 
 
 def test_get_log_files(monkeypatch, tmp_path):
@@ -281,15 +284,12 @@ def test_get_log_files(monkeypatch, tmp_path):
     _patch_config(monkeypatch, tmp_path)
     monkeypatch.setattr('aiida.manage.get_manager', lambda: manager)
 
-    assert cmd_bug_report._get_log_files() == (
-        [
-            ('profile.log', profile_log),
-            ('daemon.log', daemon_log),
-            ('circus.log', circus_log),
-            ('broker.log', broker_log),
-        ],
-        None,
-    )
+    assert cmd_bug_report._get_log_files() == [
+        ('profile.log', profile_log),
+        ('daemon.log', daemon_log),
+        ('circus.log', circus_log),
+        ('broker.log', broker_log),
+    ]
 
 
 def test_get_log_files_skips_missing(monkeypatch, tmp_path):
@@ -303,7 +303,7 @@ def test_get_log_files_skips_missing(monkeypatch, tmp_path):
     _patch_config(monkeypatch, tmp_path)
     monkeypatch.setattr('aiida.manage.get_manager', lambda: manager)
 
-    assert cmd_bug_report._get_log_files() == ([('daemon.log', daemon_log)], None)
+    assert cmd_bug_report._get_log_files() == [('daemon.log', daemon_log)]
 
 
 def test_read_log_tail(tmp_path):
@@ -366,5 +366,5 @@ def test_bug_report_command_rejects_existing_output(run_cli_command, tmp_path):
 
     result = run_cli_command(cmd_bug_report.verdi_bug_report, ['-o', str(output)], raises=True, use_subprocess=False)
 
-    assert 'Output path' in result.output
+    assert 'already exists' in result.output
     assert output.read_text(encoding='utf-8') == 'existing'

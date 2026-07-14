@@ -47,8 +47,8 @@ Below is a list with all available subcommands.
       be attached to a GitHub issue.
 
     Options:
-      -o, --output FILE  Output zip file path. Default: aiida-bug-report-<timestamp>.zip in
-                         current directory.
+      -o, --output FILE  Output zip file path or directory where to put the zip. Defaults to
+                         aiida-bug-report-<timestamp>.zip in current directory.
       --help             Show this message and exit.
 
 

@@ -16,7 +16,7 @@ import platform
 import sys
 import zipfile
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import click
 
@@ -220,33 +220,31 @@ def _collect_diagnostics() -> dict[str, Any]:
     return diagnostics
 
 
-def _get_log_files() -> tuple[list[tuple[str, pathlib.Path]], str | None]:
-    """Return the log files to include together with an optional collection error."""
+def _get_log_files() -> list[tuple[str, pathlib.Path]]:
+    """Return the log files to include."""
     from aiida.manage import get_manager
     from aiida.manage.configuration import get_config
 
+    profile = get_manager().get_profile()
+
+    if profile is None:
+        return []
+
+    filepaths = get_config().filepaths(profile)
     files = []
 
-    try:
-        profile = get_manager().get_profile()
+    for service, service_filepaths in filepaths.items():
+        log_filepath = cast(dict[str, str], service_filepaths).get('log')
 
-        if profile is None:
-            return [], None
+        if log_filepath is None:
+            continue
 
-        filepaths = get_config().filepaths(profile)
+        archive_name = 'broker.log' if service == 'zmq_broker_service' else f'{service}.log'
+        path = pathlib.Path(log_filepath)
+        if path.exists():
+            files.append((archive_name, path))
 
-        for service, service_filepaths in filepaths.items():
-            if 'log' not in service_filepaths:
-                continue
-
-            archive_name = 'broker.log' if service == 'zmq_broker_service' else f'{service}.log'
-            path = pathlib.Path(service_filepaths['log'])
-            if path.exists():
-                files.append((archive_name, path))
-    except Exception as exception:
-        return files, _format_exception(exception)
-
-    return files, None
+    return files
 
 
 def _read_log_tail(filepath: pathlib.Path, max_bytes: int = MAX_LOG_BYTES) -> bytes:
@@ -274,7 +272,10 @@ def _read_log_tail(filepath: pathlib.Path, max_bytes: int = MAX_LOG_BYTES) -> by
     '--output',
     type=click.Path(dir_okay=False, path_type=pathlib.Path),
     default=None,
-    help='Output zip file path or directory where to put the zip. Defaults to aiida-bug-report-<timestamp>.zip in current directory.',
+    help=(
+        'Output zip file path or directory where to put the zip. Defaults to '
+        'aiida-bug-report-<timestamp>.zip in current directory.'
+    ),
 )
 def verdi_bug_report(output: str | None) -> None:
     """Create a zip file with diagnostic information for bug reports.
@@ -298,10 +299,7 @@ def verdi_bug_report(output: str | None) -> None:
     echo.echo('Collecting diagnostic information...')
 
     diagnostics = _collect_diagnostics()
-    log_files, log_files_error = _get_log_files()
-
-    if log_files_error is not None:
-        diagnostics['log_files'] = {'error': log_files_error}
+    log_files = _get_log_files()
 
     contents: list[tuple[str, int]] = []
 
