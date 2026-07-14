@@ -104,31 +104,28 @@ def _check_broker(manager: 'Manager') -> dict[str, Any]:
     if broker is None:
         return {'connected': False, 'status': 'No broker configured for this profile.'}
 
-    if isinstance(broker, ZeromqBroker):
-        # The broker service is managed by the daemon, so its liveness can be read from its status files. Do not use
-        # ``get_communicator``, which blocks polling for the service to come up precisely when it is down.
-        result: dict[str, Any] = {'connected': broker.is_service_running(), 'status': str(broker)}
-        status = broker.get_service_status()
-        if status is not None:
-            result['status'] = status
-        return result
+    is_zeromq = isinstance(broker, ZeromqBroker)
 
     try:
-        broker.get_communicator()
+        if is_zeromq:
+            # The broker service is managed by the daemon, so its liveness can be read from its status files. Do not
+            # use ``get_communicator``, which blocks polling for the service to come up precisely when it is down.
+            connected = broker.is_service_running()
+        else:
+            broker.get_communicator()
+            connected = True
+
+        status = broker.get_service_status()
     except Exception as exception:
         return {'connected': False, 'status': _format_exception(exception)}
     finally:
-        try:
-            broker.close()
-        except Exception:
-            pass
+        if not is_zeromq:
+            try:
+                broker.close()
+            except Exception:
+                pass
 
-    status = broker.get_service_status()
-
-    if status is not None:
-        return {'connected': True, 'status': status}
-
-    return {'connected': True, 'status': str(broker)}
+    return {'connected': connected, 'status': status or str(broker)}
 
 
 def _check_daemon(manager: 'Manager') -> dict[str, Any]:
