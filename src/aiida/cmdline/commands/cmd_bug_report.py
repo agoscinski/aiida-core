@@ -31,8 +31,8 @@ SENSITIVE_KEY_FRAGMENTS = ('password', 'passphrase', 'secret', 'token')
 SENSITIVE_CONFIG_KEYS = ('AIIDADB_PASS',)
 REDACTED_VALUE = '***'
 
+# Maximum number of bytes included per log file; longer logs are truncated to their tail
 MAX_LOG_BYTES = 1024 * 1024
-"""Maximum number of bytes included per log file; longer logs are truncated to their tail."""
 
 
 def _format_exception(exception: Exception) -> str:
@@ -70,7 +70,7 @@ def _check_storage(profile: 'Profile') -> dict[str, Any]:
     try:
         storage = profile.storage_cls(profile)
     except Exception as exception:
-        return {'connected': False, 'message': _format_exception(exception)}
+        return {'connected': False, 'status': _format_exception(exception)}
 
     message = None
     storage_exception = None
@@ -87,9 +87,9 @@ def _check_storage(profile: 'Profile') -> dict[str, Any]:
             storage_exception = exception
 
     if storage_exception is not None:
-        return {'connected': False, 'message': _format_exception(storage_exception)}
+        return {'connected': False, 'status': _format_exception(storage_exception)}
 
-    return {'connected': True, 'message': message}
+    return {'connected': True, 'status': message}
 
 
 def _check_broker(manager: 'Manager') -> dict[str, Any]:
@@ -99,15 +99,15 @@ def _check_broker(manager: 'Manager') -> dict[str, Any]:
     try:
         broker = manager.get_broker()
     except Exception as exception:
-        return {'connected': False, 'message': _format_exception(exception)}
+        return {'connected': False, 'status': _format_exception(exception)}
 
     if broker is None:
-        return {'connected': False, 'message': 'No broker configured for this profile.'}
+        return {'connected': False, 'status': 'No broker configured for this profile.'}
 
     if isinstance(broker, ZeromqBroker):
         # The broker service is managed by the daemon, so its liveness can be read from its status files. Do not use
         # ``get_communicator``, which blocks polling for the service to come up precisely when it is down.
-        result: dict[str, Any] = {'connected': broker.is_service_running(), 'message': str(broker)}
+        result: dict[str, Any] = {'connected': broker.is_service_running(), 'status': str(broker)}
         status = broker.get_service_status()
         if status is not None:
             result['status'] = status
@@ -116,15 +116,14 @@ def _check_broker(manager: 'Manager') -> dict[str, Any]:
     try:
         broker.get_communicator()
     except Exception as exception:
-        return {'connected': False, 'message': _format_exception(exception)}
+        return {'connected': False, 'status': _format_exception(exception)}
     finally:
         try:
             broker.close()
         except Exception:
             pass
 
-    # Do not use ``str(broker)`` here: the RabbitMQ representation includes the connection URL with credentials.
-    return {'connected': True, 'message': broker.__class__.__name__}
+    return {'connected': True, 'status': str(broker)}
 
 
 def _check_daemon(manager: 'Manager') -> dict[str, Any]:
@@ -132,15 +131,9 @@ def _check_daemon(manager: 'Manager') -> dict[str, Any]:
     try:
         status = manager.get_daemon_client().get_status()
     except Exception as exception:
-        return {'connected': False, 'message': _format_exception(exception)}
+        return {'connected': False, 'status': _format_exception(exception)}
 
-    pid = status.get('pid')
-    message = 'Daemon status retrieved successfully.'
-
-    if pid is not None:
-        message = f'Daemon is running with PID {pid}'
-
-    return {'connected': True, 'message': message, 'status': status}
+    return {'connected': True, 'status': status}
 
 
 def _collect_python_info() -> dict[str, Any]:
@@ -233,21 +226,17 @@ def _get_log_files() -> list[pathlib.Path]:
     filepaths = get_config().filepaths(profile)
     files = []
 
-    services: Literal['profile', 'circus', 'daemon', 'zmq_broker_service'] = (
-        'profile',
-        'circus',
-        'daemon',
-        'zmq_broker_service',
-    )
-    for service in services:
-        log_filepath = filepaths[service]['log']
+    log_filepaths = [
+        filepaths['profile']['log'],
+        filepaths['circus']['log'],
+        filepaths['daemon']['log'],
+        filepaths['zmq_broker_service']['log'],
+    ]
 
-        if log_filepath is None:
-            continue
-
+    for log_filepath in log_filepaths:
         path = pathlib.Path(log_filepath)
         if path.exists():
-            files.append(pathlib.Path(log_filepath))
+            files.append(path)
 
     return files
 
