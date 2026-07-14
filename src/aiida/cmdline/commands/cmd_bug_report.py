@@ -123,6 +123,11 @@ def _check_broker(manager: 'Manager') -> dict[str, Any]:
         except Exception:
             pass
 
+    status = broker.get_service_status()
+
+    if status is not None:
+        return {'connected': True, 'status': status}
+
     return {'connected': True, 'status': str(broker)}
 
 

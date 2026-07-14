@@ -43,6 +43,9 @@ class DummyBroker:
     def get_communicator(self):
         return object()
 
+    def get_service_status(self):
+        return {'product': 'RabbitMQ', 'version': '3.12.0'}
+
     def close(self):
         self.closed = True
 
@@ -161,13 +164,9 @@ def test_collect_diagnostics(monkeypatch, tmp_path):
             DummyBroker(),
             _get_daemon_client_ok,
             {
-                'storage': {'connected': True, 'message': 'DummyStorageBackend'},
-                'broker': {'connected': True, 'message': 'DummyBroker'},
-                'daemon': {
-                    'connected': True,
-                    'message': 'Daemon is running with PID 1234',
-                    'status': {'pid': 1234},
-                },
+                'storage': {'connected': True, 'status': 'DummyStorageBackend'},
+                'broker': {'connected': True, 'status': {'product': 'RabbitMQ', 'version': '3.12.0'}},
+                'daemon': {'connected': True, 'status': {'pid': 1234}},
             },
             id='connected',
         ),
@@ -176,9 +175,9 @@ def test_collect_diagnostics(monkeypatch, tmp_path):
             None,
             _get_daemon_client_error,
             {
-                'storage': {'connected': False, 'message': 'RuntimeError: storage unavailable'},
-                'broker': {'connected': False, 'message': 'No broker configured for this profile.'},
-                'daemon': {'connected': False, 'message': 'RuntimeError: daemon unavailable'},
+                'storage': {'connected': False, 'status': 'RuntimeError: storage unavailable'},
+                'broker': {'connected': False, 'status': 'No broker configured for this profile.'},
+                'daemon': {'connected': False, 'status': 'RuntimeError: daemon unavailable'},
             },
             id='not-connected',
         ),
@@ -211,9 +210,8 @@ def test_check_broker_zeromq(monkeypatch, tmp_path, is_running, status):
     result = cmd_bug_report._check_broker(manager)
 
     assert result['connected'] is is_running
-    assert str(tmp_path) in result['message']
     if status is None:
-        assert 'status' not in result
+        assert str(tmp_path) in result['status']
     else:
         assert result['status'] == status
 
@@ -284,12 +282,7 @@ def test_get_log_files(monkeypatch, tmp_path):
     _patch_config(monkeypatch, tmp_path)
     monkeypatch.setattr('aiida.manage.get_manager', lambda: manager)
 
-    assert cmd_bug_report._get_log_files() == [
-        ('profile.log', profile_log),
-        ('daemon.log', daemon_log),
-        ('circus.log', circus_log),
-        ('broker.log', broker_log),
-    ]
+    assert cmd_bug_report._get_log_files() == [profile_log, circus_log, daemon_log, broker_log]
 
 
 def test_get_log_files_skips_missing(monkeypatch, tmp_path):
@@ -303,7 +296,7 @@ def test_get_log_files_skips_missing(monkeypatch, tmp_path):
     _patch_config(monkeypatch, tmp_path)
     monkeypatch.setattr('aiida.manage.get_manager', lambda: manager)
 
-    assert cmd_bug_report._get_log_files() == [('daemon.log', daemon_log)]
+    assert cmd_bug_report._get_log_files() == [daemon_log]
 
 
 def test_read_log_tail(tmp_path):
@@ -339,7 +332,7 @@ def test_check_storage_failure_after_instantiation(storage_cls, expected_message
     """Test storage failures after instantiation are reported instead of escaping."""
     profile = SimpleNamespace(storage_cls=storage_cls)
 
-    assert cmd_bug_report._check_storage(profile) == {'connected': False, 'message': expected_message}
+    assert cmd_bug_report._check_storage(profile) == {'connected': False, 'status': expected_message}
 
 
 def test_bug_report_command(run_cli_command, tmp_path):
