@@ -16,7 +16,7 @@ import platform
 import sys
 import zipfile
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import click
 
@@ -220,7 +220,7 @@ def _collect_diagnostics() -> dict[str, Any]:
     return diagnostics
 
 
-def _get_log_files() -> list[tuple[str, pathlib.Path]]:
+def _get_log_files() -> list[pathlib.Path]:
     """Return the log files to include."""
     from aiida.manage import get_manager
     from aiida.manage.configuration import get_config
@@ -233,16 +233,21 @@ def _get_log_files() -> list[tuple[str, pathlib.Path]]:
     filepaths = get_config().filepaths(profile)
     files = []
 
-    for service, service_filepaths in filepaths.items():
-        log_filepath = cast(dict[str, str], service_filepaths).get('log')
+    services: Literal['profile', 'circus', 'daemon', 'zmq_broker_service'] = (
+        'profile',
+        'circus',
+        'daemon',
+        'zmq_broker_service',
+    )
+    for service in services:
+        log_filepath = filepaths[service]['log']
 
         if log_filepath is None:
             continue
 
-        archive_name = 'broker.log' if service == 'zmq_broker_service' else f'{service}.log'
         path = pathlib.Path(log_filepath)
         if path.exists():
-            files.append((archive_name, path))
+            files.append(pathlib.Path(log_filepath))
 
     return files
 
@@ -306,10 +311,10 @@ def verdi_bug_report(output: str | None) -> None:
     try:
         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             zf.writestr('diagnostics.json', json.dumps(diagnostics, indent=2, sort_keys=True, default=str))
-            for archive_name, filepath in log_files:
+            for filepath in log_files:
                 data = _read_log_tail(filepath)
-                zf.writestr(archive_name, data)
-                contents.append((archive_name, len(data)))
+                zf.writestr(filepath.name, data)
+                contents.append((filepath.name, len(data)))
     except OSError as exception:
         if output_path.exists():
             try:
