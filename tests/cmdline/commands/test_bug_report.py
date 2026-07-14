@@ -54,6 +54,20 @@ class BrokenStorageBackend:
         raise RuntimeError('storage unavailable')
 
 
+class BrokenStorageStringBackend(DummyStorageBackend):
+    """Storage backend whose string conversion fails."""
+
+    def __str__(self):
+        raise RuntimeError('storage string unavailable')
+
+
+class BrokenStorageCloseBackend(DummyStorageBackend):
+    """Storage backend whose close operation fails."""
+
+    def close(self):
+        raise RuntimeError('storage close unavailable')
+
+
 def _make_zeromq_broker(service_dir: pathlib.Path, is_running: bool, status: dict | None) -> ZeromqBroker:
     """Create a ``ZeromqBroker`` instance without invoking its constructor."""
     broker = ZeromqBroker.__new__(ZeromqBroker)
@@ -232,6 +246,20 @@ def test_get_config_data(monkeypatch, tmp_path):
     }
 
 
+def test_collect_diagnostics_invalid_config(monkeypatch, tmp_path):
+    """Test invalid config data does not abort diagnostics collection."""
+    profile = SimpleNamespace(name='default', storage_cls=DummyStorageBackend)
+    (tmp_path / 'config.json').write_bytes(b'\x80')
+
+    _patch_manager(monkeypatch, profile, DummyBroker(), _get_daemon_client_ok)
+    _patch_config(monkeypatch, tmp_path)
+
+    diagnostics = cmd_bug_report._collect_diagnostics()
+
+    assert diagnostics['config'] is None
+    assert diagnostics['config_error'] == "UnicodeDecodeError: 'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte"
+
+
 def test_get_log_files(monkeypatch, tmp_path):
     """Test ``_get_log_files`` returns the existing log files from the profile filepaths."""
     profile_log = tmp_path / 'profile.log'
@@ -253,12 +281,15 @@ def test_get_log_files(monkeypatch, tmp_path):
     _patch_config(monkeypatch, tmp_path)
     monkeypatch.setattr('aiida.manage.get_manager', lambda: manager)
 
-    assert cmd_bug_report._get_log_files() == [
-        ('profile.log', profile_log),
-        ('daemon.log', daemon_log),
-        ('circus.log', circus_log),
-        ('broker.log', broker_log),
-    ]
+    assert cmd_bug_report._get_log_files() == (
+        [
+            ('profile.log', profile_log),
+            ('daemon.log', daemon_log),
+            ('circus.log', circus_log),
+            ('broker.log', broker_log),
+        ],
+        None,
+    )
 
 
 def test_get_log_files_skips_missing(monkeypatch, tmp_path):
@@ -272,19 +303,43 @@ def test_get_log_files_skips_missing(monkeypatch, tmp_path):
     _patch_config(monkeypatch, tmp_path)
     monkeypatch.setattr('aiida.manage.get_manager', lambda: manager)
 
-    assert cmd_bug_report._get_log_files() == [('daemon.log', daemon_log)]
+    assert cmd_bug_report._get_log_files() == ([('daemon.log', daemon_log)], None)
 
 
 def test_read_log_tail(tmp_path):
     """Test ``_read_log_tail`` truncates long log files to their tail."""
     log_file = tmp_path / 'test.log'
-    log_file.write_bytes(b'a' * 10 + b'b' * 10)
+    log_file.write_bytes(b'a' * 10 + b'b' * 30)
 
-    assert cmd_bug_report._read_log_tail(log_file, max_bytes=100) == b'a' * 10 + b'b' * 10
+    assert cmd_bug_report._read_log_tail(log_file, max_bytes=100) == b'a' * 10 + b'b' * 30
 
-    header = b'... (truncated, showing last 10 of 20 bytes)\n'
-    truncated = cmd_bug_report._read_log_tail(log_file, max_bytes=10)
-    assert truncated == header + b'b' * 10
+    truncated = cmd_bug_report._read_log_tail(log_file, max_bytes=35)
+    assert truncated == b'... (truncated from 40 bytes)\n' + b'b' * 5
+    assert len(truncated) <= 35
+
+
+def test_read_log_tail_handles_partial_utf8(tmp_path):
+    """Test ``_read_log_tail`` drops incomplete UTF-8 bytes at the truncation boundary."""
+    log_file = tmp_path / 'test.log'
+    log_file.write_bytes(b'a' * 30 + '🙂'.encode('utf-8') + b'b' * 2)
+
+    truncated = cmd_bug_report._read_log_tail(log_file, max_bytes=34)
+
+    assert truncated == b'... (truncated from 36 bytes)\n' + b'b' * 2
+
+
+@pytest.mark.parametrize(
+    ('storage_cls', 'expected_message'),
+    [
+        (BrokenStorageStringBackend, 'RuntimeError: storage string unavailable'),
+        (BrokenStorageCloseBackend, 'RuntimeError: storage close unavailable'),
+    ],
+)
+def test_check_storage_failure_after_instantiation(storage_cls, expected_message):
+    """Test storage failures after instantiation are reported instead of escaping."""
+    profile = SimpleNamespace(storage_cls=storage_cls)
+
+    assert cmd_bug_report._check_storage(profile) == {'connected': False, 'message': expected_message}
 
 
 def test_bug_report_command(run_cli_command, tmp_path):
@@ -302,3 +357,14 @@ def test_bug_report_command(run_cli_command, tmp_path):
     assert diagnostics['aiida_version'] == aiida.__version__
     assert diagnostics['profile'] is not None
     assert diagnostics['services']['storage']['connected'] is True
+
+
+def test_bug_report_command_rejects_existing_output(run_cli_command, tmp_path):
+    """Test ``verdi bug-report`` fails rather than overwriting an existing archive."""
+    output = tmp_path / 'report.zip'
+    output.write_text('existing', encoding='utf-8')
+
+    result = run_cli_command(cmd_bug_report.verdi_bug_report, ['-o', str(output)], raises=True, use_subprocess=False)
+
+    assert 'Output path' in result.output
+    assert output.read_text(encoding='utf-8') == 'existing'

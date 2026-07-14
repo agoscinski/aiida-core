@@ -35,6 +35,11 @@ MAX_LOG_BYTES = 1024 * 1024
 """Maximum number of bytes included per log file; longer logs are truncated to their tail."""
 
 
+def _format_exception(exception: Exception) -> str:
+    """Return a stable string representation for an exception."""
+    return f'{type(exception).__name__}: {exception}'
+
+
 def _is_sensitive_key(key: str) -> bool:
     """Return whether the key likely contains a sensitive value."""
     lowercase = key.lower()
@@ -65,12 +70,26 @@ def _check_storage(profile: 'Profile') -> dict[str, Any]:
     try:
         storage = profile.storage_cls(profile)
     except Exception as exception:
-        return {'connected': False, 'message': f'{type(exception).__name__}: {exception}'}
+        return {'connected': False, 'message': _format_exception(exception)}
+
+    message = None
+    storage_exception = None
 
     try:
-        return {'connected': True, 'message': str(storage)}
-    finally:
+        message = str(storage)
+    except Exception as exception:
+        storage_exception = exception
+
+    try:
         storage.close()
+    except Exception as exception:
+        if storage_exception is None:
+            storage_exception = exception
+
+    if storage_exception is not None:
+        return {'connected': False, 'message': _format_exception(storage_exception)}
+
+    return {'connected': True, 'message': message}
 
 
 def _check_broker(manager: 'Manager') -> dict[str, Any]:
@@ -80,7 +99,7 @@ def _check_broker(manager: 'Manager') -> dict[str, Any]:
     try:
         broker = manager.get_broker()
     except Exception as exception:
-        return {'connected': False, 'message': f'{type(exception).__name__}: {exception}'}
+        return {'connected': False, 'message': _format_exception(exception)}
 
     if broker is None:
         return {'connected': False, 'message': 'No broker configured for this profile.'}
@@ -97,7 +116,7 @@ def _check_broker(manager: 'Manager') -> dict[str, Any]:
     try:
         broker.get_communicator()
     except Exception as exception:
-        return {'connected': False, 'message': f'{type(exception).__name__}: {exception}'}
+        return {'connected': False, 'message': _format_exception(exception)}
     finally:
         try:
             broker.close()
@@ -113,7 +132,7 @@ def _check_daemon(manager: 'Manager') -> dict[str, Any]:
     try:
         status = manager.get_daemon_client().get_status()
     except Exception as exception:
-        return {'connected': False, 'message': f'{type(exception).__name__}: {exception}'}
+        return {'connected': False, 'message': _format_exception(exception)}
 
     pid = status.get('pid')
     message = 'Daemon status retrieved successfully.'
@@ -172,7 +191,15 @@ def _collect_diagnostics() -> dict[str, Any]:
     services['broker'] = _check_broker(manager)
     services['daemon'] = _check_daemon(manager)
 
-    return {
+    config = None
+    config_error = None
+
+    try:
+        config = _get_config_data()
+    except Exception as exception:
+        config_error = _format_exception(exception)
+
+    diagnostics = {
         'generated_at': datetime.now().astimezone().isoformat(),
         'aiida_version': aiida.__version__,
         'python': _collect_python_info(),
@@ -183,13 +210,18 @@ def _collect_diagnostics() -> dict[str, Any]:
             'machine': platform.machine(),
         },
         'profile': profile_data,
-        'config': _get_config_data(),
+        'config': config,
         'services': services,
     }
 
+    if config_error is not None:
+        diagnostics['config_error'] = config_error
 
-def _get_log_files() -> list[tuple[str, pathlib.Path]]:
-    """Return a list of ``(archive_name, path)`` for the log files to include."""
+    return diagnostics
+
+
+def _get_log_files() -> tuple[list[tuple[str, pathlib.Path]], str | None]:
+    """Return the log files to include together with an optional collection error."""
     from aiida.manage import get_manager
     from aiida.manage.configuration import get_config
 
@@ -199,25 +231,22 @@ def _get_log_files() -> list[tuple[str, pathlib.Path]]:
         profile = get_manager().get_profile()
 
         if profile is None:
-            return []
+            return [], None
 
         filepaths = get_config().filepaths(profile)
 
-        candidates = [
-            ('profile.log', filepaths['profile']['log']),
-            ('daemon.log', filepaths['daemon']['log']),
-            ('circus.log', filepaths['circus']['log']),
-            ('broker.log', filepaths['zmq_broker_service']['log']),
-        ]
+        for service, service_filepaths in filepaths.items():
+            if 'log' not in service_filepaths:
+                continue
 
-        for archive_name, filepath in candidates:
-            path = pathlib.Path(filepath)
+            archive_name = 'broker.log' if service == 'zmq_broker_service' else f'{service}.log'
+            path = pathlib.Path(service_filepaths['log'])
             if path.exists():
                 files.append((archive_name, path))
-    except Exception:
-        pass
+    except Exception as exception:
+        return files, _format_exception(exception)
 
-    return files
+    return files, None
 
 
 def _read_log_tail(filepath: pathlib.Path, max_bytes: int = MAX_LOG_BYTES) -> bytes:
@@ -228,18 +257,24 @@ def _read_log_tail(filepath: pathlib.Path, max_bytes: int = MAX_LOG_BYTES) -> by
         if size <= max_bytes:
             return handle.read()
 
-        handle.seek(size - max_bytes)
-        header = f'... (truncated, showing last {max_bytes} of {size} bytes)\n'.encode()
-        return header + handle.read()
+        header = f'... (truncated from {size} bytes)\n'.encode('utf-8')
+
+        if len(header) >= max_bytes:
+            return header[:max_bytes]
+
+        payload_bytes = max_bytes - len(header)
+        handle.seek(size - payload_bytes)
+        data = handle.read(payload_bytes)
+        return header + data.decode('utf-8', errors='ignore').encode('utf-8')
 
 
 @verdi.command('bug-report')
 @click.option(
     '-o',
     '--output',
-    type=click.Path(dir_okay=False),
+    type=click.Path(dir_okay=False, path_type=pathlib.Path),
     default=None,
-    help='Output zip file path. Default: aiida-bug-report-<timestamp>.zip in current directory.',
+    help='Output zip file path or directory where to put the zip. Defaults to aiida-bug-report-<timestamp>.zip in current directory.',
 )
 def verdi_bug_report(output: str | None) -> None:
     """Create a zip file with diagnostic information for bug reports.
@@ -248,15 +283,25 @@ def verdi_bug_report(output: str | None) -> None:
     zip archive that can be attached to a GitHub issue.
     """
     if output is None:
-        timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-        output = f'aiida-bug-report-{timestamp}.zip'
+        timestamp = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+        output = 'aiida-bug-report-{timestamp}.zip'
 
     output_path = pathlib.Path(output)
+
+    if output_path.exists() and output_path.is_dir():
+        timestamp = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+        output_path = output_path / f'aiida-bug-report-{timestamp}.zip'
+
+    if output_path.exists():
+        echo.echo_critical(f'Output file `{output_path}` already exists.')
 
     echo.echo('Collecting diagnostic information...')
 
     diagnostics = _collect_diagnostics()
-    log_files = _get_log_files()
+    log_files, log_files_error = _get_log_files()
+
+    if log_files_error is not None:
+        diagnostics['log_files'] = {'error': log_files_error}
 
     contents: list[tuple[str, int]] = []
 
@@ -268,6 +313,11 @@ def verdi_bug_report(output: str | None) -> None:
                 zf.writestr(archive_name, data)
                 contents.append((archive_name, len(data)))
     except OSError as exception:
+        if output_path.exists():
+            try:
+                output_path.unlink()
+            except OSError:
+                pass
         echo.echo_critical(f'Failed to write bug report to `{output_path}`: {exception}')
 
     echo.echo_success(f'Bug report written to: {output_path}')
