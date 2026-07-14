@@ -65,73 +65,64 @@ def _redact_sensitive_values(value: Any) -> Any:
     return value
 
 
-def _check_storage(profile: 'Profile') -> dict[str, Any]:
-    """Return storage connection information for the current profile."""
+def _check_storage() -> dict[str, Any]:
+    """Return storage connection information."""
+    from aiida.manage import get_manager
+
+    storage = None
     try:
-        storage = profile.storage_cls(profile)
+        storage = get_manager().get_profile_storage()
+        status = str(storage)
+        connected = True
     except Exception as exception:
-        return {'connected': False, 'status': _format_exception(exception)}
+        connected = False
+        status = _format_exception(exception)
 
-    message = None
-    storage_exception = None
+    finally:
+        if storage is not None:
+            try:
+                storage.close()
+            except Exception:
+                # TODO add warning logger 
+                pass
 
-    try:
-        message = str(storage)
-    except Exception as exception:
-        storage_exception = exception
-
-    try:
-        storage.close()
-    except Exception as exception:
-        if storage_exception is None:
-            storage_exception = exception
-
-    if storage_exception is not None:
-        return {'connected': False, 'status': _format_exception(storage_exception)}
-
-    return {'connected': True, 'status': message}
+    return {'connected': connected, 'status': status}
 
 
-def _check_broker(manager: 'Manager') -> dict[str, Any]:
+def _check_broker() -> dict[str, Any]:
     """Return broker connection information for the current profile."""
-    from aiida.brokers.zeromq.broker import ZeromqBroker
+    from aiida.manage import get_manager
 
+    broker = None
     try:
-        broker = manager.get_broker()
-    except Exception as exception:
-        return {'connected': False, 'status': _format_exception(exception)}
+        broker = get_manager().get_broker()
 
-    if broker is None:
-        return {'connected': False, 'status': 'No broker configured for this profile.'}
-
-    is_zeromq = isinstance(broker, ZeromqBroker)
-
-    try:
-        if is_zeromq:
-            # The broker service is managed by the daemon, so its liveness can be read from its status files. Do not
-            # use ``get_communicator``, which blocks polling for the service to come up precisely when it is down.
-            connected = broker.is_service_running()
-        else:
-            broker.get_communicator()
-            connected = True
+        if broker is None:
+            return {'connected': False, 'status': 'No broker configured for this profile.'}
 
         status = broker.get_service_status()
+        connected = status is not None 
+
     except Exception as exception:
-        return {'connected': False, 'status': _format_exception(exception)}
+        connected = False
+        status = _format_exception(exception)
     finally:
-        if not is_zeromq:
+        if broker is not None:
             try:
                 broker.close()
             except Exception:
+                # TODO add warning logger 
                 pass
 
-    return {'connected': connected, 'status': status or str(broker)}
+    return {'connected': connected, 'status': status}
 
 
-def _check_daemon(manager: 'Manager') -> dict[str, Any]:
+def _check_daemon() -> dict[str, Any]:
+    from aiida.manage import get_manager
+
     """Return daemon connection information for the current profile."""
     try:
-        status = manager.get_daemon_client().get_status()
+        status = get_manager().get_daemon_client().get_status()
     except Exception as exception:
         return {'connected': False, 'status': _format_exception(exception)}
 
@@ -173,18 +164,12 @@ def _collect_diagnostics() -> dict[str, Any]:
     manager = get_manager()
     profile = manager.get_profile()
 
-    profile_data = None
 
-    if profile is not None:
-        profile_data = {'name': profile.name}
-
-    services = {'storage': {'connected': False, 'message': 'No profile loaded.'}}
-
-    if profile is not None:
-        services['storage'] = _check_storage(profile)
-
-    services['broker'] = _check_broker(manager)
-    services['daemon'] = _check_daemon(manager)
+    services = {
+            'storage': _check_storage(),
+            'broker':  _check_broker(),
+            'daemon':  _check_daemon(),
+    }
 
     config = None
     config_error = None
@@ -204,7 +189,7 @@ def _collect_diagnostics() -> dict[str, Any]:
             'release': platform.release(),
             'machine': platform.machine(),
         },
-        'profile': profile_data,
+        'profile': {'name': profile.name} if profile is not None else None,
         'config': config,
         'services': services,
     }
