@@ -503,8 +503,8 @@ class ZeromqCommunicator(kiwipy.Communicator):  # type: ignore[misc]
             self._handle_rpc_response(msg)
         elif msg_type == MessageType.BROADCAST.value:
             self._handle_broadcast(msg)
-        elif msg_type == MessageType.PING.value:
-            pass  # Liveness probe from broker — no action needed
+        elif msg_type in (MessageType.PING.value, MessageType.PONG.value):
+            pass  # Liveness traffic — no action needed
         else:
             _LOGGER.warning('Unknown message type from broker: %s', msg_type)
 

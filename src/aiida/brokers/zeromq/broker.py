@@ -8,14 +8,14 @@ import typing as t
 from contextlib import contextmanager
 from pathlib import Path
 
-import psutil
+import zmq
 
 from aiida.brokers.broker import Broker, BrokerConfigField, BrokerServiceStatus
 from aiida.common.exceptions import ConfigurationError
 from aiida.common.log import AIIDA_LOGGER
 
 from .communicator import ZeromqCommunicator
-from .defaults import BROKER_READY_TIMEOUT
+from .defaults import BROKER_PROBE_TIMEOUT, BROKER_READY_TIMEOUT
 from .queue import PersistentQueue
 from .service import PID_SENTINEL, ZeromqBrokerService
 
@@ -110,33 +110,38 @@ class ZeromqBroker(Broker):
     # protects from global overwrites
     _PID_SENTINEL = PID_SENTINEL
 
-    def _get_service_pid(self) -> int | None:
-        """Read the ZeromqBrokerService PID from its PID file.
-
-        The PID file contains ``aiida-zeromq-broker <pid>`` as a sentinel so we
-        can validate ownership without fragile command-line string matching.
-        """
-        if not self._service_pid_file.exists():
-            return None
-        try:
-            content = self._service_pid_file.read_text().strip()
-            if content.startswith(self._PID_SENTINEL):
-                return int(content.split()[-1])
-            # Fallback: bare PID (old format)
-            return int(content)
-        except (ValueError, OSError):
-            return None
-
     def is_service_running(self) -> bool:
-        """Check if the ZeromqBrokerService process is running."""
-        pid = self._get_service_pid()
-        if pid is None:
+        """Check if the ZeromqBrokerService is reachable through its router socket."""
+        router_endpoint = self._router_endpoint
+
+        if router_endpoint is None:
             return False
+
+        from .protocol import MessageType, decode_message, encode_message, make_ping
+
+        context = zmq.Context()
+        socket = context.socket(zmq.DEALER)
+
         try:
-            proc = psutil.Process(pid)
-            return proc.is_running() and proc.status() != psutil.STATUS_ZOMBIE
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            timeout = int(BROKER_PROBE_TIMEOUT * 1000)
+            socket.setsockopt(zmq.IMMEDIATE, 1)
+            socket.setsockopt(zmq.LINGER, 0)
+            socket.setsockopt(zmq.SNDTIMEO, timeout)
+            socket.setsockopt(zmq.RCVTIMEO, timeout)
+            socket.connect(router_endpoint)
+            socket.send_multipart([b'', encode_message(make_ping('broker-probe'))])
+
+            frames = socket.recv_multipart()
+            if len(frames) < 2:
+                return False
+
+            message = decode_message(frames[-1])
+            return message.get('type') == MessageType.PONG.value
+        except zmq.ZMQError:
             return False
+        finally:
+            socket.close()
+            context.term()
 
     def get_service_status(self) -> BrokerServiceStatus | None:
         """Read the ZeromqBrokerService status from its status file."""

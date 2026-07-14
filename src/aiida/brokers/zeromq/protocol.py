@@ -82,6 +82,7 @@ class MessageType(str, Enum):
 
     # Health check
     PING = 'ping'
+    PONG = 'pong'
 
 
 class _UUIDEncoder(json.JSONEncoder):
@@ -147,11 +148,21 @@ def make_task_nack(task_id: str, sender: str) -> dict[str, Any]:
 
 
 def make_ping(sender: str) -> dict[str, Any]:
-    """Create a ping message for worker liveness probing."""
+    """Create a ping message for liveness probing."""
     return {
         'type': MessageType.PING.value,
         'id': uuid.uuid4().hex,
         'sender': sender,
+    }
+
+
+def make_pong(ping_id: str, sender: str) -> dict[str, Any]:
+    """Create a pong reply for a ping message."""
+    return {
+        'type': MessageType.PONG.value,
+        'id': uuid.uuid4().hex,
+        'sender': sender,
+        'ping_id': ping_id,
     }
 
 

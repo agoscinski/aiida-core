@@ -104,6 +104,7 @@ class ZeromqBrokerServer:
             MessageType.RPC.value: self._handle_rpc,
             MessageType.RPC_RESPONSE.value: self._handle_rpc_response,
             MessageType.BROADCAST.value: self._handle_broadcast,
+            MessageType.PING.value: self._handle_ping,
             MessageType.SUBSCRIBE_TASK.value: self._handle_subscribe_task,
             MessageType.SUBSCRIBE_RPC.value: self._handle_subscribe_rpc,
             MessageType.UNSUBSCRIBE_TASK.value: self._handle_unsubscribe_task,
@@ -566,6 +567,12 @@ class ZeromqBrokerServer:
             except zmq.ZMQError:
                 _LOGGER.warning('Worker %s is dead, removing', identity.hex()[:8])
                 self._remove_dead_worker(identity)
+
+    def _handle_ping(self, identity: bytes, msg: dict[str, Any]) -> None:
+        """Reply to a liveness probe from a client."""
+        from .protocol import make_pong
+
+        self._send_to_client(identity, make_pong(msg['id'], 'broker'))
 
     def _mark_worker_available(self, identity: bytes) -> None:
         """Mark a worker as available for tasks."""

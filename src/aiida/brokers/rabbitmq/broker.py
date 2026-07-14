@@ -100,7 +100,15 @@ class RabbitmqBroker(Broker):
 
     def get_service_status(self) -> BrokerServiceStatus | None:
         """Return status information reported by the RabbitMQ server."""
-        properties = self.get_communicator().server_properties
+        had_communicator = self._communicator is not None
+
+        try:
+            properties = self.get_communicator().server_properties
+        except Exception:
+            return None 
+        finally:
+            if not had_communicator:
+                self.close()
         return {
             key: t.cast(JsonValue, value.decode('utf-8') if isinstance(value, bytes) else value)
             for key, value in properties.items()

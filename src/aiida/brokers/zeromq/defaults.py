@@ -32,6 +32,11 @@ LOOP_JOIN_TIMEOUT: float = 3.0
 # and broker are started concurrently (e.g. by circus).
 BROKER_READY_TIMEOUT: float = 10.0
 
+# Timeout (seconds) for probing the broker reachability through its ROUTER
+# socket. This should stay short so diagnostics do not block when the broker is
+# down.
+BROKER_PROBE_TIMEOUT: float = 2.0
+
 # -- Server (broker-side) -----------------------------------------------------
 
 # ZeroMQ socket polling interval in seconds.
