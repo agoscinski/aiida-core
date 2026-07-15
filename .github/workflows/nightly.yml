@@ -9,6 +9,7 @@ on:
     - .github/workflows/setup.sh
     - .github/system_tests/test_daemon.py
     - .molecule/default/files/**
+    - src/aiida/storage/psql_dos/migrator.py
     - aiida/storage/psql_dos/migrations/**
     - tests/storage/psql_dos/migrations/**
     - tests/storage/psql_dos/test_nodes.py
@@ -113,7 +114,10 @@ jobs:
       matrix:
         # Currently supported RMQ versions per:
         # https://www.rabbitmq.com/docs/which-erlang#compatibility-matrix
-        rabbitmq-version: ['3.11', '3.12', '3.13', '4.0']
+        # Version 3.10 is currently used by AiiDAlab.
+        # Version 4.3 broke aiida-core, so the latest supported is 4.2:
+        # https://github.com/aiidateam/aiida-core/issues/7375
+        rabbitmq-version: ['3.10', '4.2']
 
     services:
       rabbitmq:

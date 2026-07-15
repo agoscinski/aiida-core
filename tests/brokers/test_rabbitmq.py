@@ -8,15 +8,17 @@
 ###########################################################################
 """Tests for the `aiida.brokers.rabbitmq` module."""
 
+import logging
 import pathlib
 import uuid
+from unittest.mock import MagicMock
 
 import pytest
 import requests
 from kiwipy.rmq import RmqThreadCommunicator
 from packaging.version import parse
 
-from aiida.brokers.rabbitmq import client, utils
+from aiida.brokers.rabbitmq import RabbitmqBroker, client, utils
 from aiida.engine.processes import ProcessState, control
 from aiida.orm import Int
 
@@ -30,10 +32,96 @@ def test_str_method(monkeypatch, manager):
         raise ConnectionError
 
     broker = manager.get_broker()
-    assert 'RabbitMQ v' in str(broker)
+    unsafe_url = broker.get_url()
+    broker_string = str(broker)
+    assert 'RabbitMQ v' in broker_string
+    assert ':***@' in broker_string
+    assert unsafe_url not in broker_string
 
     monkeypatch.setattr(broker, 'get_communicator', raise_connection_error)
-    assert 'RabbitMQ @' in str(broker)
+    broker_string = str(broker)
+    assert 'RabbitMQ @' in broker_string
+    assert ':***@' in broker_string
+    assert unsafe_url not in broker_string
+
+
+def test_get_service_status(monkeypatch, manager):
+    """Test RabbitMQ service status is derived from server properties."""
+    broker = manager.get_broker()
+    communicator = MagicMock(server_properties={'product': b'RabbitMQ', 'version': '3.12.0'})
+    monkeypatch.setattr(broker, 'get_communicator', lambda: communicator)
+
+    assert broker.get_service_status() == {'product': 'RabbitMQ', 'version': '3.12.0'}
+
+
+def test_is_service_running(monkeypatch, manager):
+    """Test RabbitMQ service reachability checks open and close a fresh communicator."""
+    broker = manager.get_broker()
+    communicator = MagicMock()
+    close = MagicMock()
+    monkeypatch.setattr(broker, 'get_communicator', lambda: communicator)
+    monkeypatch.setattr(broker, 'close', close)
+
+    assert broker.is_service_running() is True
+    close.assert_called_once_with()
+
+
+def test_is_service_running_false(monkeypatch, manager):
+    """Test RabbitMQ service reachability returns false on connection errors."""
+    broker = manager.get_broker()
+    close = MagicMock()
+
+    def raise_connection_error():
+        raise ConnectionError
+
+    monkeypatch.setattr(broker, 'get_communicator', raise_connection_error)
+    monkeypatch.setattr(broker, 'close', close)
+
+    assert broker.is_service_running() is False
+    close.assert_called_once_with()
+
+
+def test_del_closes_broker_when_not_finalizing(aiida_profile, monkeypatch, caplog):
+    """Test `__del__` closes the broker when Python is not finalizing."""
+    broker = RabbitmqBroker(aiida_profile)
+    broker._communicator = MagicMock()
+    close = MagicMock()
+    monkeypatch.setattr(broker, 'close', close)
+
+    with caplog.at_level(logging.WARNING, logger='aiida.broker.rabbitmq'):
+        broker.__del__()
+
+    # Note: we do an in assert because it might be that a broker instance of a
+    # previous test got deleted during the log capture
+    assert (
+        'aiida.broker.rabbitmq',
+        logging.WARNING,
+        f'RabbitmqBroker {broker!r} was not closed explicitly.',
+    ) in caplog.record_tuples
+
+    close.assert_called_once_with()
+
+
+def test_del_logs_but_skips_close_when_finalizing(aiida_profile, monkeypatch, caplog):
+    """Test ``__del__`` logs but skips close when Python is finalizing."""
+    broker = RabbitmqBroker(aiida_profile)
+    close = MagicMock()
+    broker._communicator = MagicMock()
+    monkeypatch.setattr(broker, 'close', close)
+    monkeypatch.setattr('sys.is_finalizing', lambda: True)
+
+    with caplog.at_level(logging.WARNING, logger='aiida.broker.rabbitmq'):
+        broker.__del__()
+
+    # Note: we do an in assert because it might be that a broker instance of a
+    # previous test got deleted during the log capture
+    assert (
+        'aiida.broker.rabbitmq',
+        logging.WARNING,
+        f'RabbitmqBroker {broker!r} was not closed explicitly.',
+    ) in caplog.record_tuples
+
+    close.assert_not_called()
 
 
 @pytest.mark.parametrize(

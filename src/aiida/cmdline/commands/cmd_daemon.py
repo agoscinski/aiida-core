@@ -40,19 +40,22 @@ def verdi_daemon():
     """Inspect and manage the daemon."""
 
 
-def execute_client_command(command: str, daemon_not_running_ok: bool = False, **kwargs) -> dict[str, t.Any] | None:
+def execute_client_command(
+    command: str, daemon_not_running_ok: bool = False, profile_name: str | None = None, **kwargs
+) -> dict[str, t.Any] | None:
     """Execute a command of the :class:`aiida.engine.daemon.client.DaemonClient` and echo whether it failed or not.
 
-    :param command: The name of hte method.
+    :param command: The name of the method.
     :param daemon_not_running_ok: If ``True``, the command raising an exception because the daemon was not running is
         not treated as a failure.
+    :param profile_name: Optional profile name. If not provided, the current profile is used.
     :param kwargs: Keyword arguments that are passed to the client method.
     """
     from aiida.common.exceptions import ConfigurationError
     from aiida.engine.daemon.client import DaemonException, DaemonNotRunningException, get_daemon_client
 
     try:
-        client = get_daemon_client()
+        client = get_daemon_client(profile_name)
     except ConfigurationError:
         echo.echo('WARNING', fg=echo.COLORS['warning'], bold=True)
         return None
@@ -81,7 +84,7 @@ def execute_client_command(command: str, daemon_not_running_ok: bool = False, **
 @options.TIMEOUT(default=None, required=False, type=int)
 @decorators.with_dbenv()
 @decorators.requires_broker
-@decorators.check_circus_zmq_version
+@decorators.check_circus_zeromq_version
 def start(foreground, number, timeout):
     """Start the daemon with NUMBER workers.
 
@@ -108,7 +111,9 @@ def status(ctx, all_profiles, timeout):
     from tabulate import tabulate
 
     from aiida.cmdline.utils.common import format_local_time
+    from aiida.cmdline.utils.daemon import validate_daemon_env
     from aiida.engine.daemon.client import DaemonException, get_daemon_client
+    from aiida.manage.manager import get_manager
 
     if all_profiles is True:
         profiles = [profile for profile in ctx.obj.config.profiles if not profile.is_test_profile]
@@ -146,11 +151,40 @@ def status(ctx, all_profiles, timeout):
             workers_info = '--> No workers are running. Use `verdi daemon incr` to start some!\n'
 
         start_time = format_local_time(daemon_response['info']['create_time'])
-        echo.echo(
-            f'Daemon is running as PID {daemon_response["info"]["pid"]} since {start_time}\n'
-            f'Active workers [{len(workers)}]:\n{workers_info}\n'
-            'Use `verdi daemon [incr | decr] [num]` to increase / decrease the number of workers'
-        )
+
+        # Build broker status lines for managed brokers (e.g., ZeroMQ)
+        broker_lines: list[str] = []
+        broker = get_manager().get_broker()
+        from aiida.brokers.zeromq.broker import ZeromqBroker
+
+        if isinstance(broker, ZeromqBroker):
+            if broker.is_service_running():
+                status_info = broker.get_service_status()
+                if status_info:
+                    broker_pid = status_info.get('pid', '?')
+                    pending = status_info.get('pending_tasks', 0)
+                    processing = status_info.get('processing_tasks', 0)
+                    broker_lines.append(
+                        f'Broker is running as PID {broker_pid} [{pending} pending, {processing} processing]'
+                    )
+                    broker_lines.append(f'Broker directory: {broker.service_dir}')
+            else:
+                broker_lines.append('Broker is NOT running')
+
+        lines = [
+            f'Daemon is running as PID {daemon_response["info"]["pid"]} since {start_time}',
+            *broker_lines,
+            f'Active workers [{len(workers)}]:',
+            workers_info,
+            f'Log file: {client.daemon_log_file}',
+        ]
+
+        drift_error = validate_daemon_env(client)
+        if drift_error is not None:
+            lines.append(drift_error)
+
+        lines.append('Use `verdi daemon [incr | decr] [num]` to increase / decrease the number of workers')
+        echo.echo('\n'.join(lines))
 
     if not all(daemons_running):
         sys.exit(3)
@@ -215,7 +249,9 @@ def stop(ctx, no_wait, all_profiles, timeout):
         echo.echo('Profile: ', fg=echo.COLORS['report'], bold=True, nl=False)
         echo.echo(f'{profile.name}', bold=True)
         echo.echo('Stopping the daemon... ', nl=False)
-        execute_client_command('stop_daemon', daemon_not_running_ok=True, wait=not no_wait, timeout=timeout)
+        execute_client_command(
+            'stop_daemon', daemon_not_running_ok=True, profile_name=profile.name, wait=not no_wait, timeout=timeout
+        )
 
 
 @verdi_daemon.command()
@@ -257,7 +293,7 @@ def restart(ctx, reset, no_wait, timeout):
 @click.argument('number', required=False, type=int, callback=validate_daemon_workers)
 @decorators.with_dbenv()
 @decorators.requires_broker
-@decorators.check_circus_zmq_version
+@decorators.check_circus_zeromq_version
 def start_circus(foreground, number):
     """This will actually launch the circus daemon, either daemonized in the background or in the foreground.
 
@@ -278,3 +314,31 @@ def worker():
     from aiida.engine.daemon.worker import start_daemon_worker
 
     start_daemon_worker(foreground=True)
+
+
+@verdi_daemon.command('broker', hidden=True)
+@click.option('--service-dir', 'service_dir', required=True)
+@click.option('--log-file-path', 'log_file_path', required=False)
+@decorators.with_dbenv()
+@decorators.requires_broker
+def broker(service_dir, log_file_path):
+    """Run the ZeroMQ broker service in the current process.
+
+    Sets up the profile enviromment (e.g. logging configuration) before running the broker.
+
+    .. note:: this should not be called directly from the commandline!
+    """
+    from aiida.brokers.zeromq.broker import ZeromqBroker
+    from aiida.brokers.zeromq.service import run_broker_service
+    from aiida.manage.manager import get_manager
+
+    profile = get_manager().get_profile()
+    if profile is None:
+        echo.echo_critical('No profile loaded.')
+
+    broker = get_manager().get_broker()
+    if not isinstance(broker, ZeromqBroker):
+        msg = f'Only ZeromqBroker can be started through verdi but got broker of type {type(broker)}.'
+        raise TypeError(msg)
+
+    run_broker_service(service_dir=service_dir, log_file_path=log_file_path)
