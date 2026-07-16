@@ -6,20 +6,16 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Module for implementations of database backends."""
+"""Storage implementation using a Turso/libSQL database and disk-objectstore container."""
 
 # AUTO-GENERATED
 
 # fmt: off
 
-from .sqlite_dos import *
-from .turso_dos import *
+from .backend import *
 
 __all__ = (
-    'SqliteDosStorage',
     'TursoDosStorage',
 )
 
 # fmt: on
-
-# END AUTO-GENERATED
