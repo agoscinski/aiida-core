@@ -62,6 +62,7 @@ def main(code, number, daemon):
             workdir=tempfile.gettempdir(),
         ).store()
         computer.configure(safe_interval=0.0, use_login_shell=False)
+        computer.set_minimum_job_poll_interval(0.0)
         echo.echo_success(f'Created and configured temporary `Computer` {label} for localhost.')
         computer_created = True
 
