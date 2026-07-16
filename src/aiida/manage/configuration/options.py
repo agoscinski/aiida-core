@@ -10,7 +10,7 @@
 
 import copy
 from functools import lru_cache
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any
 
 from aiida.common.exceptions import ConfigurationError
 
@@ -20,7 +20,7 @@ __all__ = ('Option', 'get_option', 'get_option_names', 'parse_option', 'resolve_
 class Option:
     """Represent a configuration option schema."""
 
-    def __init__(self, name: str, schema: Union[Dict[str, Any], None], field):
+    def __init__(self, name: str, schema: dict[str, Any] | None, field):
         self._name = name
         self._schema = schema
         self._field = field
@@ -37,7 +37,7 @@ class Option:
         return self._field.annotation
 
     @property
-    def schema(self) -> Dict[str, Any]:
+    def schema(self) -> dict[str, Any]:
         if self._schema is None:
             self._schema = copy.deepcopy(_get_options_schema_properties()[self.name.replace('.', '__')])
         return self._schema
@@ -114,7 +114,7 @@ class Option:
         return getattr(result, attribute)
 
 
-def get_option_names() -> List[str]:
+def get_option_names() -> list[str]:
     """Return a list of available option names."""
     from .config import GlobalOptionsSchema
 
@@ -165,7 +165,7 @@ def resolve_deprecated_option_name(option_name: str, stacklevel: int = 4) -> str
     return option.deprecated_by
 
 
-def parse_option(option_name: str, option_value: Any) -> Tuple[Option, Any]:
+def parse_option(option_name: str, option_value: Any) -> tuple[Option, Any]:
     """Parse and validate a value for a configuration option.
 
     :param option_name: the name of the configuration option
