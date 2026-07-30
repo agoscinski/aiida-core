@@ -8,6 +8,8 @@
 ###########################################################################
 """Definition of known configuration options and methods to parse and get option values."""
 
+import copy
+from functools import lru_cache
 from typing import Any
 
 from aiida.common.exceptions import ConfigurationError
@@ -18,7 +20,7 @@ __all__ = ('Option', 'get_option', 'get_option_names', 'parse_option')
 class Option:
     """Represent a configuration option schema."""
 
-    def __init__(self, name: str, schema: dict[str, Any], field):
+    def __init__(self, name: str, schema: dict[str, Any] | None, field):
         self._name = name
         self._schema = schema
         self._field = field
@@ -36,6 +38,8 @@ class Option:
 
     @property
     def schema(self) -> dict[str, Any]:
+        if self._schema is None:
+            self._schema = copy.deepcopy(_get_options_schema_properties()[self.name.replace('.', '__')])
         return self._schema
 
     @property
@@ -49,7 +53,7 @@ class Option:
     @property
     def deprecated_by(self) -> str | None:
         """Return the name of the option that replaces this one, or ``None``."""
-        return self._schema.get('deprecated_by')
+        return self._metadata.get('deprecated_by')
 
     @property
     def global_only(self) -> bool:
@@ -60,7 +64,7 @@ class Option:
     @property
     def advanced(self) -> bool:
         """Return True if this option should be hidden from default ``verdi config list`` output."""
-        return self._schema.get('advanced', False)
+        return self._metadata.get('advanced', False)
 
     @property
     def requires_daemon_restart(self) -> bool:
@@ -69,7 +73,13 @@ class Option:
         :return: Whether the option value is only picked up when daemon processes are started and therefore remains
             stale in already running workers.
         """
-        return self._schema.get('requires_daemon_restart', False)
+        return self._metadata.get('requires_daemon_restart', False)
+
+    @property
+    def _metadata(self) -> dict[str, Any]:
+        """Return the JSON schema metadata of the option field."""
+        metadata = self._schema if self._schema is not None else self._field.json_schema_extra
+        return metadata if isinstance(metadata, dict) else {}
 
     def validate(self, value: Any) -> Any:
         """Validate a value
@@ -111,6 +121,14 @@ def get_option_names() -> list[str]:
     return [key.replace('__', '.') for key in GlobalOptionsSchema.model_fields]
 
 
+@lru_cache(maxsize=1)
+def _get_options_schema_properties() -> dict[str, dict[str, Any]]:
+    """Return the JSON schema properties for the global options schema."""
+    from .config import GlobalOptionsSchema
+
+    return GlobalOptionsSchema.model_json_schema()['properties']
+
+
 def get_option(name: str) -> Option:
     """Return option."""
     from .config import GlobalOptionsSchema
@@ -119,7 +137,7 @@ def get_option(name: str) -> Option:
     option_name = name.replace('.', '__')
     if option_name not in options:
         raise ConfigurationError(f'the option {name} does not exist')
-    return Option(name, GlobalOptionsSchema.model_json_schema()['properties'][option_name], options[option_name])
+    return Option(name, None, options[option_name])
 
 
 def resolve_deprecated_option_name(option_name: str, stacklevel: int = 4) -> str:
