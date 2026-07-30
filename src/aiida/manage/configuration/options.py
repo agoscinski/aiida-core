@@ -8,7 +8,9 @@
 ###########################################################################
 """Definition of known configuration options and methods to parse and get option values."""
 
-from typing import Any, Dict, List, Tuple
+import copy
+from functools import lru_cache
+from typing import Any, Dict, List, Tuple, Union
 
 from aiida.common.exceptions import ConfigurationError
 
@@ -18,7 +20,7 @@ __all__ = ('Option', 'get_option', 'get_option_names', 'parse_option')
 class Option:
     """Represent a configuration option schema."""
 
-    def __init__(self, name: str, schema: Dict[str, Any], field):
+    def __init__(self, name: str, schema: Union[Dict[str, Any], None], field):
         self._name = name
         self._schema = schema
         self._field = field
@@ -36,6 +38,8 @@ class Option:
 
     @property
     def schema(self) -> Dict[str, Any]:
+        if self._schema is None:
+            self._schema = copy.deepcopy(_get_options_schema_properties()[self.name.replace('.', '__')])
         return self._schema
 
     @property
@@ -47,10 +51,21 @@ class Option:
         return self._field.description
 
     @property
+    def deprecated_by(self) -> str | None:
+        """Return the name of the option that replaces this one, or ``None``."""
+        return self._metadata.get('deprecated_by')
+
+    @property
     def global_only(self) -> bool:
         from .config import ProfileOptionsSchema
 
         return self._name.replace('.', '__') not in ProfileOptionsSchema.model_fields
+
+    @property
+    def _metadata(self) -> dict[str, Any]:
+        """Return the JSON schema metadata of the option field."""
+        metadata = self._schema if self._schema is not None else self._field.json_schema_extra
+        return metadata if isinstance(metadata, dict) else {}
 
     def validate(self, value: Any) -> Any:
         """Validate a value
@@ -92,6 +107,14 @@ def get_option_names() -> List[str]:
     return [key.replace('__', '.') for key in GlobalOptionsSchema.model_fields]
 
 
+@lru_cache(maxsize=1)
+def _get_options_schema_properties() -> dict[str, dict[str, Any]]:
+    """Return the JSON schema properties for the global options schema."""
+    from .config import GlobalOptionsSchema
+
+    return GlobalOptionsSchema.model_json_schema()['properties']
+
+
 def get_option(name: str) -> Option:
     """Return option."""
     from .config import GlobalOptionsSchema
@@ -100,7 +123,7 @@ def get_option(name: str) -> Option:
     option_name = name.replace('.', '__')
     if option_name not in options:
         raise ConfigurationError(f'the option {name} does not exist')
-    return Option(name, GlobalOptionsSchema.model_json_schema()['properties'][option_name], options[option_name])
+    return Option(name, None, options[option_name])
 
 
 def parse_option(option_name: str, option_value: Any) -> Tuple[Option, Any]:
