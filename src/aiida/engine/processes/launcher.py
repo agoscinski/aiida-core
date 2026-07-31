@@ -51,6 +51,22 @@ class ProcessLauncher(plumpy.ProcessLauncher):
             return the results
         :param tag: the tag of the checkpoint to continue from
         """
+        running_loop = asyncio.get_running_loop()
+
+        if self._loop is not None and self._loop is not running_loop:
+            future = asyncio.run_coroutine_threadsafe(
+                self._continue_in_process_loop(communicator, pid, nowait, tag), self._loop
+            )
+            try:
+                return await asyncio.wrap_future(future)
+            except asyncio.CancelledError:
+                future.cancel()
+                raise
+
+        return await self._continue_in_process_loop(communicator, pid, nowait, tag)
+
+    async def _continue_in_process_loop(self, communicator, pid, nowait, tag=None):
+        """Continue the process in the runner's event loop."""
         from aiida.common import exceptions
         from aiida.engine.exceptions import PastException
         from aiida.orm import Data, load_node
