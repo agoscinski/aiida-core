@@ -14,10 +14,8 @@ import builtins
 import copy
 import typing as t
 
-import pydantic as pdt
-
 from aiida.common import exceptions
-from aiida.orm.pydantic import OrmFieldsAsModelDump, OrmMetadataField, OrmModel
+from aiida.orm.pydantic import ConfigDict, OrmFieldsAsModelDump, OrmMetadataField, OrmModel
 
 from .base import to_aiida_type
 from .data import Data
@@ -54,7 +52,7 @@ class Dict(Data):
     """
 
     class AttributesModel(OrmFieldsAsModelDump, Data.AttributesModel):
-        model_config = pdt.ConfigDict(
+        model_config = ConfigDict(
             arbitrary_types_allowed=True,
             extra='allow',
         )

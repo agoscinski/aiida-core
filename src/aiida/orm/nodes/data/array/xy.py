@@ -17,10 +17,9 @@ from collections.abc import Sequence
 from typing import Any, cast
 
 import numpy as np
-from pydantic import ConfigDict, field_validator
 
 from aiida.common.exceptions import NotExistent
-from aiida.orm.pydantic import OrmMetadataField, OrmModel
+from aiida.orm.pydantic import ConfigDict, OrmMetadataField, OrmModel, field_validator
 
 from .array import ArrayData
 

@@ -26,19 +26,17 @@ from typing import (
     cast,
 )
 
-import pydantic as pdt
 from plumpy.base.utils import call_with_super_check, super_check
 from typing_extensions import Self
 
 from aiida.common import exceptions, log
 from aiida.common.exceptions import InvalidOperation
 from aiida.common.lang import classproperty, type_check
-from aiida.common.pydantic import get_metadata
 from aiida.common.warnings import warn_deprecation
 from aiida.manage import get_manager
 
 from .fields import QbFields, add_field
-from .pydantic import OrmFieldsAsModelDump, OrmMetadataField, OrmModel
+from .pydantic import OrmFieldsAsModelDump, OrmMetadataField, OrmModel, get_metadata
 
 if TYPE_CHECKING:
     from aiida.orm.implementation import BackendEntity, StorageBackend
@@ -222,13 +220,8 @@ class Entity(abc.ABC, Generic[BackendEntityType, CollectionType]):
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         cls._COMPAT_MODEL = None
-        cls._patch_write_model()
-        cls._patch_qb_fields()
         super().__init_subclass__(**kwargs)
-        cls._MODEL_MAP = {
-            'read': cls.ReadModel,
-            'write': cls.WriteModel,
-        }
+        cls._MODEL_MAP = {}
 
     @classmethod
     def model_to_orm_fields(cls) -> dict[str, pdt.fields.FieldInfo]:

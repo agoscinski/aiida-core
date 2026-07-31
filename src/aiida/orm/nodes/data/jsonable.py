@@ -6,9 +6,7 @@ import importlib
 import json
 import typing
 
-from pydantic import ConfigDict, WithJsonSchema
-
-from aiida.orm.pydantic import OrmFieldsAsModelDump, OrmMetadataField, OrmModel
+from aiida.orm.pydantic import ConfigDict, OrmFieldsAsModelDump, OrmMetadataField, OrmModel, WithJsonSchema
 
 from .data import Data
 

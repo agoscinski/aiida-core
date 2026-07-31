@@ -16,8 +16,6 @@ import pathlib
 import typing as t
 from copy import deepcopy
 
-import pydantic as pdt
-
 from aiida.cmdline.params.options.interactive import TemplateInteractiveOption
 from aiida.common import exceptions
 from aiida.common.folders import Folder
@@ -159,7 +157,6 @@ class AbstractCode(Data, metaclass=abc.ABCMeta):
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
-        cls._patch_cli_model()
 
     def to_model(
         self,

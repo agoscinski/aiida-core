@@ -14,12 +14,10 @@ import datetime
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, AnyStr, cast
 
-from pydantic import field_validator
-
 from aiida.common import exceptions
 from aiida.common.datastructures import CalcJobState
 from aiida.common.lang import classproperty
-from aiida.orm.pydantic import OrmMetadataField
+from aiida.orm.pydantic import OrmMetadataField, field_validator
 
 from ..process import ProcessNodeCaching
 from .calculation import CalculationNode

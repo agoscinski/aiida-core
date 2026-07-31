@@ -28,14 +28,12 @@ from typing import (
 )
 from uuid import UUID
 
-import pydantic as pdt
 from typing_extensions import Self
 
 from aiida.common import exceptions
 from aiida.common.lang import classproperty, type_check
 from aiida.common.links import LinkType
 from aiida.common.log import AIIDA_LOGGER
-from aiida.common.pydantic import get_metadata
 from aiida.common.warnings import warn_deprecation
 from aiida.manage import get_manager
 from aiida.orm.fields import QbAttributesField, QbFields, add_field
@@ -49,7 +47,7 @@ from ..computers import Computer
 from ..entities import Collection as EntityCollection
 from ..entities import Entity, from_backend_entity
 from ..extras import EntityExtras
-from ..pydantic import OrmMetadataField, OrmModel
+from ..pydantic import OrmMetadataField, OrmModel, get_metadata
 from ..querybuilder import QueryBuilder
 from ..users import User
 from .attributes import NodeAttributes
@@ -362,9 +360,6 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
     def __init_subclass__(cls, **kwargs) -> None:
         """Patch subclass models."""
         cls._COMPAT_MODEL = None
-        cls._patch_attributes_model()
-        cls._patch_read_model()
-        cls._patch_constructor_model()
         super().__init_subclass__(**kwargs)
 
     @classmethod

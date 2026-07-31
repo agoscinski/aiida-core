@@ -16,9 +16,8 @@ from collections.abc import Iterable, Iterator, Sequence
 from typing import Any, BinaryIO
 
 import numpy as np
-from pydantic import ConfigDict, field_validator
 
-from aiida.orm.pydantic import OrmFieldsAsModelDump, OrmMetadataField, OrmModel
+from aiida.orm.pydantic import ConfigDict, OrmFieldsAsModelDump, OrmMetadataField, OrmModel, field_validator
 
 from ..base import to_aiida_type
 from ..data import Data

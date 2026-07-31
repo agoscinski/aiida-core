@@ -18,11 +18,9 @@ import itertools
 import json
 import typing as t
 
-from pydantic import field_validator
-
 from aiida.common.constants import elements
 from aiida.common.exceptions import UnsupportedSpeciesError
-from aiida.orm.pydantic import OrmMetadataField
+from aiida.orm.pydantic import OrmMetadataField, field_validator
 
 from .data import Data
 

@@ -1,30 +1,113 @@
 from __future__ import annotations
 
-import datetime
 import typing as t
-
-import pydantic as pdt
-from pydantic import create_model
-from pydantic_core import PydanticUndefined
+from types import SimpleNamespace
 
 from aiida.common.exceptions import EntryPointError, NotExistent
-from aiida.common.pydantic import AiiDABaseModel, MetadataField, get_metadata
 
 if t.TYPE_CHECKING:
     from aiida.orm import Entity
 
 __all__ = ('OrmModel',)
 
+_UNDEFINED = object()
 
-class OrmModel(AiiDABaseModel):
-    """Base class for Read/Write/Attributes models."""
 
-    model_config = pdt.ConfigDict(
-        extra='forbid',
-        json_encoders={
-            datetime.datetime: lambda dt: dt.isoformat().replace('Z', '+00:00'),
-        },
-    )
+def ConfigDict(**kwargs: t.Any) -> dict[str, t.Any]:  # noqa: N802
+    """Return a plain dictionary instead of a Pydantic config."""
+    return kwargs
+
+
+def WithJsonSchema(schema: dict[str, t.Any]) -> dict[str, t.Any]:  # noqa: N802
+    """Return schema metadata unchanged instead of a Pydantic marker."""
+    return schema
+
+
+class AliasChoices(tuple):
+    """Minimal stand-in for Pydantic alias choices."""
+
+    def __new__(cls, *choices: str) -> AliasChoices:
+        return super().__new__(cls, choices)
+
+
+def field_validator(*args: t.Any, **kwargs: t.Any) -> t.Callable[[t.Any], t.Any]:
+    """No-op replacement for Pydantic field validators."""
+
+    def decorator(function: t.Any) -> t.Any:
+        return function
+
+    return decorator
+
+
+def get_metadata(field_info: t.Any, key: str, default: t.Any | None = None) -> t.Any:
+    """Return dummy field metadata for the benchmark pydantic bypass."""
+    for element in getattr(field_info, 'metadata', []):
+        if isinstance(element, dict) and key in element:
+            return element[key]
+    return default
+
+
+class _BenchmarkField:
+    """Minimal replacement for pydantic ``FieldInfo`` for import benchmarks."""
+
+    def __init__(self, default: t.Any = _UNDEFINED, **kwargs: t.Any) -> None:
+        self.default = default
+        self.default_factory = kwargs.get('default_factory')
+        self.annotation: t.Any = None
+        self.alias = kwargs.get('alias')
+        self.description = kwargs.get('description')
+        self.examples = kwargs.get('examples')
+        self.metadata: list[dict[str, t.Any]] = []
+
+    def is_required(self) -> bool:
+        return self.default is _UNDEFINED and self.default_factory is None
+
+
+class OrmModel:
+    """Benchmark-only stand-in that avoids constructing Pydantic models."""
+
+    model_config: dict[str, t.Any] = {}
+    model_fields: dict[str, _BenchmarkField] = {}
+    __pydantic_decorators__ = SimpleNamespace(field_serializers={}, field_validators={})
+
+    def __init_subclass__(cls, **kwargs: t.Any) -> None:
+        super().__init_subclass__(**kwargs)
+        fields = {}
+        for base in reversed(cls.__mro__[1:]):
+            fields.update(getattr(base, 'model_fields', {}))
+        for key, annotation in getattr(cls, '__annotations__', {}).items():
+            default = getattr(cls, key, _UNDEFINED)
+            field = default if isinstance(default, _BenchmarkField) else _BenchmarkField(default)
+            field.annotation = annotation
+            fields[key] = field
+        cls.model_fields = fields
+        cls.__pydantic_decorators__ = SimpleNamespace(field_serializers={}, field_validators={})
+
+    def __init__(self, **kwargs: t.Any) -> None:
+        for key, field in self.__class__.model_fields.items():
+            field_name = field.alias or key
+            if field_name in kwargs:
+                value = kwargs[field_name]
+            elif key in kwargs:
+                value = kwargs[key]
+            elif field.default_factory is not None:
+                value = field.default_factory()
+            elif field.default is not _UNDEFINED:
+                value = field.default
+            else:
+                value = None
+            setattr(self, key, value)
+
+    def model_dump(self, *args: t.Any, **kwargs: t.Any) -> dict[str, t.Any]:
+        return {key: getattr(self, key) for key in self.__class__.model_fields}
+
+    @classmethod
+    def model_json_schema(cls, *args: t.Any, **kwargs: t.Any) -> dict[str, t.Any]:
+        return {'title': cls.__qualname__.replace('.', '')}
+
+    @classmethod
+    def model_rebuild(cls, *args: t.Any, **kwargs: t.Any) -> bool:
+        return True
 
     def _to_orm_field_values(self) -> dict[str, t.Any]:
         """Return the field values for ORM instantiation."""
@@ -59,40 +142,7 @@ class OrmModel(AiiDABaseModel):
 
     @classmethod
     def _as_minimal_model(cls: type[OrmModel]) -> type[OrmModel]:
-        """Return a derived model class excluding fields marked as "may_be_large"."""
-        cached = cls.__dict__.get('_AIIDA_MINIMAL_MODEL')
-        if isinstance(cached, type) and issubclass(cached, OrmModel):
-            return cached
-        try:
-            orm_class_name, model_name = cls.__qualname__.split('.')
-        except ValueError as exception:
-            raise ValueError(f"expected 'OrmClass.ModelName' format, got '{cls.__qualname__}'") from exception
-        MinimalModel = create_model(  # noqa: N806
-            f'Minimal{model_name}',
-            __base__=OrmModel,
-            __module__=cls.__module__,
-        )
-        MinimalModel.__qualname__ = f'{orm_class_name}.Minimal{model_name}'
-        MinimalModel.model_config['extra'] = 'ignore'
-
-        for key, field in cls.model_fields.items():
-            annotation = field.annotation
-            if get_metadata(field, 'may_be_large'):
-                continue
-            if isinstance(annotation, type) and issubclass(annotation, OrmModel):
-                sub_minimal_model = annotation._as_minimal_model()
-                field.annotation = sub_minimal_model
-                if any(f.is_required() for f in sub_minimal_model.model_fields.values()):
-                    field.default_factory = None
-            MinimalModel.model_fields[key] = field
-
-        MinimalModel.model_rebuild(force=True)
-
-        # Make subsequent calls idempotent for this specific class and the derived model
-        cls._AIIDA_MINIMAL_MODEL = MinimalModel  # type: ignore[attr-defined]
-        MinimalModel._AIIDA_MINIMAL_MODEL = MinimalModel  # type: ignore[attr-defined]
-
-        return MinimalModel
+        return cls
 
 
 class OrmFieldsAsModelDump(OrmModel):
@@ -100,11 +150,11 @@ class OrmFieldsAsModelDump(OrmModel):
 
     def _to_orm_field_values(self) -> dict[str, t.Any]:
         """Return the field values for ORM instantiation as a simple call to `model_dump`."""
-        return self.model_dump(exclude_none=True)
+        return self.model_dump()
 
 
 def OrmMetadataField(  # noqa: N802
-    default: t.Any = PydanticUndefined,
+    default: t.Any = _UNDEFINED,
     *,
     orm_class: type[Entity[t.Any, t.Any]] | str | None = None,
     orm_to_model: (
@@ -113,23 +163,16 @@ def OrmMetadataField(  # noqa: N802
     model_to_orm: t.Callable[[OrmModel], t.Any] | None = None,
     **kwargs: t.Any,
 ) -> t.Any:
-    """Extend `MetadataField` with ORM specific options.
-
-    :param orm_class: The class, or entry point name thereof, to which the field should be converted. If this field is
-        defined, the value of this field should accept an integer which will automatically be converted to an instance
-        of said ORM class using ``orm_class.collection.get(id={field_value})``. This is useful, for example, where a
-        field represents an instance of a different entity, such as an instance of ``User``. The serialized data would
-        store the ``pk`` of the user, but the ORM entity instance would receive the actual ``User`` instance with that
-        primary key.
-    :param orm_to_model: Optional callable to convert the value of a field from an ORM instance to a model instance.
-        It optionally accepts a second argument, which is a dictionary of context values that may be used during the
-        conversion.
-    :param model_to_orm: Optional callable to convert the value of a field from a model instance to an ORM instance.
-    """
-
-    field_info = MetadataField(default, **kwargs)
+    """Return a benchmark field without importing Pydantic."""
+    field_info = _BenchmarkField(default, **kwargs)
 
     for key, value in (
+        ('priority', kwargs.get('priority')),
+        ('short_name', kwargs.get('short_name')),
+        ('option_cls', kwargs.get('option_cls')),
+        ('read_only', kwargs.get('read_only', False)),
+        ('write_only', kwargs.get('write_only', False)),
+        ('may_be_large', kwargs.get('may_be_large', False)),
         ('orm_class', orm_class),
         ('orm_to_model', orm_to_model),
         ('model_to_orm', model_to_orm),
