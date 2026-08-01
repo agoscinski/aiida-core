@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Any, Optional, TypeVar
 from .entities import BackendCollection, BackendEntity, BackendEntityExtrasMixin
 
 if TYPE_CHECKING:
+    from aiida.common.links import LinkType
+
     from ..utils import LinkTriple
     from .computers import BackendComputer
     from .users import BackendUser
@@ -325,6 +327,19 @@ class BackendNodeCollection(BackendCollection[BackendNode]):
 
         :param pk: id of the node
         """
+
+    def has_link_path(
+        self, source: BackendNode, target: BackendNode, link_types: Sequence['LinkType'] | None = None
+    ) -> bool:
+        """Return whether ``target`` is reachable from ``source`` following links of the given types.
+
+        :param source: node from which to start traversing outgoing links.
+        :param target: node to find in the descendants of ``source``.
+        :param link_types: link types to follow. If ``None``, all link types may be followed.
+        :returns: ``True`` if ``target`` is reachable from ``source``, ``False`` otherwise.
+        """
+        msg = f'`has_link_path` is not implemented for the `{self.__class__.__name__}` backend node collection.'
+        raise NotImplementedError(msg)
 
     @abc.abstractmethod
     def delete(self, pk: int) -> None:

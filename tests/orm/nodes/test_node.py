@@ -510,6 +510,44 @@ class TestNodeLinks:
         with pytest.raises(TypeError):
             self.node_target.base.links.validate_incoming(self.node_source, LinkType.CREATE.value, 'link_label')
 
+    def test_validate_incoming_cycle(self):
+        """Test that `validate_incoming` rejects links that would introduce a cycle."""
+        input_node = Data().store()
+        calculation = CalculationNode()
+        calculation.base.links.add_incoming(input_node, LinkType.INPUT_CALC, 'input')
+        calculation.store()
+
+        with pytest.raises(ValueError, match='generate a cycle'):
+            input_node.base.links.validate_incoming(calculation, LinkType.CREATE, 'cycle')
+
+    def test_validate_incoming_cycle_uses_backend_primitive(self, monkeypatch):
+        """Test that cycle validation delegates graph reachability checks to the backend."""
+        source = CalculationNode().store()
+        target = Data().store()
+        calls = []
+
+        def has_link_path(source_backend_node, target_backend_node, link_types=None):
+            calls.append((source_backend_node.pk, target_backend_node.pk, link_types))
+            return False
+
+        monkeypatch.setattr(target.backend.nodes, 'has_link_path', has_link_path)
+
+        target.base.links.validate_incoming(source, LinkType.CREATE, 'input')
+
+        assert calls == [(target.pk, source.pk, (LinkType.CREATE, LinkType.INPUT_CALC))]
+
+    def test_validate_incoming_cycle_skips_unstored_nodes(self, monkeypatch):
+        """Test that cycle validation is skipped when either node is not yet stored."""
+        source = Data().store()
+        target = CalculationNode()
+
+        def has_link_path(*args, **kwargs):
+            raise AssertionError('cycle validation should not query the stored graph for unstored nodes')
+
+        monkeypatch.setattr(target.backend.nodes, 'has_link_path', has_link_path)
+
+        target.base.links.validate_incoming(source, LinkType.INPUT_CALC, 'input')
+
     def test_add_incoming_create(self):
         """Nodes can only have a single incoming CREATE link, independent of the source node."""
         source_one = CalculationNode()

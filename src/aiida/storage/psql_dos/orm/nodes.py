@@ -8,15 +8,17 @@
 ###########################################################################
 """SqlAlchemy implementation of the `BackendNode` and `BackendNodeCollection` classes."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm.exc import NoResultFound
 
 from aiida.common import exceptions
 from aiida.common.lang import type_check
+from aiida.common.links import LinkType
 from aiida.orm.implementation import BackendNode, BackendNodeCollection
 from aiida.orm.implementation.utils import clean_value, validate_attribute_extra_key
 from aiida.storage.psql_dos.models import node as models
@@ -318,6 +320,34 @@ class SqlaNodeCollection(BackendNodeCollection):
             )
         except NoResultFound:
             raise exceptions.NotExistent(f"Node with pk '{pk}' not found") from NoResultFound
+
+    def has_link_path(
+        self, source: BackendNode, target: BackendNode, link_types: Sequence[LinkType] | None = None
+    ) -> bool:
+        """Return whether ``target`` is reachable from ``source`` following links of the given types."""
+        if source.pk is None or target.pk is None:
+            return False
+
+        link_table = self.ENTITY_CLASS.LINK_CLASS.__table__
+        link_type_values = None if link_types is None else tuple(link_type.value for link_type in link_types)
+
+        path: Any = select(link_table.c.output_id.label('node_id')).where(link_table.c.input_id == source.pk)
+        if link_type_values is not None:
+            if not link_type_values:
+                return False
+            path = path.where(link_table.c.type.in_(link_type_values))
+
+        path = path.cte(name='link_path', recursive=True)
+        recursive_link = link_table.alias()
+        recursive = select(recursive_link.c.output_id).where(recursive_link.c.input_id == path.c.node_id)
+        if link_type_values is not None:
+            recursive = recursive.where(recursive_link.c.type.in_(link_type_values))
+
+        path = path.union(recursive)
+        query = select(path.c.node_id).where(path.c.node_id == target.pk).limit(1)
+        backend: Any = self.backend
+
+        return backend.get_session().execute(query).first() is not None
 
     def delete(self, pk):
         session = self.backend.get_session()

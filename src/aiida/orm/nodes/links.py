@@ -10,7 +10,6 @@ from aiida.common.escaping import sql_string_match
 from aiida.common.lang import type_check
 from aiida.common.links import LinkType
 
-from ..querybuilder import QueryBuilder
 from ..utils.links import LinkManager, LinkTriple
 
 if t.TYPE_CHECKING:
@@ -79,18 +78,21 @@ class NodeLinks:
         """
         from aiida.orm.utils.links import validate_link
 
-        from .node import Node
-
         validate_link(source, self._node, link_type, link_label, backend=self._node.backend)
 
-        # Check if the proposed link would introduce a cycle in the graph following ancestor/descendant rules
-        if link_type in [LinkType.CREATE, LinkType.INPUT_CALC, LinkType.INPUT_WORK]:
-            builder = (
-                QueryBuilder(backend=self._node.backend)
-                .append(Node, filters={'id': self._node.pk}, tag='parent')
-                .append(Node, filters={'id': source.pk}, tag='child', with_ancestors='parent')
-            )
-            if builder.count() > 0:
+        # Check if the proposed link would introduce a cycle in the graph following ancestor/descendant rules. Only
+        # stored links can contribute to a cycle in the database, and the backend should provide this graph primitive
+        # without going through the high-level QueryBuilder interface.
+        if (
+            link_type in [LinkType.CREATE, LinkType.INPUT_CALC, LinkType.INPUT_WORK]
+            and source.is_stored
+            and self._node.is_stored
+        ):
+            if self._node.backend.nodes.has_link_path(
+                self._node.backend_entity,
+                source.backend_entity,
+                link_types=(LinkType.CREATE, LinkType.INPUT_CALC),
+            ):
                 raise ValueError('the link you are attempting to create would generate a cycle in the graph')
 
     def validate_outgoing(self, target: Node, link_type: LinkType, link_label: str) -> None:
@@ -130,6 +132,7 @@ class NodeLinks:
         :param link_direction: `incoming` or `outgoing` to get the incoming or outgoing links, respectively.
         :param only_uuid: project only the node UUID instead of the instance onto the `NodeTriple.node` entries
         """
+        from ..querybuilder import QueryBuilder
         from .node import Node
 
         if not isinstance(link_type, (tuple, list)):
