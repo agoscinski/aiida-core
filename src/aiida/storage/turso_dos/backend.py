@@ -6,16 +6,18 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Storage implementation using a Turso/libSQL database and disk-objectstore container."""
+"""Storage implementation using a Turso database and disk-objectstore container."""
 
 from __future__ import annotations
 
+from functools import cached_property
 from pathlib import Path
 from shutil import rmtree
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from disk_objectstore import Container
+
 from aiida.common.log import AIIDA_LOGGER
 from aiida.common.pydantic import AiiDABaseModel, MetadataField
 from aiida.manage.configuration.profile import Profile
@@ -24,6 +26,7 @@ from aiida.storage.psql_dos.backend import get_filepath_container
 from aiida.storage.sqlite_dos.backend import SqliteDosMigrator, SqliteDosStorage
 from aiida.storage.sqlite_zip.backend import validate_sqlite_version
 
+from . import orm
 from .utils import create_sqlalchemy_engine
 
 if TYPE_CHECKING:
@@ -48,7 +51,7 @@ class TursoDosMigrator(SqliteDosMigrator):
 
 
 class TursoDosStorage(SqliteDosStorage):
-    """Storage using a Turso/libSQL database with a local disk-objectstore repository."""
+    """Storage using a Turso database with a local disk-objectstore repository."""
 
     migrator = TursoDosMigrator
 
@@ -56,8 +59,8 @@ class TursoDosStorage(SqliteDosStorage):
         """Model describing required information to configure an instance of the storage."""
 
         database_url: str = MetadataField(
-            title='Turso/libSQL database URL',
-            description='SQLAlchemy database URL for the Turso/libSQL database.',
+            title='Turso database URL',
+            description='SQLAlchemy database URL for the Turso database.',
         )
         auth_token: str | None = MetadataField(
             title='Turso auth token',
@@ -115,7 +118,14 @@ class TursoDosStorage(SqliteDosStorage):
     def get_container(self) -> Container:
         return Container(str(self.filepath_container))
 
-    def get_repository(self) -> 'DiskObjectStoreRepositoryBackend':
+    def query(self) -> orm.TursoQueryBuilder:
+        return orm.TursoQueryBuilder(self)
+
+    @cached_property
+    def nodes(self) -> orm.TursoNodeCollection:
+        return orm.TursoNodeCollection(self)
+
+    def get_repository(self) -> DiskObjectStoreRepositoryBackend:
         from aiida.repository.backend import DiskObjectStoreRepositoryBackend
 
         return DiskObjectStoreRepositoryBackend(container=self.get_container())

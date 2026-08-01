@@ -299,8 +299,7 @@ tui = [
   'trogon'
 ]
 turso = [
-  'libsql-client',
-  'sqlalchemy-libsql'
+  'pyturso~=0.7.2'
 ]
 
 [project.scripts]

@@ -6,7 +6,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Storage implementation using a Turso/libSQL database and disk-objectstore container."""
+"""Storage implementation using a Turso database and disk-objectstore container."""
 
 # AUTO-GENERATED
 

@@ -49,7 +49,7 @@ def cleanup_local_turso_storage(args: argparse.Namespace) -> None:
 
     parsed = urlparse(args.database_url)
 
-    if parsed.scheme not in ('sqlite', 'sqlite+libsql'):
+    if parsed.scheme not in ('sqlite', 'sqlite+turso', 'sqlite+turso_sync'):
         return
 
     filepath_database = Path(parsed.path)
@@ -109,7 +109,9 @@ def stop_daemon(env: dict[str, str]) -> None:
     run_command(['verdi', 'daemon', 'stop'], env=env, check=False)
 
 
-def run_case(args: argparse.Namespace, env: dict[str, str], label: str, workers: int, slots: int) -> tuple[float, float]:
+def run_case(
+    args: argparse.Namespace, env: dict[str, str], label: str, workers: int, slots: int
+) -> tuple[float, float]:
     """Run a single benchmark case and return elapsed time and time per process."""
     print(f'\n=== {label}: workers={workers}, worker_process_slots={slots} ===')
     stop_daemon(env)
@@ -158,7 +160,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--database-url', default=None, help='Database URL for core.turso_dos.')
     parser.add_argument('--auth-token', default=None, help='Auth token for core.turso_dos.')
     parser.add_argument('--repository-uri', default=None, help='Repository URI for core.turso_dos.')
-    parser.add_argument('--workers', type=int, default=None, help='Run a single case with this number of daemon workers.')
+    parser.add_argument(
+        '--workers', type=int, default=None, help='Run a single case with this number of daemon workers.'
+    )
     parser.add_argument(
         '--slots',
         type=int,
@@ -183,10 +187,9 @@ def main() -> int:
         if args.database_url is None:
             handle, filepath_database = tempfile.mkstemp(prefix='aiida-turso-', suffix='.db')
             os.close(handle)
-            # NOTE: `sqlite+libsql:///` would engage the embedded libSQL engine, but `libsql_experimental` 0.0.55
-            # is not thread-safe across connections within one process and crashes the multi-threaded daemon
-            # workers with spurious `database is locked` errors (see turso-engine-parity-fix.md). Default to the
-            # pysqlite driver; pass an explicit libsql `--database-url` (e.g. a remote `sqld` server) to test libSQL.
+            # NOTE: `sqlite+turso:///` would engage pyturso, but pyturso 0.7.2 takes an exclusive process-level lock
+            # on local database files. This prevents the submitter, broker and daemon workers from opening the same
+            # storage concurrently. Default to the pysqlite driver; pass an explicit pyturso URL to test direct runs.
             args.database_url = Path(filepath_database).as_uri().replace('file://', 'sqlite:///')
         if args.repository_uri is None:
             repository_path = tempfile.mkdtemp(prefix='aiida-turso-repo-')
@@ -198,7 +201,11 @@ def main() -> int:
         msg = '`--workers` and `--slots` must be specified together.'
         raise ValueError(msg)
 
-    cases = CASES if args.workers is None else ((f'{args.workers}-workers-{args.slots}-slots', args.workers, args.slots),)
+    cases = (
+        CASES
+        if args.workers is None
+        else ((f'{args.workers}-workers-{args.slots}-slots', args.workers, args.slots),)
+    )
 
     summary: list[tuple[str, float, float]] = []
     for label, workers, slots in cases:

@@ -116,10 +116,26 @@ Consequences:
   path and are correct regardless).
 - Re-test when `libsql_experimental` matures or when `sqlalchemy-libsql` switches DBAPI.
 
+## Follow-up 3: switching the backend to pyturso
+
+The backend now uses `pyturso` instead of `sqlalchemy-libsql` for Turso URLs. This avoids the
+`libsql_experimental` GIL/busy-wait problem and keeps the SQLAlchemy integration through pyturso's
+own dialects (`sqlite+turso://` and `sqlite+turso_sync://`).
+
+Two important pyturso limitations remain:
+
+- **No recursive CTEs**: pyturso 0.7.2 raises `Parse error: Recursive CTEs are not yet supported`.
+  AiiDA's internal link cycle validation was moved off QueryBuilder and onto a backend graph
+  primitive so ordinary process submission no longer needs recursive QueryBuilder joins. User-facing
+  QueryBuilder `with_ancestors` and `with_descendants` raise `NotImplementedError` for pyturso URLs.
+- **Exclusive local file lock**: local `sqlite+turso:///` databases cannot be opened by multiple
+  processes at the same time. This prevents the submitter, ZeroMQ broker and daemon workers from
+  sharing the same local pyturso database file. Direct in-process runs work, but daemon benchmarks
+  still default to plain `sqlite:///` unless an explicit pyturso URL is passed for experimentation.
+
 ## Expectations going forward
 
-Even with a real Turso setup (`sqlite+libsql://` pointing at a `sqld` server), a speedup over
-local SQLite is unlikely for this workload: writes are still serialized server-side, every
-statement pays a network round trip, and AiiDA's ORM issues many small transactions per process
-checkpoint. In this benchmark the bottleneck is process/transport/broker overhead, not database
-write-lock contention.
+Even with a real Turso setup, a speedup over local SQLite is unlikely for this workload: writes are
+still serialized server-side, every remote statement pays a network round trip, and AiiDA's ORM
+issues many small transactions per process checkpoint. In this benchmark the bottleneck is
+process/transport/broker overhead, not database write-lock contention.
