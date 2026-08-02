@@ -104,8 +104,17 @@ def upgrade():
     migrate_ssh_transports(conn)
     _migrate_legacy_codes(conn)
     conn.execute(text(SQLITE_HIDDEN_UPGRADE_STATEMENT))
+    with op.batch_alter_table('db_dbnode') as batch_op:
+        batch_op.add_column(sa.Column('lineage_uuid', sa.String(length=32), nullable=True))
+        batch_op.add_column(sa.Column('version', sa.Integer(), nullable=False, server_default='1'))
+        batch_op.create_unique_constraint('uq_dbnode_lineage_version', ['lineage_uuid', 'version'])
+    op.create_index('ix_db_dbnode_db_dbnode_lineage_uuid', 'db_dbnode', ['lineage_uuid'])
 
 
 def downgrade():
     """Migrations for the downgrade."""
-    pass
+    op.drop_index('ix_db_dbnode_db_dbnode_lineage_uuid', table_name='db_dbnode')
+    with op.batch_alter_table('db_dbnode') as batch_op:
+        batch_op.drop_constraint('uq_dbnode_lineage_version', type_='unique')
+        batch_op.drop_column('version')
+        batch_op.drop_column('lineage_uuid')

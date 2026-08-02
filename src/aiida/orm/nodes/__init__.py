@@ -17,6 +17,7 @@ from aiida.orm.nodes.data import *
 from aiida.orm.nodes.node import *
 from aiida.orm.nodes.process import *
 from aiida.orm.nodes.repository import *
+from aiida.orm.nodes.versions import *
 
 __all__ = (
     'ArrayData',
@@ -44,6 +45,7 @@ __all__ = (
     'Node',
     'NodeAttributes',
     'NodeRepository',
+    'NodeVersions',
     'NumericType',
     'OrbitalData',
     'PickledData',

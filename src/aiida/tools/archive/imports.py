@@ -860,6 +860,7 @@ def _import_links(
         LinkType.CREATE: (calculation_node_types, data_node_types),
         LinkType.INPUT_CALC: (data_node_types, calculation_node_types),
         LinkType.INPUT_WORK: (data_node_types, workflow_node_types),
+        LinkType.NEXT_VERSION: (data_node_types, data_node_types),
         LinkType.RETURN: (workflow_node_types, data_node_types),
     }
     link_type_uniqueness = {
@@ -871,6 +872,7 @@ def _import_links(
         ),
         LinkType.INPUT_CALC: ('out_id_label',),
         LinkType.INPUT_WORK: ('out_id_label',),
+        LinkType.NEXT_VERSION: ('in_id', 'out_id'),
         LinkType.RETURN: ('in_id_label',),
     }
 
@@ -908,6 +910,7 @@ def _import_links(
         }
         # create additional validators
         # note, we only populate them when required, to reduce memory usage
+        existing_in_id = {link[0] for link in existing_links} if 'in_id' in link_uniqueness else set()
         existing_in_id_label = (
             {(link[0], link[2]) for link in existing_links} if 'in_id_label' in link_uniqueness else set()
         )
@@ -950,6 +953,9 @@ def _import_links(
                 if not out_type.startswith(allowed_out_type):
                     msg = f'Cannot add a {link_type.value!r} link to {out_type} (link {link_id})'
                     raise ImportValidationError(msg)
+                if 'in_id' in link_uniqueness and in_id in existing_in_id:
+                    msg = f'Node {in_id} already has an outgoing {link_type.value!r} link'
+                    raise ImportUniquenessError(msg)
                 if 'in_id_label' in link_uniqueness and (in_id, link_label) in existing_in_id_label:
                     msg = f'Node {in_id} already has an outgoing {link_type.value!r} link with label {link_label!r}'
                     raise ImportUniquenessError(msg)
@@ -971,6 +977,7 @@ def _import_links(
                     }
                 )
                 existing_links.add((in_id, out_id, link_label))
+                existing_in_id.add(in_id)
                 existing_in_id_label.add((in_id, link_label))
                 existing_out_id.add(out_id)
                 existing_out_id_label.add((out_id, link_label))

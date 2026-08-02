@@ -33,6 +33,7 @@ Revises: main_0002
 Create Date: 2026-09-07
 """
 
+import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.sql import text
 
@@ -57,8 +58,17 @@ def upgrade():
     for statement in SQLITE_UPGRADE_STATEMENTS:
         conn.execute(text(statement))
     conn.execute(text(SQLITE_HIDDEN_UPGRADE_STATEMENT))
+    with op.batch_alter_table('db_dbnode') as batch_op:
+        batch_op.add_column(sa.Column('lineage_uuid', sa.CHAR(32), nullable=True))
+        batch_op.add_column(sa.Column('version', sa.Integer(), nullable=False, server_default='1'))
+        batch_op.create_unique_constraint('uq_dbnode_lineage_version', ['lineage_uuid', 'version'])
+    op.create_index('ix_db_dbnode_db_dbnode_lineage_uuid', 'db_dbnode', ['lineage_uuid'])
 
 
 def downgrade():
     """Migrations for the downgrade."""
-    pass
+    op.drop_index('ix_db_dbnode_db_dbnode_lineage_uuid', table_name='db_dbnode')
+    with op.batch_alter_table('db_dbnode') as batch_op:
+        batch_op.drop_constraint('uq_dbnode_lineage_version', type_='unique')
+        batch_op.drop_column('version')
+        batch_op.drop_column('lineage_uuid')

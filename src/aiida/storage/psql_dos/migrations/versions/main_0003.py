@@ -34,8 +34,10 @@ Revises: main_0002
 Create Date: 2026-09-07
 """
 
+import sqlalchemy as sa
 from alembic import op
 from sqlalchemy import text
+from sqlalchemy.dialects import postgresql
 
 from aiida.storage.log import MIGRATE_LOGGER
 from aiida.storage.migrations.legacy_code import INSTALLED_NODE_TYPE, LEGACY_NODE_TYPE, PORTABLE_NODE_TYPE
@@ -132,7 +134,15 @@ def upgrade():
     migrate_ssh_transports(conn)
     _migrate_legacy_codes(conn)
     _migrate_code_hidden_extra(conn)
+    op.add_column('db_dbnode', sa.Column('lineage_uuid', postgresql.UUID(as_uuid=True), nullable=True))
+    op.add_column('db_dbnode', sa.Column('version', sa.Integer(), nullable=False, server_default='1'))
+    op.create_index('ix_db_dbnode_db_dbnode_lineage_uuid', 'db_dbnode', ['lineage_uuid'])
+    op.create_unique_constraint('uq_dbnode_lineage_version', 'db_dbnode', ['lineage_uuid', 'version'])
 
 
 def downgrade():
     """Migrations for the downgrade."""
+    op.drop_constraint('uq_dbnode_lineage_version', 'db_dbnode', type_='unique')
+    op.drop_index('ix_db_dbnode_db_dbnode_lineage_uuid', table_name='db_dbnode')
+    op.drop_column('db_dbnode', 'version')
+    op.drop_column('db_dbnode', 'lineage_uuid')
