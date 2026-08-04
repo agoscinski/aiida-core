@@ -148,10 +148,77 @@ def get_query_type_from_type_string(type_string):
     return type_string
 
 
+#: Node model/fields attribute names governed by `_LazyNodeModelAttribute`. Of these, only the first
+#: three (`AttributesModel`, `ReadModel`, `WriteModel`) can ever appear as an author-declared template
+#: in a class body (`fields` is always fully derived, never hand-written).
+_LAZY_NODE_MODEL_ATTRIBUTES = ('AttributesModel', 'ReadModel', 'WriteModel', 'fields')
+
+
+class _LazyNodeModelAttribute:
+    """Descriptor exposing a node model/fields attribute that is built lazily on first access.
+
+    The *same* four instances of this class (one per name) are installed in two places for every
+    ``Node`` subclass:
+
+    - as **data descriptors on the metaclass** (:class:`AbstractNodeMeta`), which is what makes
+      ``SomeNodeClass.ReadModel`` (class-level access) resolve through here even though a subclass
+      may declare its own ``class ReadModel(Parent.ReadModel): ...`` in its body: a data descriptor
+      on the metaclass always wins over anything in ``SomeNodeClass.__dict__``/its MRO, since
+      ``type.__getattribute__`` checks the metaclass first;
+    - as a **plain class attribute on every node class itself** (`AbstractNodeMeta.__new__` installs
+      it directly into each class' own namespace), which is what makes ``some_node.ReadModel``
+      (instance-level access, e.g. inside ``self.ReadModel``) resolve through here too: instance
+      attribute lookup (``object.__getattribute__``) only ever consults ``type(instance).__mro__``,
+      never the metaclass, so without this second installation instance access would silently fall
+      through to whatever plain value happens to sit in some ancestor's ``__dict__``.
+
+    Because a class' own ``__dict__`` entry for these names would otherwise collide with a subclass'
+    declared template, `AbstractNodeMeta.__new__` relocates any such template (before installing this
+    descriptor) into a private ``_<name>_template`` slot; `Node._ensure_models_built` reads it back
+    from there. The resolved/cached model lives in a further separate slot, ``_lazy_<name>``.
+    """
+
+    def __init__(self, name: str) -> None:
+        self._name = name
+        self._cache_attr = f'_lazy_{name}'
+
+    def __get__(self, obj, owner=None):
+        if obj is None:
+            return self
+        cls = obj if isinstance(obj, type) else type(obj)
+        if self._cache_attr not in cls.__dict__:
+            cls._ensure_models_built()
+        return cls.__dict__[self._cache_attr]
+
+    def __set__(self, obj, value) -> None:
+        cls = obj if isinstance(obj, type) else type(obj)
+        setattr(cls, self._cache_attr, value)
+
+
+#: Shared descriptor instances, reused verbatim as both the metaclass-level and the per-class
+#: instance-level accessor for each name (see `_LazyNodeModelAttribute`); there are only ever these 4
+#: objects, regardless of how many `Node` subclasses (built-in or plugin-provided) exist.
+_lazy_node_model_descriptors = {name: _LazyNodeModelAttribute(name) for name in _LAZY_NODE_MODEL_ATTRIBUTES}
+
+
 class AbstractNodeMeta(ABCMeta):
     """Some python black magic to set correctly the logger also in subclasses."""
 
+    AttributesModel = _lazy_node_model_descriptors['AttributesModel']
+    ReadModel = _lazy_node_model_descriptors['ReadModel']
+    WriteModel = _lazy_node_model_descriptors['WriteModel']
+    fields = _lazy_node_model_descriptors['fields']
+
     def __new__(mcs, name, bases, namespace, **kwargs):
+        for attr_name in ('AttributesModel', 'ReadModel', 'WriteModel'):
+            if attr_name in namespace:
+                # An author-declared template (e.g. `class AttributesModel(Parent.AttributesModel): ...`)
+                # would otherwise collide with the descriptor installed below; relocate it so
+                # `Node._ensure_models_built` can still read it back as the template.
+                namespace[f'_{attr_name}_template'] = namespace.pop(attr_name)
+            namespace[attr_name] = _lazy_node_model_descriptors[attr_name]
+        namespace['fields'] = _lazy_node_model_descriptors['fields']
+
         newcls = super().__new__(mcs, name, bases, namespace, **kwargs)
         newcls._logger = logging.getLogger(f'{namespace["__module__"]}.{name}')
         return newcls

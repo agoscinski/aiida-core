@@ -37,6 +37,8 @@ __all__ = ('AbstractCode',)
 class AbstractCode(Data, metaclass=abc.ABCMeta):
     """Abstract data plugin representing an executable code."""
 
+    _SUPPORTS_CLI = True
+
     # Should become ``default_calc_job_plugin`` once ``Code`` is dropped in ``aiida-core==3.0``
     _KEY_ATTRIBUTE_DEFAULT_CALC_JOB_PLUGIN: str = 'input_plugin'
     _KEY_ATTRIBUTE_APPEND_TEXT: str = 'append_text'
@@ -156,10 +158,6 @@ class AbstractCode(Data, metaclass=abc.ABCMeta):
         self.with_mpi = with_mpi
         self.wrap_cmdline_params = wrap_cmdline_params
         self.is_hidden = is_hidden
-
-    def __init_subclass__(cls, **kwargs) -> None:
-        super().__init_subclass__(**kwargs)
-        cls._patch_cli_model()
 
     def to_model(
         self,

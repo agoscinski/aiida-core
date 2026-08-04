@@ -222,13 +222,39 @@ class Entity(abc.ABC, Generic[BackendEntityType, CollectionType]):
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         cls._COMPAT_MODEL = None
-        cls._patch_write_model()
-        cls._patch_qb_fields()
+        cls._configure_models()
         super().__init_subclass__(**kwargs)
+
+    @classmethod
+    def _configure_models(cls) -> None:
+        """Build this entity's derived ``WriteModel``/``fields`` and set ``_MODEL_MAP``.
+
+        Runs eagerly for every entity subclass at class-definition time. ``Node`` overrides this to
+        a no-op: its model family is instead built lazily on first access, see
+        :meth:`_ensure_models_built`.
+        """
+        current_fields = getattr(cls, 'fields', None)
+        if current_fields is not None and not isinstance(current_fields, QbFields):
+            raise ValueError(f'fields already set on `{cls}`')
+
+        if 'ReadModel' in cls.__dict__:
+            cls._validate_model_inheritance('ReadModel', cls.ReadModel)
+
+        if 'WriteModel' not in cls.__dict__:
+            cls.WriteModel = cls._build_write_model(cls.ReadModel, cls.WriteModel)  # type: ignore[assignment, misc]
+
+        cls.fields = cls._build_qb_fields(cls.ReadModel)
         cls._MODEL_MAP = {
             'read': cls.ReadModel,
             'write': cls.WriteModel,
         }
+
+    @classmethod
+    def _ensure_models_built(cls) -> None:
+        """No-op for non-node entities; their model family is already built eagerly.
+
+        ``Node`` overrides this to build (and cache) its model family lazily on first access.
+        """
 
     @classmethod
     def model_to_orm_fields(cls) -> dict[str, pdt.fields.FieldInfo]:
@@ -282,6 +308,7 @@ class Entity(abc.ABC, Generic[BackendEntityType, CollectionType]):
         :return: An instance of the entity's model class.
         :raises UnsupportedSchemaError: if the provided schema is not supported for this entity.
         """
+        self._ensure_models_built()
         schema = schema or ('read' if self.is_stored else 'write')
         if schema not in self._MODEL_MAP:
             raise exceptions.UnsupportedSchemaError(f"expected one of {list(self._MODEL_MAP)} schemas, got '{schema}'")
@@ -300,6 +327,7 @@ class Entity(abc.ABC, Generic[BackendEntityType, CollectionType]):
         :param model: An instance of the entity's model class.
         :return: An instance of the entity class.
         """
+        cls._ensure_models_built()
         compat_model = cls.__dict__.get('_COMPAT_MODEL')
         if compat_model is not None and isinstance(model, compat_model):
             from aiida.common.docs import URL_CHANGELOG_ORM_MODELS
@@ -335,6 +363,7 @@ class Entity(abc.ABC, Generic[BackendEntityType, CollectionType]):
         :return: A dictionary that can be serialized to JSON.
         :raises UnsupportedSchemaError: if the provided schema is not supported for this entity.
         """
+        self._ensure_models_built()
         return self.to_model(context=context, minimal=minimal, schema=schema).model_dump(
             mode=mode,
             exclude_unset=minimal,
@@ -348,6 +377,7 @@ class Entity(abc.ABC, Generic[BackendEntityType, CollectionType]):
         :param serialized: The serialized data.
         :return: The constructed entity instance.
         """
+        cls._ensure_models_built()
         return cls.from_model(cls.WriteModel(**serialized))
 
     @classproperty
@@ -536,16 +566,21 @@ class Entity(abc.ABC, Generic[BackendEntityType, CollectionType]):
         return self._backend_entity
 
     @classmethod
-    def _patch_write_model(cls) -> None:
-        """Patch the entity's `WriteModel` by deriving it from the entity's `ReadModel`.
+    def _build_write_model(cls, read_model: type[OrmModel], base_write_model: type[OrmModel]) -> type[OrmModel]:
+        """Derive a write model from `read_model`, based on `base_write_model` (was `_patch_write_model`).
 
-        Recurse through nested models.
+        Recurses through nested models.
+
+        :param read_model: The read model class to derive the write model from.
+        :param base_write_model: The base class for the top-level derived write model (nested models
+            always derive from ``OrmModel`` directly, see `as_write_model`).
+        :return: The derived write model class.
         """
 
         def as_write_model(
             model_cls: type[OrmModel],
-            base_cls: type[OrmModel] = cls.WriteModel,
-            suffix: str = 'ReadModel',
+            base_cls: type[OrmModel],
+            suffix: str,
         ) -> type[OrmModel]:
             """Derive the write-version of a read model by recursively discarding read-only fields.
 
@@ -606,22 +641,17 @@ class Entity(abc.ABC, Generic[BackendEntityType, CollectionType]):
 
             return WriteModel
 
-        if 'WriteModel' not in cls.__dict__:
-            cls.WriteModel = as_write_model(cls.ReadModel)  # type: ignore[assignment, misc]
+        return as_write_model(read_model, base_write_model, 'ReadModel')
 
     @classmethod
-    def _patch_qb_fields(cls) -> None:
-        """Patch the `fields` attribute of the class based on the `ReadModel` definition."""
-        current_fields = getattr(cls, 'fields', None)
-        if current_fields is not None and not isinstance(current_fields, QbFields):
-            raise ValueError(f'fields already set on `{cls}`')
+    def _build_qb_fields(cls, read_model: type[OrmModel]) -> QbFields:
+        """Build the QueryBuilder `fields` mapping from `read_model`'s field declarations.
 
+        Was `_patch_qb_fields`.
+        """
         fields: dict[str, Any] = {}
 
-        if 'ReadModel' in cls.__dict__:
-            cls._validate_model_inheritance('ReadModel')
-
-        for key, field in cls.ReadModel.model_fields.items():
+        for key, field in read_model.model_fields.items():
             fields[key] = add_field(
                 key,
                 alias=field.alias,
@@ -629,13 +659,17 @@ class Entity(abc.ABC, Generic[BackendEntityType, CollectionType]):
                 doc=field.description or '',
             )
 
-        cls.fields = QbFields(fields)
+        return QbFields(fields)
 
     @classmethod
-    def _validate_model_inheritance(cls, model_name: str = 'ReadModel') -> None:
+    def _validate_model_inheritance(cls, model_name: str, actual_model: type[OrmModel]) -> None:
         """Validate that model class inherits from all necessary base classes.
 
         :param model_name: The name of the model class to validate, e.g., 'ReadModel' or 'WriteModel'.
+        :param actual_model: The (already resolved) model class of `cls` to validate. Must be passed
+            explicitly rather than looked up via `getattr(cls, model_name)`: for `Node` subclasses this
+            is called while that very model is still being built, so looking it up through the class
+            attribute would recurse back into the lazy builder.
         :raises RuntimeError: if the model class does not inherit from all necessary base classes.
         """
         if getattr(cls, '_SKIP_MODEL_INHERITANCE_CHECK', False):
@@ -653,7 +687,6 @@ class Entity(abc.ABC, Generic[BackendEntityType, CollectionType]):
             ):
                 expected_inheritance.add(expected_model)
 
-        actual_model: type[OrmModel] = getattr(cls, model_name)
         actual_inheritance: set[type[OrmModel]] = set()
         for model_class in actual_model.mro():
             if (

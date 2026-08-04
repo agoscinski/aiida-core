@@ -298,6 +298,17 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
 
     _ConstructorModel: ClassVar[type[BaseNodeModel] | None] = None
     _CliModel: ClassVar[type[OrmModel] | None] = None
+    _SUPPORTS_CLI: ClassVar[bool] = False
+
+    # Per-class cache slots for the lazily-built model family, populated by `_ensure_models_built`
+    # and exposed through the data descriptors installed on `AbstractNodeMeta` (`AttributesModel`,
+    # `ReadModel`, `WriteModel`, `fields`). Annotation-only (no default value): a default here would
+    # land in `Node.__dict__` and short-circuit the descriptor for `Node` itself.
+    _lazy_AttributesModel: ClassVar[type[AttributesModel]]  # noqa: N815
+    _lazy_ReadModel: ClassVar[type[ReadModel]]  # noqa: N815
+    _lazy_WriteModel: ClassVar[type[WriteModel]]  # noqa: N815
+    _lazy_fields: ClassVar[QbFields]
+    _models_built: ClassVar[bool]
 
     if TYPE_CHECKING:
         # Not all nodes support constructor-based and/or CLI-based creation (yet!).
@@ -326,25 +337,33 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
         def ConstructorModel(cls) -> type[BaseNodeModel]:  # noqa: N802, N805
             """Return the constructor-based creation model class for this entity.
 
+            Built lazily on first access and cached on the class.
+
             :raises UnsupportedSchemaError: if this node type does not support creation via a constructor model.
             :return: The constructor-based creation model class.
             """
-            if cls._ConstructorModel is None:
+            if cls.__dict__.get('_ConstructorModel') is None and cls.supports_constructor_model:
+                cls._patch_constructor_model()
+            if cls.__dict__.get('_ConstructorModel') is None:
                 raise exceptions.UnsupportedSchemaError(
                     f"'{cls.class_node_type}' does not support constructor-based creation."
                 )
-            return cls._ConstructorModel
+            return cls.__dict__['_ConstructorModel']
 
         @classproperty
         def CliModel(cls) -> type[OrmModel]:  # noqa: N802, N805
             """Return the CLI model class for this entity.
 
+            Built lazily on first access and cached on the class.
+
             :return: The CLI model class.
             :raises UnsupportedSchemaError: if this node type does not support creation via a CLI model.
             """
-            if cls._CliModel is None:
+            if cls.__dict__.get('_CliModel') is None and cls.supports_cli_model:
+                cls._patch_cli_model()
+            if cls.__dict__.get('_CliModel') is None:
                 raise exceptions.UnsupportedSchemaError(f"'{cls.class_node_type}' does not support CLI-based creation.")
-            return cls._CliModel
+            return cls.__dict__['_CliModel']
 
     def __init__(
         self,
@@ -360,12 +379,13 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
             self.base.extras.set_many(extras)
 
     def __init_subclass__(cls, **kwargs) -> None:
-        """Patch subclass models."""
+        """Reset per-subclass model caches; the model family is built lazily on first access."""
         cls._COMPAT_MODEL = None
-        cls._patch_attributes_model()
-        cls._patch_read_model()
-        cls._patch_constructor_model()
         super().__init_subclass__(**kwargs)
+
+    @classmethod
+    def _configure_models(cls) -> None:
+        """No-op: node models are built lazily on first access, see ``_ensure_models_built``."""
 
     @classmethod
     def _patch_compat_model(cls) -> None:
@@ -519,9 +539,9 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
             raise ValueError(msg)
         if isinstance(model, cls.WriteModel):
             return cls._from_write_model(model, files=files)
-        if cls._ConstructorModel is not None and isinstance(model, cls.ConstructorModel):
+        if cls.supports_constructor_model and isinstance(model, cls.ConstructorModel):
             return cls._from_constructor_model(model)
-        if cls._CliModel is not None and isinstance(model, cls.CliModel):
+        if cls.supports_cli_model and isinstance(model, cls.CliModel):
             return cls._from_cli_model(model)
         raise ValueError(f'cannot create `{cls.__name__}` from model of type `{type(model).__name__}`')
 
@@ -683,7 +703,7 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
     @classproperty
     def supports_cli_model(cls) -> bool:  # noqa: N805
         """Return whether this node class supports CLI-based creation."""
-        return cls._CliModel is not None
+        return cls._SUPPORTS_CLI
 
     @classproperty
     def class_node_type(cls) -> str:  # noqa: N805
@@ -1138,18 +1158,75 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
         raise AttributeError(name)
 
     @classmethod
-    def _patch_qb_fields(cls) -> None:
-        super()._patch_qb_fields()
+    def _nearest_ancestor_model(cls, name: str) -> Any:
+        """Return `name` from the nearest ancestor in `cls.__mro__` that defines it.
 
-        fields = cls.fields._fields
+        Used as the base to derive from when `cls` has no explicit template of its own. This mirrors
+        plain Python attribute lookup along the MRO (as the pre-lazy code relied on implicitly) rather
+        than assuming ``cls.__mro__[1]``, since a non-node mixin (e.g. `Sealable`, mixed into
+        `ProcessNode`) can sit in between without defining `name` at all.
+        """
+        for ancestor in cls.__mro__[1:]:
+            try:
+                return getattr(ancestor, name)
+            except AttributeError:
+                continue
+        msg = f'no ancestor of `{cls.__name__}` defines `{name}`'
+        raise RuntimeError(msg)
 
-        if 'AttributesModel' in cls.__dict__:
-            cls._validate_model_inheritance('AttributesModel')
+    @classmethod
+    def _ensure_models_built(cls) -> None:
+        """Build and cache this class's `AttributesModel`/`ReadModel`/`WriteModel`/`fields`.
+
+        Deferred to first access via the data descriptors installed on `AbstractNodeMeta`
+        (see `aiida.orm.utils.node`). Reentrancy-safe: every input is read from `cls`'s own
+        declared template (`cls.__dict__.get(...)`) or from the nearest ancestor node class (a
+        *different* class, whose own `_ensure_models_built` runs independently and terminates at
+        `Node`) - never from `cls`'s own, still-unresolved attributes - and all four caches are
+        committed atomically at the end.
+        """
+        if cls.__dict__.get('_models_built'):
+            return
+
+        if cls is Node:
+            # The root declarations are already complete and are used as-is: `Node.__init_subclass__`
+            # never ran for `Node` itself, even before this model family was made lazy.
+            # NB: the `cast()` type arguments below are given as strings so they are never evaluated -
+            # `Node.AttributesModel` etc. would otherwise recurse right back into this same call.
+            attributes_model = cast('type[Node.AttributesModel]', cls.__dict__['_AttributesModel_template'])
+            read_model = cast('type[Node.ReadModel]', cls.__dict__['_ReadModel_template'])
+            write_model = cast('type[Node.WriteModel]', cls.__dict__['_WriteModel_template'])
+            cls._validate_model_inheritance('AttributesModel', attributes_model)
+            cls._validate_model_inheritance('ReadModel', read_model)
+        else:
+            attributes_model = cls._build_attributes_model()
+            read_model = cls._build_read_model(attributes_model)
+            write_model = cast(
+                'type[Node.WriteModel]',
+                cls._build_write_model(read_model, cls._nearest_ancestor_model('WriteModel')),
+            )
+
+        fields = cls._build_qb_fields(read_model, attributes_model)
+
+        cls._lazy_AttributesModel = attributes_model
+        cls._lazy_ReadModel = read_model
+        cls._lazy_WriteModel = write_model
+        cls._lazy_fields = fields
+        cls._MODEL_MAP = {'read': read_model, 'write': write_model}
+        cls._models_built = True
+
+    @classmethod
+    def _build_qb_fields(  # type: ignore[override]
+        cls, read_model: type[Node.ReadModel], attributes_model: type[Node.AttributesModel]
+    ) -> QbFields:
+        """Extend the base `fields` with attribute-children wiring (was `Node._patch_qb_fields`)."""
+        qb_fields = super()._build_qb_fields(read_model)
+        fields = qb_fields._fields
 
         container_field = cast(QbAttributesField, fields['attributes'])
         container_field._typed_children = {}
 
-        for key, field in cls.AttributesModel.model_fields.items():
+        for key, field in attributes_model.model_fields.items():
             typed_field = add_field(
                 key,
                 alias=field.alias,
@@ -1161,23 +1238,28 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
             container_field._typed_children[key] = typed_field
             fields[key] = typed_field  # BACKWARDS COMPATIBILITY
 
-        cls.fields = QbFields(fields)
+        return QbFields(fields)
 
     @classmethod
-    def _patch_attributes_model(cls):
-        """Patch `AttributesModel` as a subclass-specific version if not explicitly defined."""
-        if 'AttributesModel' not in cls.__dict__:
-            AttributesModel = cast(  # noqa: N806
-                type[Node.AttributesModel],
+    def _build_attributes_model(cls) -> type[Node.AttributesModel]:
+        """Build this class's `AttributesModel` (was `_patch_attributes_model`)."""
+        template = cls.__dict__.get('_AttributesModel_template')
+        if template is None:
+            parent_attributes_model: type[Node.AttributesModel] = cls._nearest_ancestor_model('AttributesModel')
+            template = cast(
+                'type[Node.AttributesModel]',
                 pdt.create_model(
                     'AttributesModel',
-                    __base__=cls.AttributesModel,
+                    __base__=parent_attributes_model,
                     __module__=cls.__module__,
                 ),
             )
-            AttributesModel.__qualname__ = f'{cls.__name__}.AttributesModel'
-            cls.AttributesModel = AttributesModel  # type: ignore[misc]
-        cls.AttributesModel.model_rebuild(force=True)
+            template.__qualname__ = f'{cls.__name__}.AttributesModel'
+
+        attributes_model = cast('type[Node.AttributesModel]', template)
+        attributes_model.model_rebuild(force=True)
+        cls._validate_model_inheritance('AttributesModel', attributes_model)
+        return attributes_model
 
     @classmethod
     def _get_patched_node_type_field(cls):
@@ -1191,17 +1273,16 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
         return Literal[cls.class_node_type], node_type_field
 
     @classmethod
-    def _patch_read_model(cls):
-        """Patch `ReadModel` by wiring the subclass-specific `attributes` model.
+    def _build_read_model(cls, attributes_model: type[Node.AttributesModel]) -> type[Node.ReadModel]:
+        """Build this class's `ReadModel`, wiring in `attributes_model` and a narrowed `node_type`.
 
-        Only `RemoteData` and `AbstractCode` are allowed to override `ReadModel`
-        due to required read-only fields, (e.g., computer).
+        Was `_patch_read_model`. Only `RemoteData` and `AbstractCode` are allowed to declare their
+        own `ReadModel` template, due to required read-only fields (e.g., `computer`).
         """
-
-        BaseReadModel: type[Node.ReadModel] = cls.ReadModel  # noqa: N806
+        template = cls.__dict__.get('_ReadModel_template')
         model_fields: dict[str, Any] = {}
 
-        if 'ReadModel' in cls.__dict__:
+        if template is not None:
             # TODO ideally we should do this check with issubclass, but we can't import
             # the exception classes here without creating a circular import.
             # Best to move all model-related logic to a separate module!
@@ -1217,28 +1298,31 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
                 )
             # For exceptions that override `ReadModel`, we need to copy the overridden fields.
             # We don't know a priori which fields are overridden, so we copy all.
-            BaseReadModel = cls.ReadModel.__bases__[0]  # noqa: N806
-            model_fields = {
-                key: (field.annotation, deepcopy(field)) for key, field in cls.ReadModel.model_fields.items()
-            }
+            base_read_model = template.__bases__[0]
+            model_fields = {key: (field.annotation, deepcopy(field)) for key, field in template.model_fields.items()}
+            attributes_field = deepcopy(template.model_fields['attributes'])
+        else:
+            parent_read_model: type[Node.ReadModel] = cls._nearest_ancestor_model('ReadModel')
+            base_read_model = parent_read_model
+            attributes_field = deepcopy(parent_read_model.model_fields['attributes'])
 
-        attributes_field = deepcopy(cls.ReadModel.model_fields['attributes'])
-        model_fields['attributes'] = (cls.AttributesModel, attributes_field)
+        model_fields['attributes'] = (attributes_model, attributes_field)
         model_fields['node_type'] = cls._get_patched_node_type_field()
 
         ReadModel = cast(  # noqa: N806
-            type[Node.ReadModel],
+            'type[Node.ReadModel]',
             pdt.create_model(
                 'ReadModel',
-                __base__=BaseReadModel,
+                __base__=base_read_model,
                 __module__=cls.__module__,
                 **model_fields,
             ),
         )
         ReadModel.__qualname__ = f'{cls.__name__}.ReadModel'
         ReadModel.model_rebuild(force=True)
+        cls._validate_model_inheritance('ReadModel', ReadModel)
 
-        cls.ReadModel = ReadModel  # type: ignore[misc]
+        return ReadModel
 
     @classmethod
     def _patch_constructor_model(cls):
@@ -1268,6 +1352,15 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
         ConstructorModel.model_rebuild(force=True)
 
         cls._ConstructorModel = ConstructorModel
+
+    @classmethod
+    def _patch_cli_model(cls) -> None:
+        """Patch `CliModel`.
+
+        Base implementation for node types that do not support CLI-based creation; overridden by
+        :class:`~aiida.orm.nodes.data.code.abstract.AbstractCode`. Never called unless
+        ``supports_cli_model`` is ``True``.
+        """
 
     @classmethod
     def _from_write_model(
