@@ -1,0 +1,308 @@
+[
+  {
+    "name": "aiida-core",
+    "package_name": "aiida",
+    "repository": "https://github.com/aiidateam/aiida-core",
+    "last_activity": "2026-08-11T16:06:12Z"
+  },
+  {
+    "name": "aiida-wannier90-workflows",
+    "package_name": "aiida_wannier90_workflows",
+    "repository": "https://github.com/aiidateam/aiida-wannier90-workflows",
+    "last_activity": "2026-08-11T14:40:36Z"
+  },
+  {
+    "name": "aiida-open_circuit_voltage",
+    "package_name": "aiida_open_circuit_voltage",
+    "repository": "https://github.com/tsthakur/aiida-open_circuit_voltage",
+    "last_activity": "2026-08-11T13:55:04Z"
+  },
+  {
+    "name": "aiida-firecrest",
+    "package_name": "aiida_firecrest",
+    "repository": "https://github.com/aiidateam/aiida-firecrest",
+    "last_activity": "2026-08-11T09:03:27Z"
+  },
+  {
+    "name": "aiida-cp2k",
+    "package_name": "aiida_cp2k",
+    "repository": "https://github.com/cp2k/aiida-cp2k",
+    "last_activity": "2026-08-11T08:13:07Z"
+  },
+  {
+    "name": "aiida-vasp",
+    "package_name": "aiida_vasp",
+    "repository": "https://github.com/aiida-vasp/aiida-vasp",
+    "last_activity": "2026-08-10T22:40:25Z"
+  },
+  {
+    "name": "aiida-lammps",
+    "package_name": "aiida_lammps",
+    "repository": "https://github.com/aiidaplugins/aiida-lammps",
+    "last_activity": "2026-08-10T22:30:48Z"
+  },
+  {
+    "name": "aiida-muon",
+    "package_name": "aiida_muon",
+    "repository": "https://github.com/positivemuon/aiida-muon",
+    "last_activity": "2026-08-10T15:43:23Z"
+  },
+  {
+    "name": "aiida-chemshell",
+    "package_name": "aiida_chemshell",
+    "repository": "https://github.com/stfc/aiida-chemshell",
+    "last_activity": "2026-08-07T13:04:37Z"
+  },
+  {
+    "name": "aiida-kkr",
+    "package_name": "aiida_kkr",
+    "repository": "https://github.com/JuDFTteam/aiida-kkr/tree/develop",
+    "last_activity": "2026-08-06T14:09:17Z"
+  },
+  {
+    "name": "aiida-quantumespresso",
+    "package_name": "aiida_quantumespresso",
+    "repository": "https://github.com/aiidateam/aiida-quantumespresso",
+    "last_activity": "2026-08-05T12:53:25Z"
+  },
+  {
+    "name": "aiida-orca",
+    "package_name": "aiida_orca",
+    "repository": "https://github.com/pzarabadip/aiida-orca",
+    "last_activity": "2026-08-05T07:52:06Z"
+  },
+  {
+    "name": "aiida-bader",
+    "package_name": "aiida_bader",
+    "repository": "https://github.com/superstar54/aiida-bader",
+    "last_activity": "2026-08-04T12:43:23Z"
+  },
+  {
+    "name": "aiida-dataframe",
+    "package_name": "aiida_dataframe",
+    "repository": "https://github.com/janssenhenning/aiida-dataframe",
+    "last_activity": "2026-08-03T20:01:39Z"
+  },
+  {
+    "name": "aiida-mlip",
+    "package_name": "aiida_mlip",
+    "repository": "https://github.com/stfc/aiida-mlip",
+    "last_activity": "2026-07-28T10:11:36Z"
+  },
+  {
+    "name": "aiida-amber",
+    "package_name": "aiida_amber",
+    "repository": "https://github.com/CCPBioSim/aiida-amber",
+    "last_activity": "2026-07-28T08:58:29Z"
+  },
+  {
+    "name": "aiida-dftk",
+    "package_name": "aiida_dftk",
+    "repository": "https://github.com/aiidaplugins/aiida-dftk",
+    "last_activity": "2026-07-25T13:57:27Z"
+  },
+  {
+    "name": "aiida-gromacs",
+    "package_name": "aiida_gromacs",
+    "repository": "https://github.com/CCPBioSim/aiida-gromacs",
+    "last_activity": "2026-07-24T14:26:41Z"
+  },
+  {
+    "name": "aiida-shell",
+    "package_name": "aiida_shell",
+    "repository": "https://github.com/sphuber/aiida-shell",
+    "last_activity": "2026-07-22T10:14:19Z"
+  },
+  {
+    "name": "aiida-mpds",
+    "package_name": "aiida_mpds",
+    "repository": "https://github.com/mpds-io/mpds-aiida",
+    "last_activity": "2026-07-21T16:41:02Z"
+  },
+  {
+    "name": "aiida-phonopy",
+    "package_name": "aiida_phonopy",
+    "repository": "https://github.com/aiida-phonopy/aiida-phonopy",
+    "last_activity": "2026-07-21T15:00:31Z"
+  },
+  {
+    "name": "aiida-hubbard",
+    "package_name": "aiida_hubbard",
+    "repository": "https://github.com/aiidateam/aiida-hubbard",
+    "last_activity": "2026-07-21T14:57:04Z"
+  },
+  {
+    "name": "aiida-vibroscopy",
+    "package_name": "aiida_vibroscopy",
+    "repository": "https://github.com/bastonero/aiida-vibroscopy",
+    "last_activity": "2026-07-21T13:33:29Z"
+  },
+  {
+    "name": "aiida-nanotech-empa",
+    "package_name": "aiida_nanotech_empa",
+    "repository": "https://github.com/nanotech-empa/aiida-nanotech-empa",
+    "last_activity": "2026-07-21T07:35:23Z"
+  },
+  {
+    "name": "aiida-pythonjob",
+    "package_name": "aiida_pythonjob",
+    "repository": "https://github.com/aiidateam/aiida-pythonjob",
+    "last_activity": "2026-07-20T15:22:33Z"
+  },
+  {
+    "name": "aiida-abacus",
+    "package_name": "aiida_abacus",
+    "repository": "https://github.com/MCresearch/aiida-abacus",
+    "last_activity": "2026-07-16T08:16:48Z"
+  },
+  {
+    "name": "aiida-yascheduler",
+    "package_name": "aiida_yascheduler",
+    "repository": "https://github.com/tilde-lab/yascheduler",
+    "last_activity": "2026-07-15T20:50:03Z"
+  },
+  {
+    "name": "aiida-crystal-dft",
+    "package_name": "aiida_crystal_dft",
+    "repository": "https://github.com/tilde-lab/aiida-crystal-dft",
+    "last_activity": "2026-07-15T14:48:15Z"
+  },
+  {
+    "name": "aiida-skeaf",
+    "package_name": "aiida_skeaf",
+    "repository": "https://github.com/aiidaplugins/aiida-skeaf",
+    "last_activity": "2026-06-22T14:44:52Z"
+  },
+  {
+    "name": "aiida-fleur",
+    "package_name": "aiida_fleur",
+    "repository": "https://github.com/JuDFTteam/aiida-fleur/tree/develop",
+    "last_activity": "2026-06-10T13:26:15Z"
+  },
+  {
+    "name": "aiida-reoptimize",
+    "package_name": "aiida_reoptimize",
+    "repository": "https://github.com/mpds-io/aiida-reoptimize",
+    "last_activity": "2026-05-19T12:16:14Z"
+  },
+  {
+    "name": "aiida-octopus",
+    "package_name": "aiida_octopus",
+    "repository": "https://gitlab.com/octopus-code/aiida-octopus",
+    "last_activity": "2026-05-05T23:29:47.296Z"
+  },
+  {
+    "name": "aiida-pseudo",
+    "package_name": "aiida_pseudo",
+    "repository": "https://github.com/aiidateam/aiida-pseudo",
+    "last_activity": "2026-04-30T10:09:40Z"
+  },
+  {
+    "name": "aiida-nims-scheduler",
+    "package_name": "aiida_nims_scheduler",
+    "repository": "https://github.com/atztogo/aiida-nims-scheduler",
+    "last_activity": "2026-04-27T21:40:48Z"
+  },
+  {
+    "name": "aiida-fans",
+    "package_name": "aiida_fans",
+    "repository": "https://github.com/ethan-shanahan/aiida-fans",
+    "last_activity": "2026-04-03T15:06:31Z"
+  },
+  {
+    "name": "aiida-gaussian",
+    "package_name": "aiida_gaussian",
+    "repository": "https://github.com/nanotech-empa/aiida-gaussian",
+    "last_activity": "2026-02-21T11:46:56Z"
+  },
+  {
+    "name": "aiida-icon",
+    "package_name": "aiida_icon",
+    "repository": "https://github.com/aiida-icon/aiida-icon",
+    "last_activity": "2026-01-28T12:49:00Z"
+  },
+  {
+    "name": "aiida-aimall",
+    "package_name": "aiida_aimall",
+    "repository": "https://github.com/kmlefran/aiida-aimall",
+    "last_activity": "2026-01-24T04:30:58Z"
+  },
+  {
+    "name": "aiida-abinit",
+    "package_name": "aiida_abinit",
+    "repository": "https://github.com/sponce24/aiida-abinit",
+    "last_activity": "2025-11-28T08:22:00Z"
+  },
+  {
+    "name": "aiida-environ",
+    "package_name": "aiida_environ",
+    "repository": "https://github.com/environ-developers/aiida-environ",
+    "last_activity": "2025-11-13T21:49:09Z"
+  },
+  {
+    "name": "aiida-codtools",
+    "package_name": "aiida_codtools",
+    "repository": "https://github.com/aiidateam/aiida-codtools",
+    "last_activity": "2025-08-27T05:05:40Z"
+  },
+  {
+    "name": "aiida-eonclient",
+    "package_name": "aiida_eonclient",
+    "repository": "https://github.com/HaoZeke/aiida-eonclient",
+    "last_activity": "2025-08-11T22:22:58Z"
+  },
+  {
+    "name": "aiida-musconv",
+    "package_name": "aiida_musconv",
+    "repository": "https://github.com/positivemuon/aiida-musconv",
+    "last_activity": "2025-08-01T07:14:27Z"
+  },
+  {
+    "name": "aiida-grouppathx",
+    "package_name": "aiida_grouppathx",
+    "repository": "https://github.com/zhubonan/aiida-grouppathx",
+    "last_activity": "2025-07-29T10:35:55Z"
+  },
+  {
+    "name": "aiida-supercell",
+    "package_name": "aiida_supercell",
+    "repository": "https://github.com/pzarabadip/aiida-supercell",
+    "last_activity": "2025-06-07T08:42:16Z"
+  },
+  {
+    "name": "aiida-QECpWorkChain",
+    "package_name": "aiida_QECpWorkChain",
+    "repository": "https://github.com/rikigigi/aiida-QECpWorkChain",
+    "last_activity": "2025-05-16T06:14:45Z"
+  },
+  {
+    "name": "aiida-pyscf",
+    "package_name": "aiida_pyscf",
+    "repository": "https://github.com/microsoft/aiida-pyscf",
+    "last_activity": "2024-11-29T22:26:29Z"
+  },
+  {
+    "name": "aiida-inq",
+    "package_name": "aiida_inq",
+    "repository": "https://github.com/LLNL/aiida-inq",
+    "last_activity": "2024-10-08T21:45:06Z"
+  },
+  {
+    "name": "aiida-flexpart",
+    "package_name": "aiida_flexpart",
+    "repository": "https://github.com/aiidaplugins/aiida-flexpart",
+    "last_activity": "2024-09-27T11:21:54Z"
+  },
+  {
+    "name": "aiida-ase",
+    "package_name": "aiida_ase",
+    "repository": "https://github.com/aiidateam/aiida-ase",
+    "last_activity": "2024-09-05T19:02:51Z"
+  },
+  {
+    "name": "aiida-defects",
+    "package_name": "aiida_defects",
+    "repository": "https://github.com/epfl-theos/aiida-defects",
+    "last_activity": "2024-08-22T14:20:27Z"
+  }
+]
