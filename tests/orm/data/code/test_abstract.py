@@ -12,7 +12,11 @@ import pathlib
 
 import pytest
 
-from aiida.orm.nodes.data.code.abstract import AbstractCode
+from aiida.orm.nodes.data.code.abstract import AbstractCode, Code
+from aiida.orm.nodes.data.code.containerized import ContainerizedCode
+from aiida.orm.nodes.data.code.installed import InstalledCode
+from aiida.orm.nodes.data.code.portable import PortableCode
+from aiida.orm.nodes.data.code.shell import ShellCode
 
 
 class MockCode(AbstractCode):
@@ -30,6 +34,17 @@ class MockCode(AbstractCode):
     def full_label(self) -> str:
         """Return the full label of this code."""
         return ''
+
+
+def test_code_base_class():
+    """Test that ``Code`` is the user-facing base class for all code plugins."""
+    assert issubclass(AbstractCode, Code)
+
+    for cls in (InstalledCode, PortableCode, ContainerizedCode, ShellCode, MockCode):
+        assert issubclass(cls, Code)
+
+    with pytest.raises(TypeError, match='abstract class'):
+        Code()  # type: ignore[abstract]
 
 
 def test_set_label():
