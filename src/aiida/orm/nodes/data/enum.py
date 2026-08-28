@@ -23,7 +23,9 @@ from enum import Enum
 from plumpy.loaders import get_object_loader
 
 from aiida.common.lang import type_check
-from aiida.orm.pydantic import OrmMetadataField, OrmModel
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField
 
 from .base import to_aiida_type
 from .data import Data
@@ -52,25 +54,11 @@ class EnumData(Data):
     KEY_VALUE = 'value'
     KEY_IDENTIFIER = 'identifier'
 
-    class AttributesModel(Data.AttributesModel):
-        name: str = OrmMetadataField(
-            description='The member name',
-            orm_to_model=lambda node: t.cast(EnumData, node).name,
-        )
-        value: t.Any = OrmMetadataField(
-            description='The member value',
-            orm_to_model=lambda node: t.cast(EnumData, node).value,
-        )
-        identifier: str = OrmMetadataField(
-            description='The member identifier',
-            orm_to_model=lambda node: t.cast(EnumData, node).identifier,
-        )
-
-    class ConstructorArgsModel(OrmModel):
-        member: Enum = OrmMetadataField(
-            description='The enum member to wrap',
-            write_only=True,
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField('name', str, 'The member name', rest_api_read_only=True),
+        AttributeField('value', t.Any, 'The member value', rest_api_read_only=True),
+        AttributeField('identifier', str, 'The member identifier', rest_api_read_only=True),
+    )
 
     def __init__(self, member: Enum, *args, **kwargs):
         """Construct the node for the to enum member that is to be wrapped."""

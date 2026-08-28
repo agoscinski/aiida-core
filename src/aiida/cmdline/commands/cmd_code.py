@@ -20,6 +20,7 @@ import click
 
 from aiida.cmdline.commands.cmd_data.cmd_export import data_export
 from aiida.cmdline.commands.cmd_verdi import verdi
+from aiida.cmdline.models import build_cli_model, cli_fields, cli_values
 from aiida.cmdline.groups.dynamic import DynamicEntryPointCommandGroup
 from aiida.cmdline.params import arguments, options, types
 from aiida.cmdline.params.options.commands import code as options_code
@@ -40,7 +41,7 @@ def verdi_code():
 def create_code(ctx: click.Context, cls: type[Code], **kwargs) -> None:
     """Create a new `Code` instance."""
     try:
-        model = cls.CliModel(**kwargs)
+        model = build_cli_model(cls).model_validate(cli_values(cls, **kwargs))
         instance = cls.from_model(model)
     except (TypeError, ValueError) as exception:
         echo.echo_critical(f'Failed to create instance `{cls}`: {exception}')
@@ -245,11 +246,14 @@ def show(code: Code):
     if code.computer is not None:
         table.append(['Computer', f'{code.computer.label} ({code.computer.hostname}), pk: {code.computer.pk}'])
 
-    for key, field in code.AttributesModel.model_fields.items():
-        if key == 'source':
+    # Driven off the declarations the CLI publishes, so a plugin's own fields show up here too.
+    for key, options in cli_fields(type(code)).items():
+        # The rows above already carry these; a field the CLI does not publish has no row; and a
+        # constructor argument has no stored value to show.
+        declaration = type(code)._field_declarations.get(key)
+        if declaration is None or options.exclude or key in ('label', 'description', 'computer'):
             continue
-        value = getattr(code, key)
-        table.append([field.title, value])
+        table.append([options.prompt or key.replace('_', ' ').capitalize(), declaration.read(code)])
 
     if is_verbose():
         table.append(['Calculations', len(code.base.links.get_outgoing().all())])

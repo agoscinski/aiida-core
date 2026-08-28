@@ -11,15 +11,15 @@
 from __future__ import annotations
 
 import datetime
+import typing as t
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, AnyStr, cast
+from typing import TYPE_CHECKING, Any, AnyStr
 
-from pydantic import field_validator
 
 from aiida.common import exceptions
 from aiida.common.datastructures import CalcJobState
 from aiida.common.lang import classproperty
-from aiida.orm.pydantic import OrmMetadataField
+from aiida.orm.fields import AttributeField, BaseField
 
 from ..process import ProcessNodeCaching
 from .calculation import CalculationNode
@@ -53,6 +53,11 @@ class CalcJobNodeCaching(ProcessNodeCaching):
         return objects
 
 
+def _as_plain_job_info(value: t.Any) -> dict | None:
+    """Return the job info as the plain dictionary the backend stores, accepting a `JobInfo` too."""
+    return dict(value) if value is not None else None
+
+
 class CalcJobNode(CalculationNode):
     """ORM class for all nodes representing the execution of a CalcJob."""
 
@@ -69,62 +74,43 @@ class CalcJobNode(CalculationNode):
     SCHEDULER_LAST_JOB_INFO_KEY = 'last_job_info'
     SCHEDULER_DETAILED_JOB_INFO_KEY = 'detailed_job_info'
 
-    class AttributesModel(CalculationNode.AttributesModel):
-        scheduler_state: str | None = OrmMetadataField(
-            None,
-            description='The state of the scheduler',
-            orm_to_model=lambda node: cast(CalcJobNode, node).get_scheduler_state(),
-        )
-        state: str | None = OrmMetadataField(
-            None,
-            description='The active state of the calculation job',
-            orm_to_model=lambda node: cast(CalcJobNode, node).get_state(),
-        )
-        remote_workdir: str | None = OrmMetadataField(
-            None,
-            description='The path to the remote (on cluster) scratch folder',
-            orm_to_model=lambda node: cast(CalcJobNode, node).get_remote_workdir(),
-        )
-        job_id: str | None = OrmMetadataField(
-            None,
-            description='The scheduler job id',
-            orm_to_model=lambda node: cast(CalcJobNode, node).get_job_id(),
-        )
-        scheduler_lastchecktime: datetime.datetime | None = OrmMetadataField(
-            None,
-            description='The last time the scheduler was checked, in isoformat',
-            orm_to_model=lambda node: cast(CalcJobNode, node).get_scheduler_lastchecktime(),
-        )
-        last_job_info: dict | None = OrmMetadataField(
-            None,
-            description='The last job info returned by the scheduler',
-            orm_to_model=lambda node: cast(CalcJobNode, node).get_last_job_info(),
-        )
-        detailed_job_info: dict | None = OrmMetadataField(
-            None,
-            description='The detailed job info returned by the scheduler',
-            orm_to_model=lambda node: cast(CalcJobNode, node).get_detailed_job_info(),
-        )
-        retrieve_list: Sequence[str | tuple[str, str, int]] | None = OrmMetadataField(
-            None,
-            description='The list of files to retrieve from the remote cluster',
-            orm_to_model=lambda node: cast(CalcJobNode, node).get_retrieve_list(),
-        )
-        retrieve_temporary_list: Sequence[str | tuple[str, str, int]] | None = OrmMetadataField(
-            None,
-            description='The list of temporary files to retrieve from the remote cluster',
-            orm_to_model=lambda node: cast(CalcJobNode, node).get_retrieve_temporary_list(),
-        )
-        imported: bool | None = OrmMetadataField(
-            None,
-            description='Whether the node has been migrated',
-        )
-
-        @field_validator('last_job_info', mode='before')
-        @classmethod
-        def validate_last_job_info(cls, value: dict | JobInfo | None) -> dict | None:
-            """Validate the last job info field."""
-            return dict(value) if value is not None else None
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField('scheduler_state', str | None, 'The state of the scheduler', default=None),
+        AttributeField('state', str | None, 'The active state of the calculation job', default=None),
+        AttributeField(
+            'remote_workdir', str | None, 'The path to the remote (on cluster) scratch folder', default=None
+        ),
+        AttributeField('job_id', str | None, 'The scheduler job id', default=None),
+        AttributeField(
+            'scheduler_lastchecktime',
+            datetime.datetime | None,
+            'The last time the scheduler was checked, in isoformat',
+            default=None,
+        ),
+        AttributeField(
+            'last_job_info',
+            dict | None,
+            'The last job info returned by the scheduler',
+            default=None,
+            validator=_as_plain_job_info,
+        ),
+        AttributeField(
+            'detailed_job_info', dict | None, 'The detailed job info returned by the scheduler', default=None
+        ),
+        AttributeField(
+            'retrieve_list',
+            Sequence[str | tuple[str, str, int]] | None,
+            'The list of files to retrieve from the remote cluster',
+            default=None,
+        ),
+        AttributeField(
+            'retrieve_temporary_list',
+            Sequence[str | tuple[str, str, int]] | None,
+            'The list of temporary files to retrieve from the remote cluster',
+            default=None,
+        ),
+        AttributeField('imported', bool | None, 'Whether the node has been migrated', default=None),
+    )
 
     # An optional entry point for a CalculationTools instance
     _tools = None

@@ -1497,92 +1497,86 @@ Models
 
    Further details can be found on the original AiiDA Enhancement Proposal (AEP) `here <https://github.com/aiidateam/AEP/blob/983a645c9285ba65c7cf07fe6064c23e7e994c06/010_orm_schema/readme.md>`_.
 
-The schema of a data type can be explicitly defined via one or more Pydantic models, facilitating its validation, serialization, and deserialization.
-A new data type inherits much of its fields from its base ``Data`` class.
-The model system is leveraged in ``serialize`` and ``from_serialized`` respectively for serialization and deserialization of data types.
-Below we describe a series of models that *may* be defined on a new data type to gain the added functionality.
+A data type declares what it stores as plain **field declarations**, rather than as Pydantic models.
+The declarations are lightweight: importing ``aiida.orm`` builds no schemas at all.
+A model is generated only when an entity crosses an application boundary, which happens in exactly two places -- the command line and the REST API.
 
-AttributesModel
-^^^^^^^^^^^^^^^
-
-The ``AttributesModel`` defines the schema of the storable/queryable attributes of the new data type.
-
-.. code-block:: python
-
-    from aiida.orm.pydantic import OrmMetadataField
-
-    class NewData(Data):
-        ...
-
-        class AttributesModel(Data.AttributesModel):
-            some_new_field: str = OrmMetadataField(
-                ...
-            )
-
-.. tip::
-
-   The ``AttributesModel`` is used internally for attributes-based node creation (optionally including repository files).
-
-ConstructorArgsModel
+Declaring attributes
 ^^^^^^^^^^^^^^^^^^^^
 
-The ``ConstructorArgsModel`` defines the schema of the arguments that can be passed to the constructor of the new data type.
+A plugin declares what it stores in ``_attribute_fields``, using :py:class:`~aiida.orm.fields.AttributeField`.
+This is the whole of the declaration API available to a plugin: the attributes are the only part of a row a plugin may add to, so there is no other kind it could use.
 
 .. code-block:: python
 
-    from aiida.orm.pydantic import OrmMetadataField, OrmModel
+    import typing as t
+    from collections.abc import Sequence
 
-    class NewData(Data):
-        ...
+    from aiida.orm import Data
+    from aiida.orm.fields import AttributeField, BaseField
 
-        class ConstructorArgsModel(OrmModel):
-            some_constructor_arg: str = OrmMetadataField(
-                ...,
-            )
+    def validate_temperature(value: float) -> float:
+        if value <= 0:
+            raise ValueError(f'a temperature must be above absolute zero, got {value}')
+        return value
 
-        ...
+    class TrajectoryData(Data):
 
-        def __init__(self, some_constructor_arg, **kwargs):
-            super().__init__(**kwargs)
-            ...
-
-If defined, the ``ConstructorArgsModel`` is automatically assigned to the new data type's ``ConstructorModel``:
-
-.. code-block:: python
-
-    class ConstructorModel(BaseNodeModel):
-        args: ConstructorArgsModel = OrmMetadataField(
-            description='The arguments to create the node with',
-            write_only=True,
+        _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+            AttributeField('frames', list, 'The frames of the trajectory', default_factory=list),
+            AttributeField('temperature', float, 'The thermostat setpoint', validator=validate_temperature),
         )
 
-.. tip::
+        def __init__(self, frames, temperature, **kwargs):
+            super().__init__(**kwargs)
+            self.base.attributes.set('frames', frames)
+            self.base.attributes.set('temperature', temperature)
 
-   The ``ConstructorModel`` is used internally for constructor-based node creation.
+A declaration states facts about the stored value -- its type, what it means, its default, and the key the backend holds it under -- and nothing about what any consumer does with it.
 
-.. attention::
+Note that the declaration is **not** installed under its own name, which leaves that name free for a property.
+This is how :py:class:`~aiida.orm.nodes.data.base.BaseType` can declare a ``value`` field and still expose ``value`` as a property.
+Use ``NewData.fields.some_field`` to reach the query field for a declaration.
 
-   ``ConstructorArgsModel`` is **never used directly!**
+Validation
+^^^^^^^^^^
 
-CliModel
-^^^^^^^^
+A declaration may carry a ``validator``: a callable that receives the value and returns it, raising if it is not acceptable.
 
-.. attention::
+Putting the check on the declaration rather than in ``__init__`` means it runs wherever a value enters.
+``base.attributes.set()`` and ``base.columns.set()`` run it, and so does every model a layer generates -- so a REST ``PUT``, which replaces a stored value without ever calling the constructor, is checked by the same rule.
 
-   ``CliModel`` is **not defined explicitly**.
+Aliases
+^^^^^^^
 
-The ``CliModel`` is used to define the schema of the arguments that can be passed to the CLI command to create a new instance of the data type.
-In the present version, it is used exclusively to support ``Code`` creation and is derived automatically from the ``ConstructorArgsModel`` of ``AbstractCode`` subclasses.
+Where the key the backend holds a value under is not a valid Python identifier, state it with ``alias``:
 
-Controlling model behavior
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. code-block:: python
 
-In addition to the arguments of Pydantic's ``Field`` function (https://pydantic.dev/docs/validation/latest/api/pydantic/fields/), to control serialization/deserialization behavior, one often would provide the following ``OrmMetadataField`` arguments:
+    AttributeField('the_module', str, 'The module of the wrapped object', alias='@module')
 
-- ``orm_to_model``: a function that transforms the data stored in the database (ORM) to the format expected by the model.
-- ``model_to_orm``: a function that transforms the data from the model to the format expected by the database (ORM).
+Publishing to the CLI and the REST API
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Furthermore, to customize serialization/deserialization, developers can override the ``serialize`` and ``from_serialized`` methods of the new data type, the ``to_model`` and ``from_model`` methods, which the prior two methods leverage respectively, as well as the ``to_model_field_values`` method for fine control over how model values are converted during serialization.
+What a consuming layer does with a field is stated on the declaration too, under a ``cli_`` or ``rest_api_`` prefix.
+A plugin can therefore state its own policy; nothing in either layer is keyed by class name.
+
+- ``rest_api_read_only``: AiiDA sets this value, so a client may not write it. The field is left out of the write model entirely, and a request that sends it is refused rather than having it silently dropped.
+- ``rest_api_exclude`` / ``cli_exclude``: the layer does not publish the field at all.
+- ``rest_api_name`` / ``cli_name``: the name the layer publishes the field under, where it differs from the declared one.
+- ``cli_prompt``, ``cli_short_name``, ``cli_priority``, ``cli_option_cls``: how the field appears as a command line option.
+
+.. code-block:: python
+
+    AttributeField('md5', str | None, 'Checksum of the file contents', default=None, rest_api_read_only=True)
+
+Building a model
+^^^^^^^^^^^^^^^^
+
+The models themselves are built by the layer that needs one, from :py:func:`~aiida.common.pydantic.build_model`:
+
+- :py:func:`aiida.restapi.models.build_rest_read_model` and :py:func:`~aiida.restapi.models.build_rest_write_model`;
+- :py:func:`aiida.cmdline.models.build_cli_model`, which is also what ``verdi code create`` generates its options from.
 
 Fields
 ------
@@ -1591,10 +1585,10 @@ Fields
 
 .. note::
 
-   **New in version 2.9.** ORM fields are now derived fully from the Pydantic model system.
+   **Changed in version 2.10.** ORM fields are derived from the field declarations rather than from a Pydantic model system.
 
-The internal mechanics of ``aiida.orm.fields``, derived from the Pydantic model system, will dynamically add ``frontend_key`` to the ``fields`` attribute of the new data type. The construction of ``fields`` follows the rules of inheritance, such that other than its own fields, ``NewData.fields`` will also inherit the fields of its parents, following the inheritance tree up to the root ``Entity`` ancestor. This enhances the usability of the new data type, for example, allowing the end user to programmatically define  :ref:`filters<how-to:query:filters:programmatic>` and :ref:`projections<how-to:query:projections:programmatic>` when using AiiDA's :py:class:`~aiida.orm.querybuilder.QueryBuilder`.
+``aiida.orm.fields`` collects the declarations of a class and its bases into the ``fields`` attribute of the new data type. The construction of ``fields`` follows the rules of inheritance, such that other than its own fields, ``NewData.fields`` will also inherit the fields of its parents, following the inheritance tree up to the root ``Entity`` ancestor. This enhances the usability of the new data type, for example, allowing the end user to programmatically define  :ref:`filters<how-to:query:filters:programmatic>` and :ref:`projections<how-to:query:projections:programmatic>` when using AiiDA's :py:class:`~aiida.orm.querybuilder.QueryBuilder`.
 
 .. note::
 
-  :py:meth:`~aiida.orm.fields.add_field` will return the flavor of :py:class:`~aiida.orm.fields.QbField` associated with the type of the field defined by the ``dtype`` argument, which can be given as a primitive type or a ``typing``-module type hint, e.g. ``Dict[str, Any]``. When using the data class in queries, the logical operators available to the user will depend on the flavor of :py:class:`~aiida.orm.fields.QbField` assigned to the field.
+  Every declaration becomes one :py:class:`~aiida.orm.qb_fields.QbField`. The operators it accepts follow from the declared ``dtype``, which may be given as a primitive type or as a ``typing``-module type hint, e.g. ``dict[str, Any]``. An operator the type does not admit -- ``<`` on a mapping, say -- raises ``TypeError`` rather than becoming a filter that silently matches nothing.

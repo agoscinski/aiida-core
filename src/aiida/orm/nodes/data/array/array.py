@@ -16,9 +16,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from typing import Any, BinaryIO
 
 import numpy as np
-from pydantic import ConfigDict, field_validator
 
-from aiida.orm.pydantic import OrmFieldsAsModelDump, OrmMetadataField, OrmModel
 
 from ..base import to_aiida_type
 from ..data import Data
@@ -48,53 +46,9 @@ class ArrayData(Data):
 
     """
 
-    class AttributesModel(OrmFieldsAsModelDump, Data.AttributesModel):
-        model_config = ConfigDict(
-            extra='allow',
-            arbitrary_types_allowed=True,
-            json_schema_extra={
-                'patternProperties': {
-                    r'^array\|[A-Za-z0-9_]+$': {
-                        'type': 'array',
-                        'items': {'type': 'integer'},
-                        'minItems': 1,
-                        'description': 'Shape of an array stored in the repository',
-                        'readOnly': True,
-                    }
-                }
-            },
-        )
-
-    class ConstructorArgsModel(OrmModel):
-        model_config = ConfigDict(arbitrary_types_allowed=True)
-
-        arrays: Sequence | dict[str, Sequence] = OrmMetadataField(
-            description='A single (or dictionary of) array(s) to store',
-            write_only=True,
-        )
-
-        @field_validator('arrays', mode='before')
-        @classmethod
-        def normalize_arrays(
-            cls,
-            value: Sequence | np.ndarray | dict[str, Sequence | np.ndarray],
-        ) -> Sequence | dict[str, Sequence]:
-            if isinstance(value, Sequence):
-                return value
-            if isinstance(value, np.ndarray):
-                return value.tolist()
-            elif isinstance(value, dict):
-                arrays: dict[str, Sequence] = {}
-                for key, array in value.items():
-                    if isinstance(array, Sequence):
-                        arrays[key] = array
-                    elif isinstance(array, np.ndarray):
-                        arrays[key] = array.tolist()
-                    else:
-                        raise TypeError(f'`arrays` should be an iterable or dictionary of iterables but got: {value}')
-                return arrays
-            else:
-                raise TypeError(f'`arrays` should be an iterable or dictionary of iterables but got: {value}')
+    # An `ArrayData` keeps one `array|<name>` attribute per stored array, holding its shape. The
+    # names are whatever was stored, so there is nothing fixed to declare: the attributes namespace
+    # is open, and `fields.attributes['array|x']` reaches an undeclared key perfectly well.
 
     array_prefix = 'array|'
     default_array_name = 'default'
@@ -367,18 +321,6 @@ class ArrayData(Data):
             json_dict['comments'] = get_file_header(comment_char='')
 
         return json.dumps(json_dict).encode('utf-8'), {}
-
-    def to_model_field_values(
-        self,
-        *,
-        context: dict[str, Any] | None = None,
-        minimal: bool = False,
-        schema: type[OrmModel] | None = None,
-    ) -> dict[str, Any]:
-        fields = super().to_model_field_values(context=context, minimal=minimal, schema=schema)
-        if schema in (self.ReadModel, self.WriteModel):
-            return fields | {'attributes': self.base.attributes.all}
-        return fields
 
 
 def clean_array(array: np.ndarray) -> list:

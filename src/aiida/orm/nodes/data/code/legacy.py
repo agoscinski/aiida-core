@@ -15,7 +15,10 @@ from aiida.common import exceptions
 from aiida.common.log import override_log_level
 from aiida.common.warnings import warn_deprecation
 from aiida.orm import Computer
-from aiida.orm.pydantic import OrmMetadataField
+import typing as t
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField
 
 from .abstract import AbstractCode
 
@@ -38,25 +41,30 @@ class Code(AbstractCode):
     for the code to be run).
     """
 
-    class AttributesModel(AbstractCode.AttributesModel):
-        prepend_text: str = OrmMetadataField(
-            '',
-            description='The code that will be put in the scheduler script before the execution of the code',
-        )
-        append_text: str = OrmMetadataField(
-            '',
-            description='The code that will be put in the scheduler script after the execution of the code',
-        )
-        input_plugin: str | None = OrmMetadataField(description='The name of the input plugin to be used for this code')
-        local_executable: str | None = OrmMetadataField(
-            description='Path to a local executable',
-        )
-        remote_exec_path: str | None = OrmMetadataField(
-            description='Remote path to executable',
-        )
-        is_local: bool | None = OrmMetadataField(
-            description='Whether the code is local or remote',
-        )
+    # The modern code classes subclass this one only for the deprecation path; they store none of
+    # these keys, so the declarations stop here. Goes away with `Code` itself in `aiida-core==3.0`.
+    _inheritable_fields: t.ClassVar[bool] = False
+
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField(
+            'prepend_text',
+            str,
+            'The code that will be put in the scheduler script before the execution of the code',
+            default='',
+        ),
+        AttributeField(
+            'append_text',
+            str,
+            'The code that will be put in the scheduler script after the execution of the code',
+            default='',
+        ),
+        AttributeField(
+            'input_plugin', str | None, 'The name of the input plugin to be used for this code', default=None
+        ),
+        AttributeField('local_executable', str | None, 'Path to a local executable', default=None),
+        AttributeField('remote_exec_path', str | None, 'Remote path to executable', default=None),
+        AttributeField('is_local', bool | None, 'Whether the code is local or remote', default=None),
+    )
 
     def __init__(
         self,

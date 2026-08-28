@@ -15,8 +15,7 @@ from importlib_metadata import entry_points
 
 from aiida import orm
 from aiida.common.warnings import AiidaDeprecationWarning
-from aiida.orm.fields import add_field
-from aiida.orm.pydantic import OrmMetadataField
+from aiida.orm.fields import AttributeField, ColumnField
 from aiida.plugins import load_entry_point
 
 EPS = entry_points()
@@ -53,45 +52,64 @@ def test_all_node_fields(node_and_data_entry_points: list[tuple[str, str]], data
         )
 
 
-def test_add_field():
-    """Test the `add_field` API."""
+def test_declared_attribute_field():
+    """A declared attribute becomes a query field, reachable by name and below `attributes`."""
 
     class NewNode(orm.Data):
-        class AttributesModel(orm.Data.AttributesModel):
-            key1: str = OrmMetadataField()
+        _attribute_fields = (AttributeField('key1', str, 'A declared key'),)
 
     node = NewNode()
 
     assert 'key1' in node.fields
     assert node.fields.key1.dtype is str
+    assert node.fields.key1.doc == 'A declared key'
     with pytest.warns(AiidaDeprecationWarning, match='QbField.annotation'):
         assert node.fields.key1.annotation is str
     with pytest.warns(AiidaDeprecationWarning, match='QbField.is_attribute'):
         assert node.fields.key1.is_attribute is True
     with pytest.warns(AiidaDeprecationWarning, match='QbField.is_subscriptable'):
         assert node.fields.key1.is_subscriptable is False
-    assert isinstance(node.fields.key1, orm.fields.QbStrField)
     assert node.fields.key1.backend_key == 'attributes.key1'
-    assert node.fields.key1 == node.fields.attributes.key1
+    assert node.fields.key1 is node.fields.attributes.key1
     with pytest.warns(AiidaDeprecationWarning, match='QbField.is_subscriptable'):
         assert node.fields.attributes.is_subscriptable is True
 
 
+def test_declaration_is_a_value():
+    """A declaration compares and hashes as an ordinary value; only its query field builds filters."""
+    declaration = orm.Int._field_declarations['value']
+
+    assert declaration == AttributeField('value', int, 'The value of the integer')
+    assert declaration != orm.Str._field_declarations['value']
+    # The two must not collide as dictionary keys, which is what conflating them used to do.
+    assert len({orm.Int._field_declarations['value'], orm.Str._field_declarations['value']}) == 2
+    assert orm.Int.fields.value.declaration is declaration
+
+
 @pytest.mark.parametrize('key', ('|', 'some.field', '1key'))
 def test_invalid_field_keys(key):
-    """Test for invalid field keys."""
-    with pytest.raises(ValueError):
-        _ = add_field(key)
+    """A name that is not a Python identifier is refused when the declaration is made."""
+    with pytest.raises(ValueError, match='not a valid python identifier'):
+        _ = AttributeField(key, str)
 
 
 def test_disallowed_alias_for_db_field():
-    """Test for disallowed alias argument for database fields."""
-    with pytest.raises(ValueError):
-        _ = add_field(
-            'some_key',
-            'alias_not_allowed_for_db_fields',
-            is_attribute=False,
-        )
+    """A column is named by the schema, so there is nothing for an alias to resolve."""
+    with pytest.raises(ValueError, match='may not be aliased'):
+        _ = ColumnField('some_key', str, alias='alias_not_allowed_for_db_fields')
+
+
+def test_wrong_channel_is_refused():
+    """A declaration in the channel of the other kind fails when the class is defined."""
+    with pytest.raises(TypeError, match='accepts only ColumnField declarations'):
+
+        class BadColumns(orm.Data):
+            _column_fields = (AttributeField('nope', str),)
+
+    with pytest.raises(TypeError, match='accepts only AttributeField declarations'):
+
+        class BadAttributes(orm.Data):
+            _attribute_fields = (ColumnField('nope', str),)
 
 
 @pytest.mark.usefixtures('aiida_profile_clean')
@@ -111,9 +129,10 @@ def test_query_new_class(monkeypatch):
     )
 
     class NewNode(orm.Data):
-        class AttributesModel(orm.Data.AttributesModel):
-            some_label: str = OrmMetadataField()  # type: ignore[annotation-unchecked]
-            some_value: int = OrmMetadataField()  # type: ignore[annotation-unchecked]
+        _attribute_fields = (
+            AttributeField('some_label', str, 'A label'),
+            AttributeField('some_value', int, 'A value'),
+        )
 
     node = NewNode()
     node.base.attributes.set_many({'some_label': 'A', 'some_value': 1})
@@ -317,6 +336,6 @@ def test_unknown_attribute_field_access():
     """Test unknown attribute access returns a generic `QbAnyField`."""
     node = orm.Data()
     unknown_attr = node.fields.attributes['unknown']
-    assert isinstance(unknown_attr, orm.fields.QbAnyField)
+    assert unknown_attr.declaration is None
     assert unknown_attr.key == 'attributes.unknown'
     assert unknown_attr.dtype is t.Any

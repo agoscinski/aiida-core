@@ -16,18 +16,19 @@ using an ``InstalledCode``, it will run its executable on the associated compute
 
 from __future__ import annotations
 
+import typing as t
 import pathlib
-from typing import cast
 
 from aiida.common import exceptions
 from aiida.common.lang import type_check
 from aiida.common.log import override_log_level
 from aiida.orm import Computer
 from aiida.orm.entities import from_backend_entity
-from aiida.orm.pydantic import OrmMetadataField
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField, ColumnField
 
 from ....utils.loaders import load_computer
-from .abstract import AbstractCode
 from .legacy import Code
 
 __all__ = ('InstalledCode',)
@@ -40,35 +41,31 @@ class InstalledCode(Code):
     _KEY_ATTRIBUTE_FILEPATH_EXECUTABLE: str = 'filepath_executable'
     _SKIP_MODEL_INHERITANCE_CHECK: bool = True
 
-    class CommonField(AbstractCode.CommonFields):
-        filepath_executable: str = OrmMetadataField(
-            title='Filepath executable',
-            description='Filepath of the executable on the remote computer',
-            orm_to_model=lambda node: str(cast(InstalledCode, node).filepath_executable),
-            short_name='-X',
-            priority=1,
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField(
+            'filepath_executable',
+            str,
+            'Filepath of the executable on the remote computer',
+            cli_prompt='Filepath executable',
+            cli_short_name='-X',
+            cli_priority=1,
+        ),
+    )
 
-    class AttributesModel(CommonField, AbstractCode.AttributesModel): ...
-
-    class ConstructorArgsModel(CommonField, AbstractCode.ConstructorArgsModel):
-        computer: str = OrmMetadataField(
-            title='Computer',
-            description='The label of the remote computer on which the executable resides',
-            short_name='-Y',
-            priority=2,
-            write_only=True,
-            model_to_orm=lambda model: load_computer(cast(InstalledCode.ReadModel, model).computer),
-            orm_to_model=lambda node: cast(InstalledCode, node).computer.label,
-        )
-
-    class ReadModel(AbstractCode.ReadModel):
-        computer: int = OrmMetadataField(
-            title='Computer',
-            description='The pk of the remote computer on which the executable resides',
-            orm_to_model=lambda node: cast(InstalledCode, node).computer.pk,
-            orm_class=Computer,
-        )
+    # `Node` declares `computer`; here it is required, and the CLI names it by label where every
+    # other layer names it by primary key.
+    _column_fields: t.ClassVar[Sequence[BaseField]] = (
+        ColumnField(
+            'computer',
+            Computer,
+            'The pk of the remote computer on which the executable resides',
+            cli_prompt='Computer',
+            cli_short_name='-Y',
+            cli_priority=2,
+            cli_dtype=str,
+            cli_serialize=lambda computer: computer.label,
+        ),
+    )
 
     def __init__(self, computer: Computer | str, filepath_executable: str, **kwargs):
         """Construct a new instance.

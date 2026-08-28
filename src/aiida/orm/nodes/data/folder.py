@@ -15,7 +15,6 @@ import io
 import pathlib
 import typing as t
 
-from aiida.orm.pydantic import OrmMetadataField, OrmModel
 
 from .data import Data
 
@@ -29,17 +28,6 @@ __all__ = ('FolderData',)
 
 class FolderData(Data):
     """`Data` sub class to represent a folder on a file system."""
-
-    class ConstructorArgsModel(OrmModel):
-        tree: str = OrmMetadataField(
-            title='Tree',
-            description='Absolute path to a folder to wrap',
-            write_only=True,
-            orm_to_model=lambda node, ctx: t.cast(FolderData, node)._export_tree_from_repo(
-                ctx.get('repository_dump_path'),
-                ctx.get('written', False),
-            ),
-        )
 
     def __init__(self, tree: str | pathlib.Path | None = None, **kwargs):
         """Construct a new `FolderData` to which any files and folders can be added.

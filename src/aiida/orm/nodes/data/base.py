@@ -11,9 +11,10 @@
 from __future__ import annotations
 
 import typing as t
+from collections.abc import Sequence
 from functools import singledispatch
 
-from aiida.orm.pydantic import OrmMetadataField
+from aiida.orm.fields import AttributeField, BaseField
 
 from .data import Data
 
@@ -29,11 +30,7 @@ def to_aiida_type(value):
 class BaseType(Data):
     """`Data` sub class to be used as a base for data containers that represent base python data types."""
 
-    class AttributesModel(Data.AttributesModel):
-        value: t.Any = OrmMetadataField(
-            title='Data value',
-            description='The value of the data',
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (AttributeField('value', t.Any, 'The value of the data'),)
 
     def __init__(self, value=None, **kwargs):
         try:

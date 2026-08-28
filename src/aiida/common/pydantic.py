@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import functools
 import typing as t
+from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, create_model
 from pydantic.fields import FieldInfo
+from pydantic.functional_validators import AfterValidator
 from pydantic_core import PydanticUndefined
+
+from aiida.common.fields import MISSING, LayerField
+
+if t.TYPE_CHECKING:
+    from aiida.orm.fields import BaseField
 
 
 def get_metadata(field_info: FieldInfo, key: str, default: t.Any | None = None) -> t.Any:
@@ -122,3 +130,111 @@ def MetadataField(  # noqa: N802
             field_info.metadata.append({key: value})
 
     return field_info
+
+
+#: What a declaration with no layer entry gets: published under its own name, value untouched.
+_PUBLISH_AS_IS: t.Final = LayerField()
+
+
+def _annotation(declaration: BaseField, options: LayerField) -> t.Any:
+    """Return the annotation for a field, carrying whatever the declaration says it must satisfy.
+
+    Rendering and parsing are ``pydantic``'s, not ours: every declared type is one it already
+    handles, and a value has to be database-serialisable before it gets here. A layer that
+    publishes the value in an encoding of its own states the type it publishes as, and its own
+    validation belongs with it rather than with the stored value.
+    """
+    if options.dtype is not None:
+        return options.dtype
+    if declaration.validator is None:
+        return declaration.wire_dtype
+    return t.Annotated[declaration.wire_dtype, AfterValidator(_as_value_error(declaration.validator))]
+
+
+def _as_value_error(validator: t.Callable[[t.Any], t.Any]) -> t.Callable[[t.Any], t.Any]:
+    """Return the validator with AiiDA's own validation error restated as one pydantic collects.
+
+    ``pydantic`` gathers a ``ValueError`` into its own ``ValidationError``, reporting which field
+    failed and why alongside every other failure in the payload; anything else propagates raw and
+    aborts the request at the first bad field. The exception type a direct write raises is
+    unchanged -- this wrapping is the model boundary's business only.
+    """
+
+    @functools.wraps(validator)
+    def _validate(value: t.Any) -> t.Any:
+        from aiida.common.exceptions import ValidationError
+
+        try:
+            return validator(value)
+        except ValidationError as exception:
+            raise ValueError(str(exception)) from exception
+
+    return _validate
+
+
+def build_model(
+    name: str,
+    declarations: Mapping[str, BaseField],
+    layer_options: Mapping[str, LayerField],
+    *,
+    base: type[AiiDABaseModel] = AiiDABaseModel,
+) -> type[AiiDABaseModel]:
+    """Build a ``pydantic`` model from ORM field declarations and one layer's view of them.
+
+    This is the piece with a genuine claim on a shared home: the CLI and the REST API project the
+    same declarations, and each was hand-rolling a dict literal over the same field names. What
+    they share is the *builder*; what stays theirs is which fields, under which names.
+
+    :param name: The name of the generated model class.
+    :param declarations: What the backend stores, from ``Entity._field_declarations``.
+    :param layer_options: What this layer does with each declaration, keyed by declared name. A
+        declaration with no entry is published as it stands.
+    :param base: The base class of the generated model.
+    """
+    definitions: dict[str, t.Any] = {}
+
+    for key, declaration in declarations.items():
+        options = layer_options.get(key, _PUBLISH_AS_IS)
+        if options.exclude:
+            continue
+
+        # `Field()` is typed to return the default's own type, so pin this or the first branch
+        # decides what the other two may assign.
+        info: t.Any
+        shared: dict[str, t.Any] = {'description': declaration.doc}
+        if declaration.examples is not None:
+            shared['examples'] = declaration.examples
+        if options.name is not None:
+            shared['alias'] = options.name
+
+        if declaration.default_factory is not None:
+            info = Field(default_factory=declaration.default_factory, **shared)
+        elif declaration.default is MISSING:
+            info = Field(**shared)
+        else:
+            info = Field(declaration.default, **shared)
+
+        definitions[key] = (_annotation(declaration, options), info)
+
+    return t.cast('type[AiiDABaseModel]', create_model(name, __base__=base, **definitions))
+
+
+def published_values(entity: t.Any, layer_options: Mapping[str, LayerField]) -> dict[str, t.Any]:
+    """Return the stored values a layer publishes, ready to hand to its model.
+
+    Just the stored values of the fields the layer keeps; rendering them is ``pydantic``'s job.
+    """
+    declarations = type(entity)._field_declarations
+    values = {}
+
+    for name, declaration in declarations.items():
+        options = layer_options.get(name, _PUBLISH_AS_IS)
+        if options.exclude:
+            continue
+        # A layer serialiser is given the accessor value rather than the stored form, so that a
+        # layer wanting the entity rather than its `pk` can still reach it.
+        values[name] = (
+            options.serialize(declaration.read_raw(entity)) if options.serialize else declaration.read(entity)
+        )
+
+    return values

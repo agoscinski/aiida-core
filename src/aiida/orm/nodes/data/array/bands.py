@@ -21,7 +21,9 @@ import numpy
 
 from aiida.common.exceptions import ValidationError
 from aiida.common.utils import join_labels, prettify_labels
-from aiida.orm.pydantic import OrmMetadataField
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField
 
 from .kpoints import KpointsData
 
@@ -216,16 +218,10 @@ def find_bandgap(bandsdata, number_electrons=None, fermi_energy=None):
 class BandsData(KpointsData):
     """Class to handle bands data"""
 
-    class AttributesModel(KpointsData.AttributesModel):
-        array_labels: list[str] | None = OrmMetadataField(
-            None,
-            description='Labels associated with the band arrays',
-        )
-        units: str | None = OrmMetadataField(
-            None,
-            description='Units in which the data in bands were stored',
-            orm_to_model=lambda node: t.cast(BandsData, node).base.attributes.get('units', None),
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField('array_labels', list[str] | None, 'Labels associated with the band arrays', default=None),
+        AttributeField('units', str | None, 'Units in which the data in bands were stored', default=None),
+    )
 
     def __init__(
         self,

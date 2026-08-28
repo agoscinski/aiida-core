@@ -10,14 +10,16 @@
 
 from __future__ import annotations
 
+import typing as t
 import logging
 import os
 from pathlib import Path
-from typing import cast
 
 from aiida.orm import AuthInfo
 from aiida.orm.computers import Computer
-from aiida.orm.pydantic import OrmMetadataField
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField, ColumnField
 from aiida.transports import Transport
 
 from ..data import Data
@@ -35,21 +37,15 @@ class RemoteData(Data):
 
     KEY_EXTRA_CLEANED = 'cleaned'
 
-    class AttributesModel(Data.AttributesModel):
-        remote_path: str | None = OrmMetadataField(
-            None,
-            title='Remote path',
-            description='Filepath on the remote computer',
-            orm_to_model=lambda node: node.get_remote_path(),
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField('remote_path', str | None, 'Filepath on the remote computer', default=None),
+    )
 
-    class ReadModel(Data.ReadModel):
-        computer: int = OrmMetadataField(
-            title='Computer',
-            description='The pk of the remote computer on which the data resides',
-            orm_to_model=lambda node: cast(RemoteData, node).computer.pk,
-            orm_class=Computer,
-        )
+    # `Node` already declares `computer`; `RemoteData` only narrows what it means here, and a
+    # remote path without a computer to reach it on is meaningless, so it is required.
+    _column_fields: t.ClassVar[Sequence[BaseField]] = (
+        ColumnField('computer', Computer, 'The pk of the remote computer on which the data resides'),
+    )
 
     def __init__(self, remote_path: str | None = None, **kwargs):
         super().__init__(**kwargs)

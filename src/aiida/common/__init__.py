@@ -19,6 +19,7 @@
 from .datastructures import *
 from .exceptions import *
 from .extendeddicts import *
+from .fields import *
 from .links import *
 from .log import *
 from .progress_reporter import *
@@ -26,11 +27,14 @@ from .utils import *
 
 __all__ = (
     'AIIDA_LOGGER',
+    'MISSING',
     'TQDM_BAR_FORMAT',
     'AiidaException',
     'AttributeDict',
     'CalcInfo',
     'CalcJobState',
+    'CliArgument',
+    'CliField',
     'ClosedStorage',
     'CodeInfo',
     'CodeRunMode',
@@ -54,6 +58,7 @@ __all__ = (
     'InternalError',
     'InvalidEntryPointTypeError',
     'InvalidOperation',
+    'LayerField',
     'LicensingException',
     'LinkType',
     'LoadingEntryPointError',
@@ -73,6 +78,7 @@ __all__ = (
     'ProfileConfigurationError',
     'ProgressReporterAbstract',
     'RemoteOperationError',
+    'RestApiField',
     'StashMode',
     'StorageBackupError',
     'StorageMigrationError',

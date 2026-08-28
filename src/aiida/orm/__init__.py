@@ -13,6 +13,7 @@
 # fmt: off
 
 from .authinfos import *
+from .columns import *
 from .comments import *
 from .computers import *
 from .entities import *
@@ -21,7 +22,7 @@ from .fields import *
 from .groups import *
 from .logs import *
 from .nodes import *
-from .pydantic import *
+from .qb_fields import *
 from .querybuilder import *
 from .users import *
 from .utils import *
@@ -32,6 +33,7 @@ __all__ = (
     'AbstractCode',
     'AbstractNodeMeta',
     'ArrayData',
+    'AttributeField',
     'AttributeManager',
     'AuthInfo',
     'AutoGroup',
@@ -54,6 +56,7 @@ __all__ = (
     'Data',
     'Dict',
     'Entity',
+    'EntityColumns',
     'EntityExtras',
     'EntityTypes',
     'EnumData',
@@ -81,10 +84,10 @@ __all__ = (
     'OrbitalData',
     'OrderSpecifier',
     'OrmEntityLoader',
-    'OrmModel',
     'PortableCode',
     'ProcessNode',
     'ProjectionData',
+    'QbAttributesField',
     'QbField',
     'QbFieldFilters',
     'QbFields',

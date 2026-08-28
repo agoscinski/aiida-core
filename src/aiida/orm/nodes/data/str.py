@@ -8,7 +8,10 @@
 ###########################################################################
 """`Data` sub class to represent a string value."""
 
-from aiida.orm.pydantic import OrmMetadataField
+import typing as t
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField
 
 from .base import BaseType, to_aiida_type
 
@@ -20,11 +23,7 @@ class Str(BaseType):
 
     _type = str
 
-    class AttributesModel(BaseType.AttributesModel):
-        value: str = OrmMetadataField(
-            title='String value',
-            description='The value of the string',
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (AttributeField('value', str, 'The value of the string'),)
 
 
 @to_aiida_type.register(str)

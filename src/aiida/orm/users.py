@@ -10,13 +10,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, ClassVar
 
 from aiida.common import exceptions
 from aiida.manage import get_manager
 
 from . import entities
-from .pydantic import OrmMetadataField
+from .fields import BaseField, ColumnField
 
 if TYPE_CHECKING:
     from aiida.orm.implementation import StorageBackend
@@ -57,26 +58,12 @@ class User(entities.Entity['BackendUser', UserCollection]):
 
     _CLS_COLLECTION = UserCollection
 
-    class ReadModel(entities.Entity.ReadModel):
-        email: str = OrmMetadataField(
-            description='The user email',
-            examples=['verdi@opera.net'],
-        )
-        first_name: str = OrmMetadataField(
-            '',
-            description='The user first name',
-            examples=['Giuseppe'],
-        )
-        last_name: str = OrmMetadataField(
-            '',
-            description='The user last name',
-            examples=['Verdi'],
-        )
-        institution: str = OrmMetadataField(
-            '',
-            description='The user institution',
-            examples=['Opera National de Paris'],
-        )
+    _column_fields: ClassVar[Sequence[BaseField]] = (
+        ColumnField('email', str, 'The user email', examples=['verdi@opera.net']),
+        ColumnField('first_name', str, 'The user first name', default='', examples=['Giuseppe']),
+        ColumnField('last_name', str, 'The user last name', default='', examples=['Verdi']),
+        ColumnField('institution', str, 'The user institution', default='', examples=['Opera National de Paris']),
+    )
 
     def __init__(
         self,
@@ -130,7 +117,7 @@ class User(entities.Entity['BackendUser', UserCollection]):
 
     @email.setter
     def email(self, email: str) -> None:
-        self._backend_entity.email = email
+        self.base.columns.set('email', email)
 
     @property
     def first_name(self) -> str:
@@ -138,7 +125,7 @@ class User(entities.Entity['BackendUser', UserCollection]):
 
     @first_name.setter
     def first_name(self, first_name: str) -> None:
-        self._backend_entity.first_name = first_name
+        self.base.columns.set('first_name', first_name)
 
     @property
     def last_name(self) -> str:
@@ -146,7 +133,7 @@ class User(entities.Entity['BackendUser', UserCollection]):
 
     @last_name.setter
     def last_name(self, last_name: str) -> None:
-        self._backend_entity.last_name = last_name
+        self.base.columns.set('last_name', last_name)
 
     @property
     def institution(self) -> str:
@@ -154,7 +141,7 @@ class User(entities.Entity['BackendUser', UserCollection]):
 
     @institution.setter
     def institution(self, institution: str) -> None:
-        self._backend_entity.institution = institution
+        self.base.columns.set('institution', institution)
 
     def get_full_name(self) -> str:
         """Return the user full name

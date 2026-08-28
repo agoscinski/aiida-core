@@ -11,8 +11,10 @@
 from __future__ import annotations
 
 import numbers
+import typing as t
+from collections.abc import Sequence
 
-from aiida.orm.pydantic import OrmMetadataField
+from aiida.orm.fields import AttributeField, BaseField
 
 from .base import to_aiida_type
 from .numeric import NumericType
@@ -25,11 +27,7 @@ class Int(NumericType):
 
     _type = int
 
-    class AttributesModel(NumericType.AttributesModel):
-        value: int = OrmMetadataField(
-            title='Integer value',
-            description='The value of the integer',
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (AttributeField('value', int, 'The value of the integer'),)
 
 
 @to_aiida_type.register(numbers.Integral)

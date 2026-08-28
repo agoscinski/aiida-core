@@ -13,12 +13,14 @@
 # fmt: off
 
 from .groups import *
+from .models import *
 from .params import *
 from .utils import *
 
 __all__ = (
     'AbsolutePathParamType',
     'CalculationParamType',
+    'CliModel',
     'CodeParamType',
     'ComputerParamType',
     'ConfigOptionParamType',
@@ -44,6 +46,10 @@ __all__ = (
     'UserParamType',
     'VerdiCommandGroup',
     'WorkflowParamType',
+    'build_cli_model',
+    'cli_deserialize',
+    'cli_fields',
+    'cli_serialize',
     'dbenv',
     'echo_critical',
     'echo_dictionary',

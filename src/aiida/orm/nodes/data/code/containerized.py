@@ -14,10 +14,13 @@ be executed when a calculation job is run with this code.
 
 from __future__ import annotations
 
+import typing as t
 import pathlib
 
 from aiida.common.lang import type_check
-from aiida.orm.pydantic import OrmMetadataField
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField
 
 from .installed import InstalledCode
 
@@ -30,22 +33,23 @@ class ContainerizedCode(InstalledCode):
     _KEY_ATTRIBUTE_ENGINE_COMMAND: str = 'engine_command'
     _KEY_ATTRIBUTE_IMAGE_NAME: str = 'image_name'
 
-    class CommonFields(InstalledCode.CommonFields):
-        engine_command: str = OrmMetadataField(
-            title='Engine command',
-            description='The command to run the container. It must contain the placeholder {image_name} that will be '
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField(
+            'engine_command',
+            str,
+            'The command to run the container. It must contain the placeholder {image_name} that will be '
             'replaced with the `image_name`',
-            short_name='-E',
-        )
-        image_name: str = OrmMetadataField(
-            title='Image name',
-            description='Name of the image container in which to the run the executable',
-            short_name='-I',
-        )
-
-    class AttributesModel(CommonFields, InstalledCode.AttributesModel): ...
-
-    class ConstructorArgsModel(CommonFields, InstalledCode.ConstructorArgsModel): ...
+            cli_prompt='Engine command',
+            cli_short_name='-E',
+        ),
+        AttributeField(
+            'image_name',
+            str,
+            'Name of the image container in which to the run the executable',
+            cli_prompt='Image name',
+            cli_short_name='-I',
+        ),
+    )
 
     def __init__(
         self,

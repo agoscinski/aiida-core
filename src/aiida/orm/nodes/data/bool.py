@@ -8,9 +8,12 @@
 ###########################################################################
 """`Data` sub class to represent a boolean value."""
 
+import typing as t
+from collections.abc import Sequence
+
 import numpy
 
-from aiida.orm.pydantic import OrmMetadataField
+from aiida.orm.fields import AttributeField, BaseField
 
 from .base import BaseType, to_aiida_type
 
@@ -22,11 +25,7 @@ class Bool(BaseType):
 
     _type = bool
 
-    class AttributesModel(BaseType.AttributesModel):
-        value: bool = OrmMetadataField(
-            title='Boolean value',
-            description='The value of the boolean',
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (AttributeField('value', bool, 'The value of the boolean'),)
 
     def __int__(self):
         return int(bool(self))

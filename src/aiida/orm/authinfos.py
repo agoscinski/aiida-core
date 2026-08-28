@@ -10,7 +10,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from aiida.common import exceptions
 from aiida.manage import get_manager
@@ -18,7 +19,7 @@ from aiida.plugins import TransportFactory
 
 from . import entities, users
 from .computers import Computer
-from .pydantic import OrmMetadataField
+from .fields import BaseField, ColumnField
 from .users import User
 
 if TYPE_CHECKING:
@@ -52,29 +53,13 @@ class AuthInfo(entities.Entity['BackendAuthInfo', AuthInfoCollection]):
     _CLS_COLLECTION = AuthInfoCollection
     PROPERTY_WORKDIR = 'workdir'
 
-    class ReadModel(entities.Entity.ReadModel):
-        computer: int = OrmMetadataField(
-            description='The PK of the computer',
-            orm_class=Computer,
-            orm_to_model=lambda auth_info: cast(AuthInfo, auth_info).computer.pk,
-        )
-        user: int = OrmMetadataField(
-            description='The PK of the user',
-            orm_class=User,
-            orm_to_model=lambda auth_info: cast(AuthInfo, auth_info).user.pk,
-        )
-        enabled: bool = OrmMetadataField(
-            True,
-            description='Whether the instance is enabled',
-        )
-        auth_params: dict[str, Any] = OrmMetadataField(
-            default_factory=dict,
-            description='Dictionary of authentication parameters',
-        )
-        metadata: dict[str, Any] = OrmMetadataField(
-            default_factory=dict,
-            description='Dictionary of metadata',
-        )
+    _column_fields: ClassVar[Sequence[BaseField]] = (
+        ColumnField('computer', Computer, 'The PK of the computer'),
+        ColumnField('user', User, 'The PK of the user'),
+        ColumnField('enabled', bool, 'Whether the instance is enabled', default=True),
+        ColumnField('auth_params', dict[str, Any], 'Dictionary of authentication parameters', default_factory=dict),
+        ColumnField('metadata', dict[str, Any], 'Dictionary of metadata', default_factory=dict),
+    )
 
     def __init__(
         self,

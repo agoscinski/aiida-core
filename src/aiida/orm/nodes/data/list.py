@@ -9,12 +9,10 @@
 """`Data` sub class to represent a list."""
 
 import typing as t
-from collections.abc import MutableSequence
+from collections.abc import MutableSequence, Sequence
 from typing import Any
 
-import pydantic as pdt
-
-from aiida.orm.pydantic import OrmMetadataField
+from aiida.orm.fields import AttributeField, BaseField
 
 from .base import to_aiida_type
 from .data import Data
@@ -27,12 +25,10 @@ class List(Data, MutableSequence):
 
     _LIST_KEY = 'list'
 
-    class AttributesModel(Data.AttributesModel):
-        value: list[t.Any] = OrmMetadataField(
-            alias='list',
-            description='Content of the data',
-            validation_alias=pdt.AliasChoices('list', 'value'),
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        # The backend has held this under `list` since long before the field was called `value`.
+        AttributeField('value', list[t.Any], 'Content of the data', alias=_LIST_KEY, default_factory=list),
+    )
 
     def __init__(self, value=None, **kwargs):
         """Initialise a ``List`` node instance.

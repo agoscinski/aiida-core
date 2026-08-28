@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import UUID
 
@@ -20,7 +21,7 @@ from aiida.manage import get_manager
 from aiida.plugins import SchedulerFactory, TransportFactory
 
 from . import entities, users
-from .pydantic import OrmMetadataField
+from .fields import BaseField, ColumnField
 
 if TYPE_CHECKING:
     from aiida.orm import AuthInfo, User
@@ -29,6 +30,36 @@ if TYPE_CHECKING:
     from aiida.transports import Transport
 
 __all__ = ('Computer',)
+
+
+# The declared validators. They wrap the ``Computer._*_validator`` class methods, which raise but
+# return nothing, into the return-the-value shape a declaration needs: a declaration's validator is
+# wired straight into the models a layer builds, where pydantic expects the validated value back.
+
+
+def _validate_label(value: str) -> str:
+    Computer._label_validator(value)
+    return value
+
+
+def _validate_description(value: str) -> str:
+    Computer._description_validator(value)
+    return value
+
+
+def _validate_hostname(value: str) -> str:
+    Computer._hostname_validator(value)
+    return value
+
+
+def _validate_transport_type(value: str) -> str:
+    Computer._transport_type_validator(value)
+    return value
+
+
+def _validate_scheduler_type(value: str) -> str:
+    Computer._scheduler_type_validator(value)
+    return value
 
 
 class ComputerCollection(entities.Collection['Computer']):
@@ -78,39 +109,49 @@ class Computer(entities.Entity['BackendComputer', ComputerCollection]):
 
     _CLS_COLLECTION = ComputerCollection
 
-    class ReadModel(entities.Entity.ReadModel):
-        uuid: UUID = OrmMetadataField(
-            description='The UUID of the computer',
-            read_only=True,
+    _column_fields: ClassVar[Sequence[BaseField]] = (
+        ColumnField(
+            'uuid',
+            UUID,
+            'The UUID of the computer',
+            rest_api_read_only=True,
+            cli_exclude=True,
             examples=['123e4567-e89b-12d3-a456-426614174000'],
-        )
-        label: str = OrmMetadataField(
-            description='Label for the computer',
-            examples=['localhost'],
-        )
-        description: str = OrmMetadataField(
-            '',
-            description='Description of the computer',
+        ),
+        ColumnField('label', str, 'Label for the computer', validator=_validate_label, examples=['localhost']),
+        ColumnField(
+            'description',
+            str,
+            'Description of the computer',
+            default='',
+            validator=_validate_description,
             examples=['My local machine'],
-        )
-        hostname: str = OrmMetadataField(
-            description='Hostname of the computer',
-            examples=['localhost'],
-        )
-        transport_type: str = OrmMetadataField(
-            description='Transport type of the computer',
+        ),
+        ColumnField('hostname', str, 'Hostname of the computer', validator=_validate_hostname, examples=['localhost']),
+        ColumnField(
+            'transport_type',
+            str,
+            'Transport type of the computer',
+            cli_name='transport',
+            validator=_validate_transport_type,
             examples=['core.local'],
-        )
-        scheduler_type: str = OrmMetadataField(
-            description='Scheduler type of the computer',
+        ),
+        ColumnField(
+            'scheduler_type',
+            str,
+            'Scheduler type of the computer',
+            cli_name='scheduler',
+            validator=_validate_scheduler_type,
             examples=['core.direct'],
-        )
-        metadata: dict[str, Any] = OrmMetadataField(
+        ),
+        ColumnField(
+            'metadata',
+            dict[str, Any],
+            'Metadata of the computer',
             default_factory=dict,
-            description='Metadata of the computer',
-            may_be_large=True,
             examples=[{'key': 'value'}],
-        )
+        ),
+    )
 
     def __init__(
         self,
@@ -318,7 +359,7 @@ class Computer(entities.Entity['BackendComputer', ComputerCollection]):
 
         :param value: the label to set.
         """
-        self._backend_entity.set_label(value)
+        self._backend_entity.set_label(self.base.columns.validate('label', value))
 
     @property
     def description(self) -> str:
@@ -334,7 +375,7 @@ class Computer(entities.Entity['BackendComputer', ComputerCollection]):
 
         :param value: the description to set.
         """
-        self._backend_entity.set_description(value)
+        self._backend_entity.set_description(self.base.columns.validate('description', value))
 
     @property
     def hostname(self) -> str:
@@ -350,7 +391,7 @@ class Computer(entities.Entity['BackendComputer', ComputerCollection]):
 
         :param value: the hostname to set.
         """
-        self._backend_entity.set_hostname(value)
+        self._backend_entity.set_hostname(self.base.columns.validate('hostname', value))
 
     @property
     def scheduler_type(self) -> str:
@@ -366,7 +407,7 @@ class Computer(entities.Entity['BackendComputer', ComputerCollection]):
 
         :param value: the scheduler type to set.
         """
-        self._backend_entity.set_scheduler_type(value)
+        self._backend_entity.set_scheduler_type(self.base.columns.validate('scheduler_type', value))
 
     @property
     def transport_type(self) -> str:
@@ -382,7 +423,7 @@ class Computer(entities.Entity['BackendComputer', ComputerCollection]):
 
         :param value: the transport_type to set.
         """
-        self._backend_entity.set_transport_type(value)
+        self._backend_entity.set_transport_type(self.base.columns.validate('transport_type', value))
 
     @property
     def metadata(self) -> dict[str, Any]:

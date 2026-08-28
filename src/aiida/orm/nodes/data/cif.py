@@ -10,11 +10,14 @@
 
 from __future__ import annotations
 
+import typing as t
 import re
 from typing import Literal
 
 from aiida.common.utils import Capturing
-from aiida.orm.pydantic import OrmMetadataField
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField
 
 from .singlefile import SinglefileData
 
@@ -252,26 +255,15 @@ class CifData(SinglefileData):
     _values = None
     _ase = None
 
-    class AttributesModel(SinglefileData.AttributesModel):
-        formulae: list[str] | None = OrmMetadataField(
-            None,
-            description='List of formulae contained in the CIF file',
-        )
-        spacegroup_numbers: list[str] | None = OrmMetadataField(
-            None,
-            description='List of space group numbers of the structure',
-        )
-        md5: str | None = OrmMetadataField(
-            None,
-            description='MD5 checksum of the file contents',
-            read_only=True,
-        )
-        scan_type: Literal['standard', 'flex'] = OrmMetadataField(
-            description='Scan type for parsing with PyCIFRW',
-        )
-        parse_policy: Literal['eager', 'lazy'] = OrmMetadataField(
-            description='Parse policy for parsing with PyCIFRW',
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField('formulae', list[str] | None, 'List of formulae contained in the CIF file', default=None),
+        AttributeField(
+            'spacegroup_numbers', list[str] | None, 'List of space group numbers of the structure', default=None
+        ),
+        AttributeField('md5', str | None, 'MD5 checksum of the file contents', default=None, rest_api_read_only=True),
+        AttributeField('scan_type', Literal['standard', 'flex'], 'Scan type for parsing with PyCIFRW'),
+        AttributeField('parse_policy', Literal['eager', 'lazy'], 'Parse policy for parsing with PyCIFRW'),
+    )
 
     def __init__(self, ase=None, file=None, filename=None, values=None, scan_type=None, parse_policy=None, **kwargs):
         """Construct a new instance and set the contents to that of the file.

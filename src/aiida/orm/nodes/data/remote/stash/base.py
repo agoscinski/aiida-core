@@ -10,7 +10,10 @@
 
 from aiida.common.datastructures import StashMode
 from aiida.common.lang import type_check
-from aiida.orm.pydantic import OrmMetadataField
+import typing as t
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField
 
 from ...data import Data
 
@@ -36,10 +39,9 @@ class RemoteStashData(Data):
 
     _storable = False
 
-    class AttributesModel(Data.AttributesModel):
-        stash_mode: StashMode = OrmMetadataField(
-            description='The mode with which the data was stashed',
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField('stash_mode', StashMode, 'The mode with which the data was stashed'),
+    )
 
     def __init__(self, stash_mode: StashMode, **kwargs):
         """Construct a new instance

@@ -4,7 +4,18 @@
 
 ### New features
 
+- ORM: entities declare what they persist through `AttributeField` and `ColumnField` declarations, collected into `Entity.fields`. A declaration states the type, documentation, default, backend key and an optional `validator` for the stored value.
+- ORM: `entity.base.columns` is the counterpart to `node.base.attributes` for the fixed columns, and is where a declared `validator` runs on a write.
+- CLI/REST: `aiida.cmdline.models` and `aiida.restapi.models` build their pydantic models lazily from the declarations, through the shared `aiida.common.pydantic.build_model`.
+
 ### Behavior changes
+
+- ORM: the eagerly generated pydantic model layer is replaced by the field declarations. Importing `aiida.orm` no longer builds any schemas; a model is generated only when an entity crosses the CLI or REST API boundary.
+- ORM: `Entity.to_model`, `Entity.from_serialized`, `Entity.serialize`, `Entity.Model`, `Entity.ReadModel`, `Entity.WriteModel`, `Node.ConstructorModel`, `Node.CliModel` and the `AttributesModel`/`ConstructorArgsModel` inner classes are removed. `Entity.from_model` remains and accepts a model built by any layer.
+- ORM: `aiida.orm.pydantic` is removed. A plugin declares its fields with `aiida.orm.fields.AttributeField` instead of `OrmMetadataField`.
+- ORM: the seven `QbField` subclasses are replaced by a single `QbField` whose available operators follow from the declared type; the query classes move to `aiida.orm.qb_fields` and stay importable from `aiida.orm.fields`.
+- ORM: the modern code classes no longer inherit the legacy `Code` attributes (`input_plugin`, `is_local`, `local_executable`, `remote_exec_path`), which they never stored.
+- CLI: `verdi code export` no longer writes `filepath_files` for a `PortableCode`; the repository files are still dumped alongside the YAML.
 
 ### Fixes
 

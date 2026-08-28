@@ -6,9 +6,10 @@ import importlib
 import json
 import typing
 
-from pydantic import ConfigDict, WithJsonSchema
 
-from aiida.orm.pydantic import OrmFieldsAsModelDump, OrmMetadataField, OrmModel
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField
 
 from .data import Data
 
@@ -52,42 +53,16 @@ class JsonableData(Data):
     environment, or an ``ImportError`` will be raised.
     """
 
-    class AttributesModel(OrmFieldsAsModelDump, Data.AttributesModel):
-        model_config = ConfigDict(
-            arbitrary_types_allowed=True,
-            extra='allow',
-        )
-
-        the_module: str = OrmMetadataField(
-            title='Module name',
-            alias='@module',
-            description='The module name of the wrapped object',
-            orm_to_model=lambda node: typing.cast(JsonableData, node).the_module,
-        )
-        the_class: str = OrmMetadataField(
-            title='Class name',
-            alias='@class',
-            description='The class name of the wrapped object',
-            orm_to_model=lambda node: typing.cast(JsonableData, node).the_class,
-        )
-
-    class ConstructorArgsModel(OrmModel):
-        model_config = ConfigDict(arbitrary_types_allowed=True)
-
-        obj: typing.Annotated[
-            JsonSerializableProtocol,
-            WithJsonSchema(
-                {
-                    'type': 'object',
-                    'title': 'JSON-serializable object',
-                    'description': 'The JSON-serializable object',
-                }
-            ),
-            OrmMetadataField(
-                description='The JSON-serializable object',
-                write_only=True,
-            ),
-        ]
+    # The wrapped object serialises itself under the MSONable convention, whose keys are not
+    # Python identifiers -- hence the aliases.
+    _attribute_fields: typing.ClassVar[Sequence[BaseField]] = (
+        AttributeField(
+            'the_module', str, 'The module name of the wrapped object', alias='@module', rest_api_read_only=True
+        ),
+        AttributeField(
+            'the_class', str, 'The class name of the wrapped object', alias='@class', rest_api_read_only=True
+        ),
+    )
 
     def __init__(self, obj: JsonSerializableProtocol, *args, **kwargs):
         """Construct the node for the to be wrapped object."""
@@ -201,19 +176,3 @@ class JsonableData(Data):
             self._obj = cls.from_dict(deserialized)
 
             return self._obj
-
-    def to_model_field_values(
-        self,
-        *,
-        context: dict[str, typing.Any] | None = None,
-        minimal: bool = False,
-        schema: type[OrmModel] | None = None,
-    ) -> dict[str, typing.Any]:
-        fields = super().to_model_field_values(
-            context=context,
-            minimal=minimal,
-            schema=schema,
-        )
-        if schema and issubclass(schema, self.WritableFields):
-            fields['attributes'] |= self.obj.as_dict()
-        return fields

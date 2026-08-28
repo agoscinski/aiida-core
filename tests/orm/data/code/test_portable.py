@@ -154,14 +154,15 @@ def test_portablecode_extra_files(tmp_path, chdir_tmp_path):
     code = PortableCode(label='some-label', filepath_executable='bash', filepath_files=filepath_files)
     code.store()
     result, extra_args = code._prepare_yaml()
-    ref_result = f"""label: some-label
+    # `filepath_files` is not a stored field -- it is a directory that becomes repository content
+    # -- so it is not among the declarations the export is built from. The files are still dumped.
+    ref_result = """label: some-label
 description: ''
 use_double_quotes: false
 wrap_cmdline_params: false
 prepend_text: ''
 append_text: ''
 filepath_executable: bash
-filepath_files: {tmp_path}/some-label
 """
 
     assert extra_args == {}

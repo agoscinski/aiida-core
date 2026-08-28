@@ -18,11 +18,12 @@ import itertools
 import json
 import typing as t
 
-from pydantic import field_validator
 
 from aiida.common.constants import elements
 from aiida.common.exceptions import UnsupportedSpeciesError
-from aiida.orm.pydantic import OrmMetadataField
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField
 
 from .data import Data
 
@@ -661,6 +662,16 @@ def atom_kinds_to_html(atom_kind):
     return html_formula
 
 
+def _raw_kinds(value: list[t.Any]) -> list[dict]:
+    """Return the kinds in the raw form the backend stores, accepting `Kind` instances too."""
+    return [kind.get_raw() if isinstance(kind, Kind) else kind for kind in value]
+
+
+def _raw_sites(value: list[t.Any]) -> list[dict]:
+    """Return the sites in the raw form the backend stores, accepting `Site` instances too."""
+    return [site.get_raw() if isinstance(site, Site) else site for site in value]
+
+
 class StructureData(Data):
     """Data class that represents an atomic structure.
 
@@ -688,39 +699,14 @@ class StructureData(Data):
     _dimensionality_label = {0: '', 1: 'length', 2: 'surface', 3: 'volume'}
     _internal_kind_tags = None
 
-    class AttributesModel(Data.AttributesModel):
-        pbc1: bool = OrmMetadataField(
-            False,
-            description='Whether periodic in the a direction',
-        )
-        pbc2: bool = OrmMetadataField(
-            False,
-            description='Whether periodic in the b direction',
-        )
-        pbc3: bool = OrmMetadataField(
-            False,
-            description='Whether periodic in the c direction',
-        )
-        cell: list[list[float]] | None = OrmMetadataField(
-            None,
-            description='The cell parameters',
-        )
-        kinds: list[dict] = OrmMetadataField(
-            description='The kinds of atoms',
-        )
-        sites: list[dict] = OrmMetadataField(
-            description='The atomic sites',
-        )
-
-        @field_validator('kinds', mode='before')
-        @classmethod
-        def _validate_kinds(cls, value: list[Kind | dict[str, t.Any]]) -> list[dict]:
-            return [kind.get_raw() if isinstance(kind, Kind) else kind for kind in value]
-
-        @field_validator('sites', mode='before')
-        @classmethod
-        def _validate_sites(cls, value: list[Site | dict[str, t.Any]]) -> list[dict]:
-            return [site.get_raw() if isinstance(site, Site) else site for site in value]
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField('pbc1', bool, 'Whether periodic in the a direction', default=False),
+        AttributeField('pbc2', bool, 'Whether periodic in the b direction', default=False),
+        AttributeField('pbc3', bool, 'Whether periodic in the c direction', default=False),
+        AttributeField('cell', list[list[float]] | None, 'The cell parameters', default=None),
+        AttributeField('kinds', list[dict], 'The kinds of atoms', validator=_raw_kinds),
+        AttributeField('sites', list[dict], 'The atomic sites', validator=_raw_sites),
+    )
 
     def __init__(
         self,

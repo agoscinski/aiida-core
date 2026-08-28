@@ -10,14 +10,12 @@
 
 from __future__ import annotations
 
-import builtins
 import copy
 import typing as t
 
-import pydantic as pdt
 
 from aiida.common import exceptions
-from aiida.orm.pydantic import OrmFieldsAsModelDump, OrmMetadataField, OrmModel
+
 
 from .base import to_aiida_type
 from .data import Data
@@ -53,17 +51,8 @@ class Dict(Data):
     Finally, all dictionary mutations will be forbidden once the node is stored.
     """
 
-    class AttributesModel(OrmFieldsAsModelDump, Data.AttributesModel):
-        model_config = pdt.ConfigDict(
-            arbitrary_types_allowed=True,
-            extra='allow',
-        )
-
-    class ConstructorArgsModel(OrmModel):
-        value: dict[str, t.Any] = OrmMetadataField(
-            description='The dictionary content',
-            write_only=True,
-        )
+    # Every key a user puts in a `Dict` becomes an attribute, so there is nothing fixed to
+    # declare: the namespace is open by design and the declarations would describe none of it.
 
     def __init__(self, value=None, **kwargs):
         """Initialise a ``Dict`` node instance.
@@ -176,18 +165,6 @@ class Dict(Data):
         from aiida.orm.utils.managers import AttributeManager
 
         return AttributeManager(self)
-
-    def to_model_field_values(
-        self,
-        *,
-        context: builtins.dict[str, t.Any] | None = None,
-        minimal: bool = False,
-        schema: type[OrmModel] | None = None,
-    ) -> builtins.dict[str, t.Any]:
-        fields = super().to_model_field_values(context=context, minimal=minimal, schema=schema)
-        if schema in (self.ReadModel, self.WriteModel):
-            return fields | {'attributes': self.get_dict()}
-        return fields
 
 
 @to_aiida_type.register(dict)

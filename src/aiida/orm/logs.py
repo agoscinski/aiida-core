@@ -11,15 +11,16 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import UUID
 
 from aiida.common import timezone
 from aiida.manage import get_manager
 
 from . import entities
-from .pydantic import OrmMetadataField
+from .fields import BaseField, ColumnField
 
 if TYPE_CHECKING:
     from aiida.orm import Node
@@ -136,39 +137,23 @@ class Log(entities.Entity['BackendLog', LogCollection]):
 
     identity_field = 'uuid'
 
-    class ReadModel(entities.Entity.ReadModel):
-        uuid: UUID = OrmMetadataField(
-            description='The UUID of the node',
-            read_only=True,
+    _column_fields: ClassVar[Sequence[BaseField]] = (
+        ColumnField(
+            'uuid',
+            UUID,
+            'The UUID of the node',
+            rest_api_read_only=True,
             examples=['123e4567-e89b-12d3-a456-426614174000'],
-        )
-        loggername: str = OrmMetadataField(
-            description='The name of the logger',
-            examples=['aiida.node'],
-        )
-        levelname: str = OrmMetadataField(
-            description='The name of the log level',
-            examples=['INFO', 'ERROR'],
-        )
-        message: str = OrmMetadataField(
-            description='The message of the log',
-            examples=['This is a log message.'],
-        )
-        time: datetime = OrmMetadataField(
-            description='The time at which the log was created',
-            examples=['2024-01-01T12:00:00+00:00'],
-        )
-        metadata: dict[str, Any] = OrmMetadataField(
-            default_factory=dict,
-            description='The metadata of the log',
-            examples=[{'key': 'value'}],
-        )
-        node: int = OrmMetadataField(
-            description='Associated node',
-            orm_class='core.node',
-            orm_to_model=lambda log: cast(Log, log).dbnode_id,
-            examples=[42],
-        )
+        ),
+        ColumnField('loggername', str, 'The name of the logger', examples=['aiida.node']),
+        ColumnField('levelname', str, 'The name of the log level', examples=['INFO', 'ERROR']),
+        ColumnField('message', str, 'The message of the log', examples=['This is a log message.']),
+        ColumnField('time', datetime, 'The time at which the log was created', examples=['2024-01-01T12:00:00+00:00']),
+        ColumnField(
+            'metadata', dict[str, Any], 'The metadata of the log', default_factory=dict, examples=[{'key': 'value'}]
+        ),
+        ColumnField('node', 'core.node', 'Associated node', examples=[42]),
+    )
 
     def __init__(
         self,

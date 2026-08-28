@@ -10,9 +10,12 @@
 
 from __future__ import annotations
 
+import typing as t
 from aiida.common.datastructures import StashMode
 from aiida.common.lang import type_check
-from aiida.orm.pydantic import OrmMetadataField
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField
 
 from .base import RemoteStashData
 
@@ -24,13 +27,10 @@ class RemoteStashCustomData(RemoteStashData):
 
     _storable = True
 
-    class AttributesModel(RemoteStashData.AttributesModel):
-        target_basepath: str = OrmMetadataField(
-            description='The the target basepath',
-        )
-        source_list: list[str] = OrmMetadataField(
-            description='The list of source files that were stashed',
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField('target_basepath', str, 'The the target basepath'),
+        AttributeField('source_list', list[str], 'The list of source files that were stashed'),
+    )
 
     def __init__(
         self,

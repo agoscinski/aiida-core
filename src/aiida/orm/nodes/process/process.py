@@ -10,16 +10,20 @@
 
 from __future__ import annotations
 
+import typing as t
+
 import enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from plumpy.process_states import ProcessState
 
 from aiida.common import exceptions
 from aiida.common.lang import classproperty
 from aiida.common.links import LinkType
-from aiida.orm.pydantic import OrmMetadataField
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField
 from aiida.orm.utils.mixins import Sealable
 
 from ..caching import NodeCaching
@@ -191,36 +195,15 @@ class ProcessNode(Sealable, Node):
             cls.PROCESS_STATUS_KEY,
         )
 
-    class AttributesModel(Node.AttributesModel, Sealable.AttributesModel):
-        process_label: str | None = OrmMetadataField(
-            None,
-            description='The process label',
-        )
-        process_state: str | None = OrmMetadataField(
-            None,
-            description='The process state enum',
-        )
-        process_status: str | None = OrmMetadataField(
-            None,
-            description='The process status is a generic status message',
-        )
-        exit_status: int | None = OrmMetadataField(
-            None,
-            description='The process exit status',
-        )
-        exit_message: str | None = OrmMetadataField(
-            None,
-            description='The process exit message',
-        )
-        exception: str | None = OrmMetadataField(
-            None,
-            description='The process exception message',
-        )
-        paused: bool | None = OrmMetadataField(
-            None,
-            description='Whether the process is paused',
-            orm_to_model=lambda node: cast(ProcessNode, node).base.attributes.get('paused', None),
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField('process_label', str | None, 'The process label', default=None),
+        AttributeField('process_state', str | None, 'The process state enum', default=None),
+        AttributeField('process_status', str | None, 'The process status is a generic status message', default=None),
+        AttributeField('exit_status', int | None, 'The process exit status', default=None),
+        AttributeField('exit_message', str | None, 'The process exit message', default=None),
+        AttributeField('exception', str | None, 'The process exception message', default=None),
+        AttributeField('paused', bool | None, 'Whether the process is paused', default=None),
+    )
 
     def set_metadata_inputs(self, value: dict[str, Any]) -> None:
         """Set the mapping of inputs corresponding to ``metadata`` ports that were passed to the process."""

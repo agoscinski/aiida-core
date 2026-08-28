@@ -22,6 +22,42 @@ if t.TYPE_CHECKING:
 __all__ = ('DynamicEntryPointCommandGroup',)
 
 
+def _cli_model(cls: t.Any) -> t.Any:
+    """Return the model whose fields become this command's options, or ``None`` if there is none.
+
+    Two kinds of class end up here. A storage backend states its options as an explicit ``CliModel``
+    of its own, because a profile is not an ORM entity and has no field declarations. An ORM entity
+    has declarations, and its model is built from them here -- when a command is actually invoked,
+    rather than when the ORM is imported, which is the point of moving the models out of it.
+    """
+    from aiida.cmdline.models import build_cli_model
+
+    model_cls = getattr(cls, 'CliModel', None)
+    if model_cls is not None:
+        return model_cls
+    if not getattr(cls, '_field_declarations', None):
+        return None
+    return build_cli_model(cls)
+
+
+def _cli_fields(cls: t.Any) -> dict[str, t.Any]:
+    """Return the CLI's view of each declaration of an entity class, empty for a non-entity."""
+    from aiida.cmdline.models import cli_fields
+
+    if getattr(cls, 'CliModel', None) is not None or not getattr(cls, '_field_declarations', None):
+        return {}
+    return cli_fields(cls)
+
+
+def _cli_values(cls: t.Any, **kwargs: t.Any) -> dict[str, t.Any]:
+    """Return the collected option values, normalised into the form the constructor takes."""
+    from aiida.cmdline.models import cli_values
+
+    if not getattr(cls, '_field_declarations', None):
+        return kwargs
+    return cli_values(cls, **kwargs)
+
+
 class DynamicEntryPointCommandGroup(VerdiCommandGroup):
     """Subclass of :class:`click.Group` that loads subcommands dynamically from entry points.
 
@@ -115,12 +151,12 @@ class DynamicEntryPointCommandGroup(VerdiCommandGroup):
         """Call the ``command`` after validating the provided inputs."""
         from pydantic import ValidationError
 
-        CliModel = getattr(cls, 'CliModel', None)  # noqa: N806
-        if not CliModel:
+        model_cls = _cli_model(cls)
+        if model_cls is None:
             return self._command(ctx, cls, **kwargs)
 
         try:
-            CliModel(**kwargs)
+            model_cls.model_validate(_cli_values(cls, **kwargs))
         except ValidationError as exception:
             param_hint = [
                 f'--{loc.replace("_", "-")}'  # type: ignore[union-attr]
@@ -177,20 +213,22 @@ class DynamicEntryPointCommandGroup(VerdiCommandGroup):
 
         cls = self.factory(entry_point)
 
-        CliModel = getattr(cls, 'CliModel', None)  # noqa: N806
-        if not CliModel:
+        model_cls = _cli_model(cls)
+        if model_cls is None:
             from aiida.common.warnings import warn_deprecation
 
             warn_deprecation(
-                'Relying on `_get_cli_options` is deprecated. The options should be defined through a `CliModel`.',
+                'Relying on `_get_cli_options` is deprecated. The options should be defined through the '
+                '`cli_*` options of the entity field declarations.',
                 version=3,
             )
             options_spec = self.factory(entry_point).get_cli_options()  # type: ignore[union-attr]
             return [self.create_option(*item) for item in options_spec]
 
+        cli_options = _cli_fields(cls)
         options_spec = {}
 
-        for key, field_info in CliModel.model_fields.items():
+        for key, field_info in model_cls.model_fields.items():
             default = field_info.default_factory if field_info.default is PydanticUndefined else field_info.default
 
             # If the annotation has the ``__args__`` attribute it is an instance of a type from ``typing`` and the real
@@ -205,18 +243,29 @@ class DynamicEntryPointCommandGroup(VerdiCommandGroup):
             else:
                 field_type = field_info.annotation
 
+            options = cli_options.get(key)
             options_spec[key] = {
                 'required': field_info.is_required(),
                 'type': field_type,
                 'is_flag': field_type is bool,
-                'prompt': field_info.title,
+                'prompt': options.prompt if options is not None else field_info.title,
                 'default': default,
                 'help': field_info.description,
             }
-            for metadata in field_info.metadata:
-                for metadata_key, metadata_value in metadata.items():
-                    if metadata_key in ('priority', 'short_name', 'option_cls'):
+            if options is not None:
+                for metadata_key, metadata_value in (
+                    ('priority', options.priority),
+                    ('short_name', options.short_name),
+                    ('option_cls', options.option_cls),
+                ):
+                    if metadata_value is not None:
                         options_spec[key][metadata_key] = metadata_value
+            else:
+                # A storage backend states its options as pydantic field metadata instead.
+                for metadata in field_info.metadata:
+                    for metadata_key, metadata_value in metadata.items():
+                        if metadata_key in ('priority', 'short_name', 'option_cls'):
+                            options_spec[key][metadata_key] = metadata_value
 
         options_ordered = []
 

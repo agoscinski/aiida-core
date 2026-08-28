@@ -18,7 +18,9 @@ import typing as t
 
 from aiida.common import exceptions
 from aiida.common.typing import FilePath
-from aiida.orm.pydantic import OrmMetadataField, OrmModel
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField
 
 from .data import Data
 
@@ -30,31 +32,9 @@ class SinglefileData(Data):
 
     DEFAULT_FILENAME = 'file.txt'
 
-    class AttributesModel(Data.AttributesModel):
-        filename: str = OrmMetadataField(
-            description='The name of the stored file',
-            orm_to_model=lambda node: t.cast(SinglefileData, node).filename,
-            read_only=True,
-        )
-
-    class ConstructorArgsModel(OrmModel):
-        filename: str = OrmMetadataField(
-            'file.txt',
-            description='The name of the stored file',
-        )
-        content: str = OrmMetadataField(
-            description='The file content',
-            model_to_orm=lambda model: t.cast(SinglefileData.ConstructorArgsModel, model).content_as_bytes(),
-            write_only=True,
-        )
-
-        def content_as_bytes(self) -> t.IO | None:
-            """Return the content as bytes.
-
-            :return: the content as bytes
-            :raises ValueError: if the content is not set
-            """
-            return io.StringIO(self.content) if self.content else None
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField('filename', str, 'The name of the stored file', rest_api_read_only=True),
+    )
 
     @classmethod
     def from_string(cls, content: str, filename: str | pathlib.Path | None = None, **kwargs: t.Any) -> SinglefileData:

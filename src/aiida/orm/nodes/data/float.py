@@ -9,8 +9,10 @@
 """`Data` sub class to represent a float value."""
 
 import numbers
+import typing as t
+from collections.abc import Sequence
 
-from aiida.orm.pydantic import OrmMetadataField
+from aiida.orm.fields import AttributeField, BaseField
 
 from .base import to_aiida_type
 from .numeric import NumericType
@@ -23,11 +25,7 @@ class Float(NumericType):
 
     _type = float
 
-    class AttributesModel(NumericType.AttributesModel):
-        value: float = OrmMetadataField(
-            title='Float value',
-            description='The value of the float',
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (AttributeField('value', float, 'The value of the float'),)
 
 
 @to_aiida_type.register(numbers.Real)

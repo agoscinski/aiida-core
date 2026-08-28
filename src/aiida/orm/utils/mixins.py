@@ -10,14 +10,16 @@
 
 from __future__ import annotations
 
+import typing as t
+
 import inspect
 
 from aiida.common import exceptions
 from aiida.common.lang import classproperty, override, type_check
 from aiida.common.warnings import warn_deprecation
-from aiida.orm.pydantic import OrmMetadataField
+from collections.abc import Sequence
 
-from ..pydantic import OrmModel
+from aiida.orm.fields import AttributeField, BaseField
 
 
 class FunctionCalculationMixin:
@@ -183,10 +185,9 @@ class Sealable:
 
     SEALED_KEY = 'sealed'
 
-    class AttributesModel(OrmModel):
-        sealed: bool = OrmMetadataField(
-            description='Whether the node is sealed',
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField('sealed', bool, 'Whether the node is sealed', default=False),
+    )
 
     @classproperty
     def _updatable_attributes(cls) -> tuple[str, ...]:  # noqa: N805

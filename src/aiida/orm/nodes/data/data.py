@@ -10,11 +10,14 @@
 
 from __future__ import annotations
 
+import typing as t
+from collections.abc import Sequence
+
 from aiida.common import exceptions
 from aiida.common.lang import override
 from aiida.common.links import LinkType
 from aiida.orm.entities import from_backend_entity
-from aiida.orm.pydantic import OrmMetadataField
+from aiida.orm.fields import AttributeField, BaseField
 
 from ..node import Node
 
@@ -46,11 +49,9 @@ class Data(Node):
     _storable = True
     _unstorable_message = 'storing for this node has been disabled'
 
-    class AttributesModel(Node.AttributesModel):
-        source: dict | None = OrmMetadataField(
-            None,
-            description='Source of the data',
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField('source', dict | None, 'Source of the data', default=None, cli_exclude=True),
+    )
 
     def __init__(self, *args, source=None, **kwargs):
         """Construct a new instance, setting the ``source`` attribute if provided as a keyword argument."""

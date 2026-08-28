@@ -13,7 +13,9 @@ from __future__ import annotations
 import typing as t
 
 from aiida.common.warnings import warn_deprecation
-from aiida.orm.pydantic import OrmMetadataField
+from collections.abc import Sequence
+
+from aiida.orm.fields import AttributeField, BaseField
 
 from .array import ArrayData
 
@@ -30,14 +32,10 @@ class TrajectoryData(ArrayData):
     possibly with velocities).
     """
 
-    class AttributesModel(ArrayData.AttributesModel):
-        symbols: list[str] = OrmMetadataField(
-            description='List of symbols',
-        )
-        pbc: tuple[bool, bool, bool] | None = OrmMetadataField(
-            None,
-            description='Periodic boundary conditions',
-        )
+    _attribute_fields: t.ClassVar[Sequence[BaseField]] = (
+        AttributeField('symbols', list[str], 'List of symbols'),
+        AttributeField('pbc', tuple[bool, bool, bool] | None, 'Periodic boundary conditions', default=None),
+    )
 
     def __init__(self, structurelist: list[StructureData] | None = None, **kwargs: t.Any) -> None:
         super().__init__(**kwargs)

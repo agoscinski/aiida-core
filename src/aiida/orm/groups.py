@@ -26,7 +26,7 @@ from aiida.common.warnings import warn_deprecation
 from aiida.manage import get_manager
 
 from . import convert, entities, extras, users
-from .pydantic import OrmMetadataField
+from .fields import BaseField, ColumnField
 
 if TYPE_CHECKING:
     from importlib_metadata import EntryPoint
@@ -98,11 +98,12 @@ class GroupCollection(entities.Collection['Group']):
         self._backend.groups.delete(pk)
 
 
-class GroupBase:
+class GroupBase(entities.EntityBase):
     """A namespace for group related functionality, that is not directly related to its user-facing properties."""
 
     def __init__(self, group: Group) -> None:
         """Construct a new instance of the base namespace."""
+        super().__init__(group)
         self._group: Group = group
 
     @cached_property
@@ -118,45 +119,39 @@ class Group(entities.Entity['BackendGroup', GroupCollection]):
 
     identity_field = 'uuid'
 
-    class ReadModel(entities.Entity.ReadModel):
-        uuid: UUID = OrmMetadataField(
-            description='The UUID of the group',
-            read_only=True,
+    _column_fields: ClassVar[Sequence[BaseField]] = (
+        ColumnField(
+            'uuid',
+            UUID,
+            'The UUID of the group',
+            rest_api_read_only=True,
             examples=['123e4567-e89b-12d3-a456-426614174000'],
-        )
-        type_string: str = OrmMetadataField(
-            description='The type of the group',
-            read_only=True,
+        ),
+        ColumnField(
+            'type_string',
+            str,
+            'The type of the group',
+            rest_api_read_only=True,
             examples=['my_custom_group_type'],
-        )
-        user: int = OrmMetadataField(
-            description='The PK of the group owner',
-            orm_class='core.user',
-            orm_to_model=lambda group: cast(Group, group).user.pk,
-            read_only=True,
-            examples=[1],
-        )
-        time: datetime.datetime = OrmMetadataField(
-            description='The creation time of the node, defaults to now (timezone-aware)',
-            read_only=True,
+        ),
+        ColumnField('user', 'core.user', 'The PK of the group owner', rest_api_read_only=True, examples=[1]),
+        ColumnField(
+            'time',
+            datetime.datetime,
+            'The creation time of the node, defaults to now (timezone-aware)',
+            rest_api_read_only=True,
             examples=['2024-01-01T12:00:00+00:00'],
-        )
-        label: str = OrmMetadataField(
-            description='The group label',
-            examples=['my_group_label'],
-        )
-        description: str = OrmMetadataField(
-            '',
-            description='The group description',
+        ),
+        ColumnField('label', str, 'The group label', examples=['my_group_label']),
+        ColumnField(
+            'description',
+            str,
+            'The group description',
+            default='',
             examples=['This is my group description.'],
-        )
-        extras: dict[str, Any] = OrmMetadataField(
-            default_factory=dict,
-            description='The group extras',
-            orm_to_model=lambda group: cast(Group, group).base.extras.all,
-            may_be_large=True,
-            examples=[{'key': 'value'}],
-        )
+        ),
+        ColumnField('extras', dict[str, Any], 'The group extras', default_factory=dict, examples=[{'key': 'value'}]),
+    )
 
     _CLS_COLLECTION = GroupCollection
 
