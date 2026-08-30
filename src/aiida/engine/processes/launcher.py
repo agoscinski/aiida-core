@@ -51,6 +51,8 @@ class ProcessLauncher(plumpy.ProcessLauncher):
             return the results
         :param tag: the tag of the checkpoint to continue from
         """
+        from kiwipy import communications
+
         from aiida.common import exceptions
         from aiida.engine.exceptions import PastException
         from aiida.orm import Data, load_node
@@ -83,8 +85,21 @@ class ProcessLauncher(plumpy.ProcessLauncher):
 
             return future.result()
 
+        # Load and restore the process from checkpoint
         try:
-            result = await super()._continue(communicator, pid, nowait, tag)
+            if not self._persister:
+                LOGGER.warning('rejecting task: cannot continue process<%d> because no persister is available', pid)
+                raise communications.TaskRejected('Cannot continue process, no persister')
+
+            saved_state = self._persister.load_checkpoint(pid, tag)
+            process = saved_state.unbundle(self._load_context)
+
+            # If the process was paused but the node is now unpaused (via play_processes),
+            # unpause the process so it can continue execution
+            if process.paused and not node.paused:
+                LOGGER.info('Process<%d> was paused but node is unpaused, playing process', pid)
+                process.play()
+
         except ImportError as exception:
             message = 'the class of the process could not be imported.'
             self.handle_continue_exception(node, exception, message)
@@ -125,6 +140,14 @@ class ProcessLauncher(plumpy.ProcessLauncher):
             message = 'failed to recreate the process instance in order to continue it.'
             self.handle_continue_exception(node, exception, message)
             raise
+
+        # Run the process
+        if nowait:
+            asyncio.ensure_future(process.step_until_terminated())
+            return process.pid
+
+        await process.step_until_terminated()
+        result = process.future().result()
 
         # Ensure that the result is serialized such that communication thread won't have to do database operations
         try:
