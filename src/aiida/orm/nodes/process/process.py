@@ -14,17 +14,15 @@ import enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from plumpy.process_states import ProcessState
-
 from aiida.common import exceptions
 from aiida.common.lang import classproperty
 from aiida.common.links import LinkType
+from aiida.common.processes import ProcessState
+from aiida.orm.nodes.caching import NodeCaching
+from aiida.orm.nodes.links import NodeLinks
+from aiida.orm.nodes.node import Node
 from aiida.orm.pydantic import OrmMetadataField
 from aiida.orm.utils.mixins import Sealable
-
-from ..caching import NodeCaching
-from ..links import NodeLinks
-from ..node import Node
 
 if TYPE_CHECKING:
     from aiida.engine.processes import ExitCode, Process

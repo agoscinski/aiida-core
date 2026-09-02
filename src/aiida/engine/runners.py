@@ -20,19 +20,17 @@ from collections.abc import Callable
 from typing import Any, NamedTuple
 
 import kiwipy
-from plumpy import run_until_complete
-from plumpy.communications import wrap_communicator
-from plumpy.events import get_or_create_event_loop
-from plumpy.persistence import Persister
-from plumpy.process_comms import RemoteProcessThreadController
 
 from aiida.common import exceptions
+from aiida.engine import transports, utils
+from aiida.engine.processes import Process, ProcessBuilder, ProcessState, futures
+from aiida.engine.processes.calcjobs import manager
+from aiida.engine.processes.communications import RemoteProcessThreadController, wrap_communicator
+from aiida.engine.processes.events import get_or_create_event_loop
+from aiida.engine.processes.greenback import run_until_complete
+from aiida.engine.processes.persistence import Persister
 from aiida.orm import ProcessNode, load_node
 from aiida.plugins.utils import PluginVersionProvider
-
-from . import transports, utils
-from .processes import Process, ProcessBuilder, ProcessState, futures
-from .processes.calcjobs import manager
 
 __all__ = ('Runner',)
 
@@ -90,6 +88,7 @@ class Runner:
         self._job_manager = manager.JobManager(self._transport)
         self._persister = persister
         self._plugin_version_provider = PluginVersionProvider()
+        self._process_tasks: set[asyncio.Task[Any]] = set()
 
         if communicator is not None:
             self._communicator = wrap_communicator(communicator, self._loop)
@@ -170,7 +169,7 @@ class Runner:
         self._closed = True
 
     def instantiate_process(self, process: TYPE_RUN_PROCESS, **inputs):
-        from .utils import instantiate_process
+        from aiida.engine.utils import instantiate_process
 
         return instantiate_process(self, process, **inputs)
 
@@ -202,7 +201,9 @@ class Runner:
             process_inited.close()
             self.controller.continue_process(process_inited.pid, nowait=False, no_reply=True)
         else:
-            self.loop.create_task(process_inited.step_until_terminated())
+            task = self.loop.create_task(process_inited.step_until_terminated())
+            self._process_tasks.add(task)
+            task.add_done_callback(self._process_tasks.discard)
 
         return process_inited.node
 
@@ -220,7 +221,9 @@ class Runner:
 
         inputs = utils.prepare_inputs(inputs, **kwargs)
         process_inited = self.instantiate_process(process, **inputs)
-        self.loop.create_task(process_inited.step_until_terminated())
+        task = self.loop.create_task(process_inited.step_until_terminated())
+        self._process_tasks.add(task)
+        task.add_done_callback(self._process_tasks.discard)
         return process_inited.node
 
     def _run(

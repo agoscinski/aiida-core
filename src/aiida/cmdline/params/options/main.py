@@ -16,15 +16,14 @@ import typing as t
 import click
 
 from aiida.brokers.rabbitmq.defaults import BROKER_DEFAULTS
+from aiida.cmdline.params import types
+from aiida.cmdline.params.options.callable import CallableDefaultOption
+from aiida.cmdline.params.options.config import ConfigFileOption
+from aiida.cmdline.params.options.multivalue import MultipleValueOption
+from aiida.cmdline.params.options.overridable import OverridableOption
+from aiida.cmdline.utils import defaults, echo
 from aiida.common.log import LOG_LEVELS, configure_logging
 from aiida.manage.external.postgres import DEFAULT_DBINFO  # type: ignore[attr-defined]
-
-from ...utils import defaults, echo
-from .. import types
-from .callable import CallableDefaultOption
-from .config import ConfigFileOption
-from .multivalue import MultipleValueOption
-from .overridable import OverridableOption
 
 if t.TYPE_CHECKING:
     from click.decorators import FC
@@ -157,7 +156,7 @@ TRAVERSAL_RULE_HELP_STRING = {
 
 def valid_process_states() -> tuple[str, ...]:
     """Return a list of valid values for the ProcessState enum."""
-    from plumpy import ProcessState
+    from aiida.common.processes import ProcessState
 
     return tuple(state.value for state in ProcessState)
 
@@ -171,7 +170,7 @@ def valid_calc_job_states() -> tuple[str, ...]:
 
 def active_process_states() -> list[str]:
     """Return a list of process states that are considered active."""
-    from plumpy import ProcessState
+    from aiida.common.processes import ProcessState
 
     return [
         ProcessState.CREATED.value,

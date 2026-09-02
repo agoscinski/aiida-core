@@ -1,17 +1,19 @@
-"""A sub class of ``plumpy.ProcessLauncher`` to launch a ``Process``."""
+"""Process launcher with AiiDA-specific process-node handling."""
 
 import asyncio
 import logging
 import traceback
 
 import kiwipy
-import plumpy
+
+from aiida.engine.processes.communications import ProcessLauncher as BaseProcessLauncher
+from aiida.engine.processes.exceptions import KilledError
 
 LOGGER = logging.getLogger(__name__)
 
 
-class ProcessLauncher(plumpy.ProcessLauncher):
-    """A sub class of :class:`plumpy.ProcessLauncher` to launch a ``Process``.
+class ProcessLauncher(BaseProcessLauncher):
+    """Subclass of :class:`aiida.engine.processes.communications.ProcessLauncher` for AiiDA processes.
 
     It overrides the _continue method to make sure the node corresponding to the task can be loaded and
     that if it is already marked as terminated, it is not continued but the future is reconstructed and returned
@@ -79,7 +81,7 @@ class ProcessLauncher(plumpy.ProcessLauncher):
             elif node.is_excepted:
                 future.set_exception(PastException(node.exception))
             elif node.is_killed:
-                future.set_exception(plumpy.KilledError())
+                future.set_exception(KilledError())
 
             return future.result()
 

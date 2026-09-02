@@ -12,19 +12,19 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import inspect
 import logging
 from collections.abc import Awaitable, Callable, Iterator
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from plumpy import get_or_create_event_loop
+from aiida.engine.processes.events import get_or_create_event_loop
 
 if TYPE_CHECKING:
+    from aiida.engine.processes import Process, ProcessBuilder
+    from aiida.engine.runners import Runner
     from aiida.orm import ProcessNode
-
-    from .processes import Process, ProcessBuilder
-    from .runners import Runner
 
 __all__ = ('InterruptableFuture', 'interruptable_task', 'is_process_function')
 
@@ -66,7 +66,7 @@ def instantiate_process(runner: Runner, process: Process | type[Process] | Proce
     :param process: Process instance or class, CalcJobNode class or ProcessBuilder instance
     :param inputs: the inputs for the process to be instantiated with
     """
-    from .processes import Process, ProcessBuilder
+    from aiida.engine.processes import Process, ProcessBuilder
 
     if isinstance(process, Process):
         assert not inputs
@@ -92,6 +92,18 @@ def instantiate_process(runner: Runner, process: Process | type[Process] | Proce
 class InterruptableFuture(asyncio.Future):
     """A future that can be interrupted by calling `interrupt`."""
 
+    _task: asyncio.Task[Any] | None = None
+
+    def _retain_task(self, task: asyncio.Task[Any]) -> None:
+        """Retain the task until it completes."""
+        self._task = task
+        task.add_done_callback(self._release_task)
+
+    def _release_task(self, task: asyncio.Task[Any]) -> None:
+        """Release the completed task."""
+        if self._task is task:
+            self._task = None
+
     def interrupt(self, reason: Exception) -> None:
         """This method should be called to interrupt the coroutine represented by this InterruptableFuture."""
         self.set_exception(reason)
@@ -112,12 +124,17 @@ class InterruptableFuture(asyncio.Future):
         :return: The result of the coroutine
         """
         task = asyncio.ensure_future(coro)
-        wait_iter = asyncio.as_completed({self, task})
-        result = await next(wait_iter)
-        if self.done():
-            raise RuntimeError(f"This interruptible future had it's result set unexpectedly to '{result}'")
+        try:
+            wait_iter = asyncio.as_completed({self, task})
+            result = await next(wait_iter)
+            if self.done():
+                raise RuntimeError(f"This interruptible future had it's result set unexpectedly to '{result}'")
 
-        return result
+            return result
+        finally:
+            if not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
 
 
 def interruptable_task(
@@ -152,24 +169,30 @@ def interruptable_task(
             if not future.done():
                 future.set_result(result)
 
-    loop.create_task(execute_coroutine())
+    future._retain_task(loop.create_task(execute_coroutine()))
 
     return future
 
 
 def ensure_coroutine(fct: Callable[..., Any]) -> Callable[..., Awaitable[Any]]:
-    """Ensure that the given function ``fct`` is a coroutine
+    """Return a coroutine function for a callable."""
+    if not callable(fct):
+        # Defensive check: callers can reach this with values loaded from a persisted state
+        msg = 'fct must be callable'  # type: ignore[unreachable]
+        raise TypeError(msg)
 
-    If the passed function is not already a coroutine, it will be made to be a coroutine
-
-    :param fct: the function
-    :returns: the coroutine
-    """
-    if inspect.iscoroutinefunction(fct):
+    # The second check catches instances of a class with an ``async def __call__``
+    if inspect.iscoroutinefunction(fct) or inspect.iscoroutinefunction(fct.__call__):  # type: ignore[operator]
         return fct
 
-    async def wrapper(*args, **kwargs):
-        return fct(*args, **kwargs)
+    if inspect.isclass(fct):
+        fct = fct.__call__
+
+    from aiida.engine.processes.greenback import run_with_portal
+
+    @functools.wraps(fct)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        return await run_with_portal(fct, *args, **kwargs)
 
     return wrapper
 
@@ -242,7 +265,7 @@ def is_process_scoped() -> bool:
 
     :returns: True if the current scope is within a nested process, False otherwise
     """
-    from .processes.process import Process
+    from aiida.engine.processes.process import Process
 
     return Process.current() is not None
 

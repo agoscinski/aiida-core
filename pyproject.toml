@@ -38,8 +38,9 @@ dependencies = [
   'disk-objectstore~=1.5.0',
   'docstring-parser',
   'graphviz~=0.19',
+  'greenback~=1.0',
+  'greenlet>=3.2.4',
   'importlib-metadata~=6.0',
-  'plumpy~=0.26.0',
   'ipython>=7.6',
   'jedi<0.19',
   'jinja2~=3.0',
@@ -297,6 +298,11 @@ tests = [
 tui = [
   'trogon'
 ]
+tutorials = [
+  'aiida-shell>=0.9.0',
+  'aiida-workgraph>=0.9.0',
+  'gsrd>=0.2.0'
+]
 
 [project.scripts]
 runaiida = 'aiida.cmdline.commands.cmd_run:run'
@@ -438,8 +444,6 @@ filterwarnings = [
   'ignore:Identity map already had an identity for .* inside of an event handler within the flush?:sqlalchemy.exc.SAWarning',
   'ignore:The `aiida.orm.nodes.data.upf` module is deprecated.*:aiida.common.warnings.AiidaDeprecationWarning',
   'ignore:The `Code` class is deprecated.*:aiida.common.warnings.AiidaDeprecationWarning',
-  # https://github.com/aiidateam/plumpy/issues/283
-  'ignore:There is no current event loop:DeprecationWarning:plumpy',
   "ignore:'asyncio.[sg]et_event_loop_policy' is deprecated:DeprecationWarning:pytest_asyncio",
   "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning:pytest_asyncio|kiwipy",
   # spglib deprecation
@@ -509,8 +513,12 @@ select = [
   'PLW',  # pylint-warning
   'RUF',  # ruff
   'FLY',  # flynt
-  'NPY201'  # numpy compatibility
+  'NPY201',  # numpy compatibility
+  'TID'  # flake8-tidy-imports
 ]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
 
 # Mark some classes as generic, per https://docs.astral.sh/ruff/settings/#lint_pyflakes_extend-generics
 # Needed due to https://github.com/astral-sh/ruff/issues/9298
@@ -577,6 +585,8 @@ setenv =
 commands =
     sphinx-autobuild \
         --re-ignore build/.* \
+        --re-ignore .*/.aiida-tutorial/.* \
+        --re-ignore .*/tutorials/(results.npz|input.yaml|input_bad.yaml)$ \
         --port 0 --open-browser \
         -n -b {posargs:html} docs/source/ docs/build/{posargs:html}
 

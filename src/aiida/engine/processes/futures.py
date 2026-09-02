@@ -6,13 +6,13 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Futures that can poll or receive broadcasted messages while waiting for a task to be completed."""
+"""Futures for waiting on AiiDA processes."""
 
 import asyncio
 
 import kiwipy
-from plumpy import get_or_create_event_loop
 
+from aiida.engine.processes.events import get_or_create_event_loop
 from aiida.orm import Node, load_node
 
 __all__ = ('ProcessFuture',)
@@ -40,7 +40,7 @@ class ProcessFuture(asyncio.Future):
         :param poll_interval: optional polling interval, if None, polling is not activated.
         :param communicator: optional communicator, if None, will not subscribe to broadcasts.
         """
-        from .process import ProcessState
+        from aiida.engine.processes.process import ProcessState
 
         # create future in specified event loop
         loop = loop if loop is not None else get_or_create_event_loop()
@@ -48,6 +48,7 @@ class ProcessFuture(asyncio.Future):
 
         assert not (poll_interval is None and communicator is None), 'Must poll or have a communicator to use'
 
+        self._polling_task: asyncio.Task[None] | None = None
         node = load_node(pk=pk)
 
         if node.is_terminated:
@@ -70,10 +71,14 @@ class ProcessFuture(asyncio.Future):
 
             # Start polling
             if poll_interval is not None:
-                loop.create_task(self._poll_process(node, poll_interval))
+                self._polling_task = loop.create_task(self._poll_process(node, poll_interval))
 
     def cleanup(self) -> None:
         """Clean up the future by removing broadcast subscribers from the communicator if it still exists."""
+        if self._polling_task is not None:
+            self._polling_task.cancel()
+            self._polling_task = None
+
         if self._communicator is not None:
             self._communicator.remove_broadcast_subscriber(self._broadcast_identifier)
             self._communicator = None

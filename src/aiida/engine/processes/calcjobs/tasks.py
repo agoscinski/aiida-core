@@ -17,28 +17,25 @@ import tempfile
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-import plumpy
-import plumpy.futures
-import plumpy.persistence
-import plumpy.process_states
-
 from aiida.common.datastructures import CalcJobState
 from aiida.common.exceptions import FeatureNotAvailable, StashingError, TransportTaskException
 from aiida.common.folders import SandboxFolder
 from aiida.engine import utils
 from aiida.engine.daemon import execmanager
+from aiida.engine.processes import persistence as process_persistence
+from aiida.engine.processes import state_machine, states
+from aiida.engine.processes.calcjobs.monitors import CalcJobMonitorAction, CalcJobMonitorResult, CalcJobMonitors
 from aiida.engine.processes.exit_code import ExitCode
+from aiida.engine.processes.generic import futures
+from aiida.engine.processes.process import ProcessState
 from aiida.engine.transports import TransportQueue
 from aiida.engine.utils import InterruptableFuture, interruptable_task
 from aiida.manage.configuration import get_config_option
 from aiida.orm.nodes.process.calculation.calcjob import CalcJobNode
 from aiida.schedulers.datastructures import JobState
 
-from ..process import ProcessState
-from .monitors import CalcJobMonitorAction, CalcJobMonitorResult, CalcJobMonitors
-
 if TYPE_CHECKING:
-    from .calcjob import CalcJob
+    from aiida.engine.processes.calcjobs.calcjob import CalcJob
 
 UPLOAD_COMMAND = 'upload'
 SUBMIT_COMMAND = 'submit'
@@ -103,13 +100,13 @@ async def task_upload_job(process: CalcJob, transport_queue: TransportQueue, can
 
     try:
         logger.info(f'scheduled request to upload CalcJob<{node.pk}>')
-        ignore_exceptions = (plumpy.futures.CancelledError, PreSubmitException, plumpy.process_states.Interruption)
+        ignore_exceptions = (futures.CancelledError, PreSubmitException, states.Interruption)
         skip_submit = await utils.exponential_backoff_retry(
             do_upload, initial_interval, max_attempts, logger=node.logger, ignore_exceptions=ignore_exceptions
         )
     except PreSubmitException:
         raise
-    except (plumpy.futures.CancelledError, plumpy.process_states.Interruption):
+    except (futures.CancelledError, states.Interruption):
         raise
     except Exception as exception:
         logger.warning(f'uploading CalcJob<{node.pk}> failed')
@@ -151,11 +148,11 @@ async def task_submit_job(node: CalcJobNode, transport_queue: TransportQueue, ca
 
     try:
         logger.info(f'scheduled request to submit CalcJob<{node.pk}>')
-        ignore_exceptions = (plumpy.futures.CancelledError, plumpy.process_states.Interruption)
+        ignore_exceptions = (futures.CancelledError, states.Interruption)
         result = await utils.exponential_backoff_retry(
             do_submit, initial_interval, max_attempts, logger=node.logger, ignore_exceptions=ignore_exceptions
         )
-    except (plumpy.futures.CancelledError, plumpy.process_states.Interruption):
+    except (futures.CancelledError, states.Interruption):
         raise
     except Exception as exception:
         logger.warning(f'submitting CalcJob<{node.pk}> failed')
@@ -209,11 +206,11 @@ async def task_update_job(node: CalcJobNode, job_manager, cancellable: Interrupt
 
     try:
         logger.info(f'scheduled request to update CalcJob<{node.pk}>')
-        ignore_exceptions = (plumpy.futures.CancelledError, plumpy.process_states.Interruption)
+        ignore_exceptions = (futures.CancelledError, states.Interruption)
         job_done = await utils.exponential_backoff_retry(
             do_update, initial_interval, max_attempts, logger=node.logger, ignore_exceptions=ignore_exceptions
         )
-    except (plumpy.futures.CancelledError, plumpy.process_states.Interruption):
+    except (futures.CancelledError, states.Interruption):
         raise
     except Exception as exception:
         logger.warning(f'updating CalcJob<{node.pk}> failed')
@@ -259,11 +256,11 @@ async def task_monitor_job(
 
     try:
         logger.info(f'scheduled request to monitor CalcJob<{node.pk}>')
-        ignore_exceptions = (plumpy.futures.CancelledError, plumpy.process_states.Interruption)
+        ignore_exceptions = (futures.CancelledError, states.Interruption)
         monitor_result = await utils.exponential_backoff_retry(
             do_monitor, initial_interval, max_attempts, logger=node.logger, ignore_exceptions=ignore_exceptions
         )
-    except (plumpy.futures.CancelledError, plumpy.process_states.Interruption):
+    except (futures.CancelledError, states.Interruption):
         raise
     except Exception as exception:
         logger.warning(f'monitoring CalcJob<{node.pk}> failed')
@@ -328,11 +325,11 @@ async def task_retrieve_job(
 
     try:
         logger.info(f'scheduled request to retrieve CalcJob<{node.pk}>')
-        ignore_exceptions = (plumpy.futures.CancelledError, plumpy.process_states.Interruption)
+        ignore_exceptions = (futures.CancelledError, states.Interruption)
         result = await utils.exponential_backoff_retry(
             do_retrieve, initial_interval, max_attempts, logger=node.logger, ignore_exceptions=ignore_exceptions
         )
-    except (plumpy.futures.CancelledError, plumpy.process_states.Interruption):
+    except (futures.CancelledError, states.Interruption):
         raise
     except Exception as exception:
         logger.warning(f'retrieving CalcJob<{node.pk}> failed')
@@ -379,9 +376,9 @@ async def task_stash_job(node: CalcJobNode, transport_queue: TransportQueue, can
             initial_interval,
             max_attempts,
             logger=node.logger,
-            ignore_exceptions=(plumpy.process_states.Interruption, StashingError),
+            ignore_exceptions=(states.Interruption, StashingError),
         )
-    except plumpy.process_states.Interruption:
+    except states.Interruption:
         raise
     except StashingError as exception:
         # Log to the node so the failure shows up in ``verdi process report``, then re-raise so the ``Waiting`` state
@@ -420,9 +417,9 @@ async def task_unstash_job(node: CalcJobNode, transport_queue: TransportQueue, c
             initial_interval,
             max_attempts,
             logger=node.logger,
-            ignore_exceptions=plumpy.process_states.Interruption,
+            ignore_exceptions=states.Interruption,
         )
-    except plumpy.process_states.Interruption:
+    except states.Interruption:
         raise
     except Exception as exception:
         logger.warning(f'unstashing calculation<{node.pk}> failed')
@@ -464,7 +461,7 @@ async def task_kill_job(node: CalcJobNode, transport_queue: TransportQueue, canc
     try:
         logger.info(f'scheduled request to kill CalcJob<{node.pk}>')
         result = await utils.exponential_backoff_retry(do_kill, initial_interval, max_attempts, logger=node.logger)
-    except plumpy.process_states.Interruption:
+    except states.Interruption:
         raise
     except Exception as exception:
         logger.warning(f'killing CalcJob<{node.pk}> failed')
@@ -475,8 +472,8 @@ async def task_kill_job(node: CalcJobNode, transport_queue: TransportQueue, canc
         return result
 
 
-@plumpy.persistence.auto_persist('msg', 'data', '_command', '_monitor_result')
-class Waiting(plumpy.process_states.Waiting):
+@process_persistence.auto_persist('msg', 'data', '_command', '_monitor_result')
+class Waiting(states.Waiting):
     """The waiting state for the `CalcJob` process."""
 
     def __init__(
@@ -489,7 +486,7 @@ class Waiting(plumpy.process_states.Waiting):
         """:param process: The process this state belongs to"""
         super().__init__(process, done_callback, msg, data)
         self._task: InterruptableFuture | None = None
-        self._killing: plumpy.futures.Future | None = None
+        self._killing: futures.Future | None = None
         self._command: str | None = None
         self._monitor_result: CalcJobMonitorResult | None = None
         self._monitors: CalcJobMonitors | None = None
@@ -524,9 +521,9 @@ class Waiting(plumpy.process_states.Waiting):
         self._task = None
         self._killing = None
 
-    async def execute(self) -> plumpy.process_states.State | plumpy.base.state_machine.State:  # type: ignore[override]
+    async def execute(self) -> states.State | state_machine.State:  # type: ignore[override]
         """Override the execute coroutine of the base `Waiting` state.
-        Using the plumpy state machine the waiting state is repeatedly re-entered with different commands.
+        The process state machine repeatedly re-enters the waiting state with different commands.
         The waiting state is not always the same instance, it could be re-instantiated when re-entering this method,
         therefor any newly created attribute in each command block
         (e.g. `SUBMIT_COMMAND`, `UPLOAD_COMMAND`, etc.) will be lost, and is not usable in other blocks.
@@ -551,7 +548,7 @@ class Waiting(plumpy.process_states.Waiting):
 
         node = self.process.node
         transport_queue = self.process.runner.transport
-        result: plumpy.process_states.State = self
+        result: states.State = self
 
         process_status = f'Waiting for transport task: {self._command}'
         node.set_process_status(process_status)
@@ -627,17 +624,17 @@ class Waiting(plumpy.process_states.Waiting):
                 raise RuntimeError('Unknown waiting command')
 
         except TransportTaskException as exception:
-            raise plumpy.process_states.PauseInterruption(f'Pausing after failed transport task: {exception}')
+            raise states.PauseInterruption(f'Pausing after failed transport task: {exception}')
         except StashingError as exception:
             exit_code = self.process.exit_codes.ERROR_STASHING_FAILED.format(message=str(exception))
             return self.create_state(ProcessState.RUNNING, self.process.terminate, exit_code)
-        except plumpy.process_states.KillInterruption as exception:
+        except states.KillInterruption as exception:
             node.set_process_status(str(exception))
             return self.retrieve(monitor_result=self._monitor_result)
-        except (plumpy.futures.CancelledError, asyncio.CancelledError):
+        except (futures.CancelledError, asyncio.CancelledError):
             node.set_process_status(f'Transport task {self._command} was cancelled')
             raise
-        except plumpy.process_states.Interruption:
+        except states.Interruption:
             node.set_process_status(f'Transport task {self._command} was interrupted')
             raise
         else:
@@ -731,9 +728,7 @@ class Waiting(plumpy.process_states.Waiting):
             ProcessState.WAITING, None, msg=msg, data={'command': RETRIEVE_COMMAND, 'monitor_result': monitor_result}
         )
 
-    def parse(
-        self, retrieved_temporary_folder: str, exit_code: ExitCode | None = None
-    ) -> plumpy.process_states.Running:
+    def parse(self, retrieved_temporary_folder: str, exit_code: ExitCode | None = None) -> states.Running:
         """Return the `Running` state that will parse the `CalcJob`.
 
         :param retrieved_temporary_folder: temporary folder used in retrieving that can be used during parsing.
@@ -742,14 +737,14 @@ class Waiting(plumpy.process_states.Waiting):
             ProcessState.RUNNING, self.process.parse, retrieved_temporary_folder, exit_code
         )
 
-    def interrupt(self, reason: Any) -> plumpy.futures.Future | None:  # type: ignore[override]
+    def interrupt(self, reason: Any) -> futures.Future | None:  # type: ignore[override]
         """Interrupt the `Waiting` state by calling interrupt on the transport task `InterruptableFuture`."""
         if self._task is not None:
             self._task.interrupt(reason)
 
-        if isinstance(reason, plumpy.process_states.KillInterruption):
+        if isinstance(reason, states.KillInterruption):
             if self._killing is None:
-                self._killing = plumpy.futures.Future()
+                self._killing = futures.Future()
             return self._killing
 
         return None

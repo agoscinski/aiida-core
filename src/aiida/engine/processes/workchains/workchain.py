@@ -15,23 +15,21 @@ import functools
 import logging
 import typing as t
 
-from plumpy import run_with_portal
-from plumpy.persistence import auto_persist
-from plumpy.process_states import Continue, Wait
-from plumpy.processes import ProcessStateMachineMeta
-from plumpy.workchains import Stepper, _PropagateReturn, if_, return_, while_
-from plumpy.workchains import WorkChainSpec as PlumpyWorkChainSpec
-
 from aiida.common import exceptions
 from aiida.common.extendeddicts import AttributeDict
 from aiida.common.lang import override
+from aiida.engine.processes.exit_code import ExitCode
+from aiida.engine.processes.generic.process import ProcessStateMachineMeta
+from aiida.engine.processes.greenback import run_with_portal
+from aiida.engine.processes.persistence import auto_persist
+from aiida.engine.processes.process import Process, ProcessState
+from aiida.engine.processes.process_spec import ProcessSpec
+from aiida.engine.processes.states import Continue, Wait
+from aiida.engine.processes.workchains.awaitable import Awaitable, AwaitableAction, AwaitableTarget, construct_awaitable
+from aiida.engine.processes.workchains.outline import Stepper, _PropagateReturn, if_, return_, while_
+from aiida.engine.processes.workchains.outline import WorkChainSpec as ProcessWorkChainSpec
 from aiida.orm import Node, ProcessNode, WorkChainNode
 from aiida.orm.utils import load_node
-
-from ..exit_code import ExitCode
-from ..process import Process, ProcessState
-from ..process_spec import ProcessSpec
-from .awaitable import Awaitable, AwaitableAction, AwaitableTarget, construct_awaitable
 
 if t.TYPE_CHECKING:
     from aiida.engine.runners import Runner
@@ -39,7 +37,7 @@ if t.TYPE_CHECKING:
 __all__ = ('WorkChain', 'if_', 'return_', 'while_')
 
 
-class WorkChainSpec(ProcessSpec, PlumpyWorkChainSpec):
+class WorkChainSpec(ProcessSpec, ProcessWorkChainSpec):
     pass
 
 
@@ -68,7 +66,11 @@ class Protect(ProcessStateMachineMeta):
         :raises RuntimeError: If the new class defines (i.e. overrides) a method that was decorated with ``final``.
         """
         private = {
-            key for base in bases for key, value in vars(base).items() if callable(value) and mcs.__is_final(value)
+            key
+            for base in bases
+            for parent in base.__mro__
+            for key, value in vars(parent).items()
+            if callable(value) and mcs.__is_final(value)
         }
         for key in namespace:
             if key in private:
@@ -153,7 +155,7 @@ class WorkChain(Process, metaclass=Protect):
         :param out_state: state to save in
 
         :param save_context:
-        :type save_context: :class:`!plumpy.persistence.LoadSaveContext`
+        :type save_context: :class:`!aiida.engine.processes.persistence.LoadSaveContext`
 
         """
         super().save_instance_state(out_state, save_context)
@@ -174,7 +176,7 @@ class WorkChain(Process, metaclass=Protect):
         self._stepper = None
         stepper_state = saved_state.get(self._STEPPER_STATE, None)
         if stepper_state is not None:
-            self._stepper = self.spec().get_outline().recreate_stepper(stepper_state, self)  # type: ignore[arg-type]
+            self._stepper = self.spec().get_outline().recreate_stepper(stepper_state, self)
 
         self.set_logger(self.node.logger)
 
@@ -298,8 +300,14 @@ class WorkChain(Process, metaclass=Protect):
 
     @override
     @Protect.final
+    async def step(self) -> None:
+        """Advance the process state machine by one step."""
+        await super().step()
+
+    @override
+    @Protect.final
     async def run(self) -> t.Any:
-        self._stepper = self.spec().get_outline().create_stepper(self)  # type: ignore[arg-type]
+        self._stepper = self.spec().get_outline().create_stepper(self)
         return await run_with_portal(self._do_step)
 
     def _do_step(self) -> t.Any:
@@ -310,7 +318,7 @@ class WorkChain(Process, metaclass=Protect):
         will enter in the Wait state, otherwise it will go to Continue. When the stepper returns that it is done, the
         stepper result will be converted to None and returned, unless it is an integer or instance of ExitCode.
         """
-        from .context import ToContext
+        from aiida.engine.processes.workchains.context import ToContext
 
         self._awaitables = []
         result: t.Any = None

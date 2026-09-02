@@ -26,33 +26,32 @@ from typing import (
 )
 from uuid import UUID
 
-import plumpy.exceptions
-import plumpy.futures
-import plumpy.persistence
-import plumpy.processes
+from aio_pika.exceptions import ConnectionClosed
 from kiwipy.communications import UnroutableError
-from plumpy import run_until_complete
-from plumpy.process_states import Finished, ProcessState
-from plumpy.processes import ConnectionClosed  # type: ignore[attr-defined]
-from plumpy.processes import Process as PlumpyProcess
-from plumpy.utils import AttributesFrozendict
 
 from aiida import orm
 from aiida.common import exceptions
-from aiida.common.extendeddicts import AttributeDict
+from aiida.common.extendeddicts import AttributeDict, AttributesFrozendict
 from aiida.common.lang import classproperty, override
 from aiida.common.links import LinkType
 from aiida.common.log import LOG_LEVEL_REPORT
+from aiida.common.processes import ProcessState
+from aiida.engine.processes import exceptions as process_exceptions
+from aiida.engine.processes import persistence as process_persistence
+from aiida.engine.processes import states as process_states
+from aiida.engine.processes.builder import ProcessBuilder
+from aiida.engine.processes.exit_code import ExitCode, ExitCodesNamespace
+from aiida.engine.processes.generic import futures
+from aiida.engine.processes.generic.process import Process as ProcessBase
+from aiida.engine.processes.greenback import run_until_complete
+from aiida.engine.processes.ports import PORT_NAMESPACE_SEPARATOR, InputPort, OutputPort, PortNamespace
+from aiida.engine.processes.process_spec import ProcessSpec
+from aiida.engine.processes.states import Finished
+from aiida.engine.processes.utils import prune_mapping
 from aiida.engine.utils import InterruptableFuture
 from aiida.orm.implementation.utils import clean_value
 from aiida.orm.nodes.process.calculation.calcjob import CalcJobNode
 from aiida.orm.utils import serialize
-
-from .builder import ProcessBuilder
-from .exit_code import ExitCode, ExitCodesNamespace
-from .ports import PORT_NAMESPACE_SEPARATOR, InputPort, OutputPort, PortNamespace
-from .process_spec import ProcessSpec
-from .utils import prune_mapping
 
 if TYPE_CHECKING:
     from aiida.engine.runners import Runner
@@ -60,8 +59,8 @@ if TYPE_CHECKING:
 __all__ = ('Process', 'ProcessState')
 
 
-@plumpy.persistence.auto_persist('_parent_pid', '_enable_persistence')
-class Process(PlumpyProcess):
+@process_persistence.auto_persist('_parent_pid', '_enable_persistence')
+class Process(ProcessBase):
     """This class represents an AiiDA process which can be executed and will
     have full provenance saved in the database.
     """
@@ -268,7 +267,7 @@ class Process(PlumpyProcess):
                 return None
             try:
                 self.runner.persister.save_checkpoint(self)
-            except plumpy.exceptions.PersistenceError:
+            except process_exceptions.PersistenceError:
                 self.logger.exception(
                     'Exception trying to save checkpoint, this means you will '
                     'not be able to restart in case of a crash until the next successful checkpoint.'
@@ -276,11 +275,11 @@ class Process(PlumpyProcess):
 
     @override
     def save_instance_state(
-        self, out_state: MutableMapping[str, Any], save_context: plumpy.persistence.LoadSaveContext | None
+        self, out_state: MutableMapping[str, Any], save_context: process_persistence.LoadSaveContext
     ) -> None:
         """Save instance state.
 
-        See documentation of :meth:`!plumpy.processes.Process.save_instance_state`.
+        See documentation of :meth:`!ProcessBase.save_instance_state`.
         """
         super().save_instance_state(out_state, save_context)
 
@@ -298,7 +297,7 @@ class Process(PlumpyProcess):
 
     @override
     def load_instance_state(
-        self, saved_state: MutableMapping[str, Any], load_context: plumpy.persistence.LoadSaveContext
+        self, saved_state: MutableMapping[str, Any], load_context: process_persistence.LoadSaveContext | None
     ) -> None:
         """Load instance state.
 
@@ -308,6 +307,7 @@ class Process(PlumpyProcess):
         """
         from aiida.manage import manager
 
+        load_context = load_context or process_persistence.LoadSaveContext()
         if 'runner' in load_context:
             self._runner = load_context.runner
         else:
@@ -324,7 +324,7 @@ class Process(PlumpyProcess):
 
         self.node.logger.info(f'Loaded process<{self.node.pk}> from saved state')
 
-    def kill(self, msg_text: str | None = None, force_kill: bool = False) -> bool | plumpy.futures.Future:
+    def kill(self, msg_text: str | None = None, force_kill: bool = False) -> bool | futures.Future:
         """Kill the process and all the children calculations it called
 
         :param msg: message
@@ -348,7 +348,7 @@ class Process(PlumpyProcess):
                 self._cancelling_scheduler_job.cancel()
                 self.node.logger.report('Found active scheduler job cancelation that will be rescheduled.')
 
-            from .calcjobs.tasks import task_kill_job
+            from aiida.engine.processes.calcjobs.tasks import task_kill_job
 
             coro = self._launch_task(task_kill_job, self.node, self.runner.transport)
             self._cancelling_scheduler_job = asyncio.create_task(coro)
@@ -385,10 +385,10 @@ class Process(PlumpyProcess):
 
             if killing:
                 # We are waiting for things to be killed, so return the 'gathered' future
-                kill_future = plumpy.futures.gather(*killing)
+                kill_future = futures.gather(*killing)
                 result = self.loop.create_future()
 
-                def done(done_future: plumpy.futures.Future):
+                def done(done_future: futures.Future):
                     is_all_killed = all(done_future.result())
                     result.set_result(is_all_killed)
 
@@ -411,6 +411,18 @@ class Process(PlumpyProcess):
             return result
         finally:
             self._task = None
+
+    @override
+    async def step_until_terminated(self) -> None:
+        """Keep a greenback portal open for as long as this process is being stepped.
+
+        Ensuring the portal here covers every way a process is driven, including the continuation tasks that the
+        broker creates and that never pass through the runner.
+        """
+        from aiida.engine.processes.greenback import ensure_portal
+
+        await ensure_portal()
+        await super().step_until_terminated()
 
     @override
     def out(self, output_port: str, value: Any = None) -> None:
@@ -451,10 +463,8 @@ class Process(PlumpyProcess):
         self._pid = self._create_and_setup_db_record()
 
     @override
-    def on_entered(self, from_state: plumpy.process_states.State | None) -> None:
+    def on_entered(self, from_state: process_states.State | None) -> None:
         """After entering a new state, save a checkpoint and update the latest process state change timestamp."""
-        from plumpy import ProcessState
-
         from aiida.engine.utils import set_process_state_change_timestamp
 
         if self._state.LABEL is ProcessState.EXCEPTED:
