@@ -879,6 +879,7 @@ def run_cli_command_runner(command, parameters, user_input, initialize_ctx_obj, 
     """Run CLI command through ``click.testing.CliRunner``."""
     from click.testing import CliRunner
 
+    from aiida import get_profile
     from aiida.cmdline.commands import cmd_verdi
     from aiida.cmdline.commands.cmd_verdi import VerdiCommandGroup
     from aiida.cmdline.groups.verdi import LazyVerdiObjAttributeDict
@@ -895,6 +896,8 @@ def run_cli_command_runner(command, parameters, user_input, initialize_ctx_obj, 
     command_map = cli_command_map()
 
     if command in command_map:
+        # ``-v/--verbosity`` is a top level option of ``verdi``, but is also added to every sub command by the
+        # ``VerdiCommandGroup``. To preserve the semantics of a real invocation, move it in front of the sub command.
         top_level_parameters = []
         remaining_parameters = []
         iterator = iter(parameters)
@@ -905,6 +908,16 @@ def run_cli_command_runner(command, parameters, user_input, initialize_ctx_obj, 
                 top_level_parameters.append(next(iterator))
             else:
                 remaining_parameters.append(parameter)
+
+        # The top level ``-p/--profile`` option falls back to the default profile of the configuration and *loads* it,
+        # which would silently switch away from the profile that the test has loaded. Pass the loaded profile
+        # explicitly, just like ``run_cli_command_subprocess`` does, unless the invocation already asked for a specific
+        # profile or the loaded profile is not even defined in the configuration that is being used.
+        profile = get_profile()
+        top_level_profile_given = command is cmd_verdi.verdi and {'-p', '--profile'}.intersection(parameters)
+
+        if profile is not None and not top_level_profile_given and profile.name in get_config().profile_names:
+            top_level_parameters[:0] = ['-p', profile.name]
 
         parameters = top_level_parameters + command_map[command][1:] + remaining_parameters
         command = cmd_verdi.verdi
