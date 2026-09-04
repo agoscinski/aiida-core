@@ -144,7 +144,7 @@ class Manager:
 
         # Check whether a development version is being run. Note that needs to be called after ``configure_logging``
         # because this function relies on the logging being properly configured for the warning to show.
-        self.check_version()
+        self._check_version()
         self._setup_event_loop_in_ipython()
 
         return self._profile
@@ -523,6 +523,10 @@ class Manager:
         a release use a post release number, appending `.post0`. This method prints a warning whenever the currently
         installed version is such a development or post release and not an actual release.
         """
+        self.load_profile()
+        self._check_version()
+
+    def _check_version(self) -> None:
         from packaging.version import parse
 
         from aiida import __version__
