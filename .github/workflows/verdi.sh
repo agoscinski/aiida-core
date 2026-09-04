@@ -21,7 +21,7 @@ iteration=0
 while true; do
 
     iteration=$((iteration+1))
-    load_time=$(/usr/bin/time -q -f "%e" $VERDI -h 2>&1 > /dev/null)
+    load_time=$(/usr/bin/time -q -f "%e" $VERDI profile -h 2>&1 > /dev/null)
 
     if (( $(echo "$load_time < $LOAD_LIMIT" | bc -l) )); then
         echo "SUCCESS: loading time $load_time at iteration $iteration below $LOAD_LIMIT"
