@@ -879,6 +879,7 @@ def run_cli_command_runner(command, parameters, user_input, initialize_ctx_obj, 
     """Run CLI command through ``click.testing.CliRunner``."""
     from click.testing import CliRunner
 
+    from aiida.cmdline.commands import cmd_verdi
     from aiida.cmdline.commands.cmd_verdi import VerdiCommandGroup
     from aiida.cmdline.groups.verdi import LazyVerdiObjAttributeDict
 
@@ -891,10 +892,27 @@ def run_cli_command_runner(command, parameters, user_input, initialize_ctx_obj, 
     else:
         obj = None
 
-    # We need to apply the ``VERBOSITY`` option. When invoked through the command line, this is done by the logic of the
-    # ``VerdiCommandGroup``, but when testing commands, the command is retrieved directly from the module which
-    # circumvents this machinery.
-    command = VerdiCommandGroup.add_verbosity_option(command)
+    command_map = cli_command_map()
+
+    if command in command_map:
+        top_level_parameters = []
+        remaining_parameters = []
+        iterator = iter(parameters)
+
+        for parameter in iterator:
+            if parameter in ('-v', '--verbosity'):
+                top_level_parameters.append(parameter)
+                top_level_parameters.append(next(iterator))
+            else:
+                remaining_parameters.append(parameter)
+
+        parameters = top_level_parameters + command_map[command][1:] + remaining_parameters
+        command = cmd_verdi.verdi
+    else:
+        # We need to apply the ``VERBOSITY`` option. When invoked through the command line, this is done by the logic
+        # of the ``VerdiCommandGroup``, but when testing standalone commands, the command is retrieved directly from
+        # the module which circumvents this machinery.
+        command = VerdiCommandGroup.add_verbosity_option(command)
 
     try:
         runner = CliRunner(mix_stderr=False)
