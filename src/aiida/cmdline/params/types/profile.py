@@ -75,7 +75,12 @@ class ProfileParamType(LabelStringType):
                 self.fail(str(f'the profile `{value}` already exists'))
 
         if self._load_profile:
-            load_profile(profile.name)
+            # Use the profile returned by ``load_profile``, which is the instance that is loaded in the manager and
+            # therefore the one that the storage backend references. In an actual CLI invocation these are the same
+            # instance, but when a profile is already loaded in the manager (e.g. in test sessions) the profile from
+            # the configuration can be a different object, which would cause the command to operate on a profile that
+            # is not the one that is loaded.
+            profile = load_profile(profile.name)
 
         ctx.obj.profile = profile  # type: ignore[union-attr]
 
