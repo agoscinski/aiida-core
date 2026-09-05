@@ -916,10 +916,16 @@ def run_cli_command_runner(command, parameters, user_input, initialize_ctx_obj, 
         # explicitly, just like ``run_cli_command_subprocess`` does, unless the invocation already asked for a specific
         # profile or the loaded profile is not defined in the configuration that is being used. When the context object
         # is not initialized, the configuration should not be accessed at all, since that is precisely what such a
-        # test simulates to be absent or broken.
+        # test simulates to be absent or broken. An invocation without a sub command is left untouched, because
+        # providing the profile option there changes the behaviour of click for a group without arguments.
         top_level_profile_given = command is cmd_verdi.verdi and {'-p', '--profile'}.intersection(parameters)
 
-        if profile is not None and not top_level_profile_given and profile.name in config.profile_names:
+        if (
+            profile is not None
+            and not top_level_profile_given
+            and profile.name in config.profile_names
+            and remaining_parameters
+        ):
             top_level_parameters[:0] = ['-p', profile.name]
 
         parameters = top_level_parameters + command_map[command][1:] + remaining_parameters

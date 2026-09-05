@@ -171,10 +171,11 @@ def test_presto_profile_name_exists(run_cli_command, config_with_profile_factory
     options = ['--non-interactive', '--use-postgres', '--profile-name', profile_name]
     result = run_cli_command(verdi_presto, options, raises=True)
     # Matching for the complete literal output as a way to test that nothing else of the command was run, such as
-    # configuring the broker or creating a database for PostgreSQL
+    # configuring the broker or creating a database for PostgreSQL. The command is invoked through the top level
+    # ``verdi`` command, so the usage header reflects that name.
     assert result.output == textwrap.dedent("""\
-        Usage: presto [OPTIONS]
-        Try 'presto --help' for help.
+        Usage: verdi presto [OPTIONS]
+        Try 'verdi presto --help' for help.
 
         Error: Invalid value for --profile-name: The profile `custom-presto` already exists.
         """)
