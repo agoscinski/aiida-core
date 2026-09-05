@@ -879,8 +879,11 @@ def run_cli_command_runner(command, parameters, user_input, initialize_ctx_obj, 
     """Run CLI command through ``click.testing.CliRunner``."""
     from click.testing import CliRunner
 
+    from aiida.cmdline.commands import cmd_verdi
     from aiida.cmdline.commands.cmd_verdi import VerdiCommandGroup
     from aiida.cmdline.groups.verdi import LazyVerdiObjAttributeDict
+
+    config = None
 
     if initialize_ctx_obj:
         config = get_config()
@@ -890,11 +893,48 @@ def run_cli_command_runner(command, parameters, user_input, initialize_ctx_obj, 
             obj.profile = profile
     else:
         obj = None
+        profile = None
 
-    # We need to apply the ``VERBOSITY`` option. When invoked through the command line, this is done by the logic of the
-    # ``VerdiCommandGroup``, but when testing commands, the command is retrieved directly from the module which
-    # circumvents this machinery.
-    command = VerdiCommandGroup.add_verbosity_option(command)
+    command_map = cli_command_map()
+
+    if command in command_map:
+        # ``-v/--verbosity`` is a top level option of ``verdi``, but is also added to every sub command by the
+        # ``VerdiCommandGroup``. To preserve the semantics of a real invocation, move it in front of the sub command.
+        top_level_parameters = []
+        remaining_parameters = []
+        iterator = iter(parameters)
+
+        for parameter in iterator:
+            if parameter in ('-v', '--verbosity'):
+                top_level_parameters.append(parameter)
+                top_level_parameters.append(next(iterator))
+            else:
+                remaining_parameters.append(parameter)
+
+        # The top level ``-p/--profile`` option falls back to the default profile of the configuration and *loads* it,
+        # which would silently switch away from the profile that the test has loaded. Pass the loaded profile
+        # explicitly, just like ``run_cli_command_subprocess`` does, unless the invocation already asked for a specific
+        # profile or the loaded profile is not defined in the configuration that is being used. When the context object
+        # is not initialized, the configuration should not be accessed at all, since that is precisely what such a
+        # test simulates to be absent or broken. An invocation without a sub command is left untouched, because
+        # providing the profile option there changes the behaviour of click for a group without arguments.
+        top_level_profile_given = command is cmd_verdi.verdi and {'-p', '--profile'}.intersection(parameters)
+
+        if (
+            profile is not None
+            and not top_level_profile_given
+            and profile.name in config.profile_names
+            and remaining_parameters
+        ):
+            top_level_parameters[:0] = ['-p', profile.name]
+
+        parameters = top_level_parameters + command_map[command][1:] + remaining_parameters
+        command = cmd_verdi.verdi
+    else:
+        # We need to apply the ``VERBOSITY`` option. When invoked through the command line, this is done by the logic
+        # of the ``VerdiCommandGroup``, but when testing standalone commands, the command is retrieved directly from
+        # the module which circumvents this machinery.
+        command = VerdiCommandGroup.add_verbosity_option(command)
 
     try:
         runner = CliRunner(mix_stderr=False)
