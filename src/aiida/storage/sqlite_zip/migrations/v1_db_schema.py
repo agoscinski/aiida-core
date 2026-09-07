@@ -9,9 +9,9 @@
 """This is the sqlite DB schema, coresponding to the `main_0000` revision of the `sqlite_zip` backend,
 see: `versions/main_0000_initial.py`
 
-For normal operation of the archive,
-we auto-generate the schema from the models in ``aiida.storage.psql_dos.models``.
-However, when migrating an archive from the old format, we require a fixed revision of the schema.
+For normal operation of the archive, we generate the schema from the shared
+SQL storage models. However, when migrating an archive from the old format,
+we require a fixed revision of the schema.
 
 The only difference between the PostGreSQL schema and SQLite one,
 is the replacement of ``JSONB`` with ``JSON``, and ``UUID`` with ``CHAR(32)``.

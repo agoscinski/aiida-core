@@ -33,7 +33,6 @@ from aiida.storage.log import MIGRATE_LOGGER
 from aiida.storage.migrations import TEMPLATE_INVALID_SCHEMA_VERSION
 from aiida.storage.psql_dos import PsqlDosBackend
 from aiida.storage.psql_dos.migrator import PsqlDosMigrator
-from aiida.storage.psql_dos.models.settings import DbSetting
 from aiida.storage.sqlite_zip import models, orm
 from aiida.storage.sqlite_zip.backend import validate_sqlite_version
 from aiida.storage.sqlite_zip.utils import create_sqla_engine
@@ -101,7 +100,9 @@ class SqliteDosMigrator(PsqlDosMigrator):
         # Create a "sync" between the database and repository, by saving its UUID in the settings table
         # this allows us to validate inconsistencies between the two
         self.connection.execute(
-            insert(DbSetting).values(key=REPOSITORY_UUID_KEY, val=repository_uuid, description='Repository UUID')
+            insert(models.DB_SETTING_TABLE).values(
+                key=REPOSITORY_UUID_KEY, val=repository_uuid, description='Repository UUID'
+            )
         )
 
         # finally, generate the version table, "stamping" it with the most recent revision
@@ -156,7 +157,7 @@ class SqliteDosMigrator(PsqlDosMigrator):
         # finally, we check that the ID set within the disk-objectstore is equal to the one saved in the database,
         # i.e. this container is indeed the one associated with the db
         repository_uuid = self.get_repository_uuid()
-        stmt = select(DbSetting.val).where(DbSetting.key == REPOSITORY_UUID_KEY)
+        stmt = select(models.DB_SETTING_TABLE.c.val).where(models.DB_SETTING_TABLE.c.key == REPOSITORY_UUID_KEY)
         database_repository_uuid = self.connection.execute(stmt).scalar_one_or_none()
         if database_repository_uuid is None:
             raise exceptions.CorruptStorage('The database has no repository UUID set.')
