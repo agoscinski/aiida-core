@@ -11,6 +11,7 @@
 import pytest
 
 from aiida.storage.sqlite_dos.backend import SqliteDosMigrator
+from aiida.storage.sqlite_zip.models import SqliteBase
 
 
 @pytest.mark.parametrize('version', list(v for v in SqliteDosMigrator.get_schema_versions() if v.startswith('main')))
@@ -18,7 +19,15 @@ def test_main(version, uninitialised_profile, reflect_schema, data_regression):
     """Test that the migrations produce the expected database schema."""
     with SqliteDosMigrator(uninitialised_profile) as migrator:
         migrator.migrate_up(f'main@{version}')
-        data_regression.check(reflect_schema(uninitialised_profile))
+        data_regression.check(reflect_schema(uninitialised_profile), basename=f'test_{version}')
+
+
+def test_main_existing_dbsetting(uninitialised_profile):
+    """Test migration of a database initialized before the settings-table revision."""
+    with SqliteDosMigrator(uninitialised_profile) as migrator:
+        migrator.migrate_up('main@main_0002')
+        SqliteBase.metadata.tables['db_dbsetting'].create(migrator.connection)
+        migrator.migrate_up('main@main_0003')
 
 
 def test_main_initialized(uninitialised_profile):
@@ -44,4 +53,4 @@ def test_head_vs_orm(uninitialised_profile, reflect_schema, data_regression):
     with SqliteDosMigrator(uninitialised_profile) as migrator:
         head_version = migrator.get_schema_version_head()
         migrator.initialise()
-        data_regression.check(reflect_schema(uninitialised_profile), basename=f'test_head_vs_orm_{head_version}_')
+        data_regression.check(reflect_schema(uninitialised_profile), basename=f'test_{head_version}')

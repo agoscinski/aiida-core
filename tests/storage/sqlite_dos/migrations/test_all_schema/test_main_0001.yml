@@ -240,7 +240,7 @@ table:
     - CONSTRAINT fk_db_dbnode_dbcomputer_id_db_dbcomputer FOREIGN KEY(dbcomputer_id)
       REFERENCES db_dbcomputer (id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
     - CONSTRAINT fk_db_dbnode_user_id_db_dbuser FOREIGN KEY(user_id) REFERENCES db_dbuser
-      (id) ON DELETE restrict DEFERRABLE INITIALLY DEFERRED
+      (id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
     - CONSTRAINT uq_db_dbnode_uuid UNIQUE (uuid)
 - - db_dbuser
   - db_dbuser

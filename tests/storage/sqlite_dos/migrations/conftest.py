@@ -42,7 +42,11 @@ def _generate_schema(profile: Profile) -> dict:
     with create_sqla_engine(pathlib.Path(profile.storage_config['filepath']) / 'database.sqlite').connect() as conn:
         data = collections.defaultdict(list)
         for type_, name, tbl_name, rootpage, sql in conn.execute(text('SELECT * FROM sqlite_master;')):
-            lines_sql = sql.strip().split('\n') if sql else []
+            # SQLite preserves the spelling used to create a constraint, although it has no semantic effect.
+            if sql:
+                lines_sql = sql.strip().replace(' ON DELETE restrict ', ' ON DELETE RESTRICT ').split('\n')
+            else:
+                lines_sql = []
 
             # For an unknown reason, the ``sql`` is not deterministic as the order of the ``CONSTRAINTS`` rules seem to
             # be in random order. To make sure they are always in the same order, they have to be ordered manually.
