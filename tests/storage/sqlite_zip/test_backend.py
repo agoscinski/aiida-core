@@ -1,13 +1,17 @@
 """Tests for :mod:`aiida.storage.sqlite_zip.backend`."""
 
+import json
 import pathlib
+import shutil
+import zipfile
 
 import pytest
 from pydantic_core import ValidationError
 
-from aiida.common.exceptions import IncompatibleExternalDependencies
+from aiida.common.exceptions import CorruptStorage, IncompatibleExternalDependencies
 from aiida.storage.sqlite_zip.backend import SqliteZipBackend, validate_sqlite_version
 from aiida.storage.sqlite_zip.migrator import validate_storage
+from tests.utils.archives import get_archive_file
 
 
 def test_initialise(tmp_path, caplog):
@@ -121,3 +125,49 @@ def test_initialise_migration_needed(tmp_path, caplog, monkeypatch):
     # Verify migration log message was generated
     log_msg = f'Migrating existing SqliteZipBackend from version {old_version} to version {target_version}'
     assert any(log_msg in record.message for record in caplog.records)
+
+
+def test_migrate_behind_archive_to_head(tmp_path):
+    """Test :meth:`SqliteZipBackend.migrate` migrates a behind archive profile in place to head."""
+    filepath_archive = tmp_path / 'behind.aiida'
+    shutil.copy(get_archive_file('export_main_0000_simple.aiida', filepath='export/migrate'), filepath_archive)
+    profile = SqliteZipBackend.create_profile(filepath_archive)
+
+    assert SqliteZipBackend.version_profile(profile) != SqliteZipBackend.version_head()
+
+    SqliteZipBackend.migrate(profile)
+
+    assert SqliteZipBackend.version_profile(profile) == SqliteZipBackend.version_head()
+    validate_storage(filepath_archive)
+    # Migrated archive should be openable as a backend
+    backend = SqliteZipBackend(profile)
+    backend.close()
+
+
+def test_migrate_no_migration_needed(tmp_path):
+    """Test :meth:`SqliteZipBackend.migrate` is a no-op when already at head."""
+    filepath_archive = tmp_path / 'archive.zip'
+    profile = SqliteZipBackend.create_profile(filepath_archive)
+    assert SqliteZipBackend.initialise(profile)
+
+    before_content = filepath_archive.read_bytes()
+    SqliteZipBackend.migrate(profile)
+    after_content = filepath_archive.read_bytes()
+    assert before_content == after_content
+    assert SqliteZipBackend.version_profile(profile) == SqliteZipBackend.version_head()
+
+
+def test_migrate_corrupt_archive(tmp_path):
+    """Test :meth:`SqliteZipBackend.migrate` raises ``CorruptStorage`` for corrupt/missing versions."""
+    # Not a zip/tar file
+    invalid_path = tmp_path / 'invalid.txt'
+    invalid_path.write_text('not a zip or tar file')
+    with pytest.raises(CorruptStorage, match='neither a tar nor a zip file'):
+        SqliteZipBackend.migrate(SqliteZipBackend.create_profile(invalid_path))
+
+    # Zip without ``export_version`` in metadata
+    missing_version_path = tmp_path / 'missing_version.zip'
+    with zipfile.ZipFile(missing_version_path, 'w') as handle:
+        handle.writestr('metadata.json', json.dumps({'aiida_version': '2.0.0', 'key_format': 'sha256'}))
+    with pytest.raises(CorruptStorage, match='No export_version found'):
+        SqliteZipBackend.migrate(SqliteZipBackend.create_profile(missing_version_path))

@@ -158,6 +158,19 @@ class SqliteZipBackend(StorageBackend):
         )
 
     @classmethod
+    def _migrate_archive_in_place(cls, filepath: Path, current_version: str, target_version: str) -> None:
+        """Migrate an archive file in place to ``target_version``, via a temporary file and atomic move."""
+        from aiida.storage.sqlite_zip.migrator import migrate
+
+        with tempfile.TemporaryDirectory() as dirpath:
+            filepath_migrated = Path(dirpath) / 'migrated.zip'
+            LOGGER.report(
+                f'Migrating existing {cls.__name__} from version {current_version} to version {target_version}'
+            )
+            migrate(filepath, filepath_migrated, target_version)
+            shutil.move(filepath_migrated, filepath)
+
+    @classmethod
     def version_profile(cls, profile: Profile) -> str | None:
         return read_version(profile.storage_config['filepath'], search_limit=None)
 
@@ -176,8 +189,6 @@ class SqliteZipBackend(StorageBackend):
         filepath_archive = Path(profile.storage_config['filepath'])
 
         if filepath_archive.exists() and not reset:
-            from aiida.storage.sqlite_zip.migrator import migrate
-
             # Check if migration is needed. If we are already at the desired version, then no migration is required
             target_version = cls.version_head()
             current_version = cls.get_current_archive_version(inpath=filepath_archive)
@@ -190,14 +201,8 @@ class SqliteZipBackend(StorageBackend):
 
             # The archive exists but ``reset == False``, so we try to migrate to the latest schema version. If the
             # migration works, we replace the original archive with the migrated one.
-            with tempfile.TemporaryDirectory() as dirpath:
-                filepath_migrated = Path(dirpath) / 'migrated.zip'
-                LOGGER.report(
-                    f'Migrating existing {cls.__name__} from version {current_version} to version {target_version}'
-                )
-                migrate(filepath_archive, filepath_migrated, target_version)
-                shutil.move(filepath_migrated, filepath_archive)
-                return False
+            cls._migrate_archive_in_place(filepath_archive, current_version, target_version)
+            return False
 
         # Here the original archive either doesn't exist or ``reset == True`` so we simply create an empty base archive
         # and move it to the path pointed to by the storage configuration of the profile.
@@ -234,8 +239,24 @@ class SqliteZipBackend(StorageBackend):
         return True
 
     @classmethod
-    def migrate(cls, profile: Profile) -> NoReturn:
-        raise NotImplementedError('use the :func:`aiida.storage.sqlite_zip.migrator.migrate` function directly.')
+    def migrate(cls, profile: Profile) -> None:
+        """Migrate the archive file of ``profile`` in place to the head schema version.
+
+        This delegates to the file pipeline (:func:`aiida.storage.sqlite_zip.migrator.migrate`),
+        migrating via a temporary file and atomically moving it over the original, mirroring
+        :meth:`initialise`. If already at head, this is a no-op.
+        """
+        validate_sqlite_version()
+        filepath_archive = Path(profile.storage_config['filepath'])
+        target_version = cls.version_head()
+        current_version = cls.get_current_archive_version(inpath=filepath_archive)
+        cls.validate_archive_versions(current_version=current_version, target_version=target_version)
+        if current_version == target_version:
+            LOGGER.report(
+                f'Existing {cls.__name__} is already at target version {target_version}. No migration needed.'
+            )
+            return
+        cls._migrate_archive_in_place(filepath_archive, current_version, target_version)
 
     def __init__(self, profile: Profile):
         from aiida.storage.sqlite_zip.migrator import validate_storage
