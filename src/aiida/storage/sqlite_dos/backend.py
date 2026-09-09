@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from functools import cached_property, lru_cache
+from functools import lru_cache
 from pathlib import Path
 from shutil import rmtree
 from typing import TYPE_CHECKING, Any
@@ -26,11 +26,10 @@ from aiida.common.log import AIIDA_LOGGER
 from aiida.common.pydantic import AiiDABaseModel, MetadataField
 from aiida.manage.configuration.profile import Profile
 from aiida.manage.configuration.settings import AiiDAConfigDir
-from aiida.orm.implementation import BackendEntity
 from aiida.storage.migrator import AlembicMigrator, BaseDosMigrator
 from aiida.storage.psql_dos import PsqlDosBackend
-from aiida.storage.sqlite_zip import models, orm
-from aiida.storage.sqlite_zip.backend import validate_sqlite_version
+from aiida.storage.sqlite_zip import models
+from aiida.storage.sqlite_zip.backend import SqliteOrmMixin, validate_sqlite_version
 from aiida.storage.sqlite_zip.utils import create_sqla_engine
 
 if TYPE_CHECKING:
@@ -81,7 +80,7 @@ class SqliteDosMigrator(BaseDosMigrator):
         return Container(str(filepath_container))
 
 
-class SqliteDosStorage(PsqlDosBackend):
+class SqliteDosStorage(SqliteOrmMixin, PsqlDosBackend):
     """A lightweight storage that is easy to install.
 
     This backend implementation uses an SQLite database and a disk-objectstore container as the file repository. As
@@ -175,41 +174,6 @@ class SqliteDosStorage(PsqlDosBackend):
     def version_profile(cls, profile: Profile) -> str | None:
         with cls.migrator(profile) as migrator:
             return migrator.get_schema_version_profile()
-
-    def query(self) -> orm.SqliteQueryBuilder:
-        return orm.SqliteQueryBuilder(self)
-
-    def get_backend_entity(self, model) -> BackendEntity:
-        """Return the backend entity that corresponds to the given Model instance."""
-        return orm.get_backend_entity(model, self)
-
-    @cached_property
-    def authinfos(self) -> orm.SqliteAuthInfoCollection:
-        return orm.SqliteAuthInfoCollection(self)
-
-    @cached_property
-    def comments(self) -> orm.SqliteCommentCollection:
-        return orm.SqliteCommentCollection(self)
-
-    @cached_property
-    def computers(self) -> orm.SqliteComputerCollection:
-        return orm.SqliteComputerCollection(self)
-
-    @cached_property
-    def groups(self) -> orm.SqliteGroupCollection:
-        return orm.SqliteGroupCollection(self)
-
-    @cached_property
-    def logs(self) -> orm.SqliteLogCollection:
-        return orm.SqliteLogCollection(self)
-
-    @cached_property
-    def nodes(self) -> orm.SqliteNodeCollection:
-        return orm.SqliteNodeCollection(self)
-
-    @cached_property
-    def users(self) -> orm.SqliteUserCollection:
-        return orm.SqliteUserCollection(self)
 
     @staticmethod
     @lru_cache(maxsize=18)

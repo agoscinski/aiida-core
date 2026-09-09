@@ -38,7 +38,7 @@ from aiida.common.log import AIIDA_LOGGER
 from aiida.common.pydantic import AiiDABaseModel, MetadataField
 from aiida.manage import Profile
 from aiida.orm.entities import EntityTypes
-from aiida.orm.implementation import StorageBackend
+from aiida.orm.implementation import BackendEntity, StorageBackend
 from aiida.repository.backend.abstract import AbstractRepositoryBackend, InfoDictType
 from aiida.storage.sqlite_zip import orm
 from aiida.storage.sqlite_zip.utils import (
@@ -106,7 +106,50 @@ def _finalize_backend(resources: _ZipBackendResources, backend_repr: str) -> Non
         resources.release()
 
 
-class SqliteZipBackend(StorageBackend):
+class SqliteOrmMixin(StorageBackend):
+    """ORM accessors shared by the SQLite-backed storages (``sqlite_dos`` and ``sqlite_zip``).
+
+    Both backends query the same SQLite schema through ``sqlite_zip.orm``; this mixin provides the
+    ``StorageBackend`` collection accessors so they cannot drift apart. It is deliberately not public API.
+    """
+
+    def query(self) -> orm.SqliteQueryBuilder:
+        return orm.SqliteQueryBuilder(self)
+
+    def get_backend_entity(self, model) -> BackendEntity:
+        """Return the backend entity that corresponds to the given Model instance."""
+        return orm.get_backend_entity(model, self)
+
+    @cached_property
+    def authinfos(self) -> orm.SqliteAuthInfoCollection:
+        return orm.SqliteAuthInfoCollection(self)
+
+    @cached_property
+    def comments(self) -> orm.SqliteCommentCollection:
+        return orm.SqliteCommentCollection(self)
+
+    @cached_property
+    def computers(self) -> orm.SqliteComputerCollection:
+        return orm.SqliteComputerCollection(self)
+
+    @cached_property
+    def groups(self) -> orm.SqliteGroupCollection:
+        return orm.SqliteGroupCollection(self)
+
+    @cached_property
+    def logs(self) -> orm.SqliteLogCollection:
+        return orm.SqliteLogCollection(self)
+
+    @cached_property
+    def nodes(self) -> orm.SqliteNodeCollection:
+        return orm.SqliteNodeCollection(self)
+
+    @cached_property
+    def users(self) -> orm.SqliteUserCollection:
+        return orm.SqliteUserCollection(self)
+
+
+class SqliteZipBackend(SqliteOrmMixin):
     """A read-only backend for a sqlite/zip format.
 
     The storage format uses an SQLite database and repository files, within a folder or zipfile.
@@ -315,41 +358,6 @@ class SqliteZipBackend(StorageBackend):
             else:
                 raise CorruptStorage(f'repository could not be read: non-existent {self._path / REPO_FOLDER}')
         return self._resources.repo
-
-    def query(self) -> orm.SqliteQueryBuilder:
-        return orm.SqliteQueryBuilder(self)
-
-    def get_backend_entity(self, model):
-        """Return the backend entity that corresponds to the given Model instance."""
-        return orm.get_backend_entity(model, self)
-
-    @cached_property
-    def authinfos(self) -> orm.SqliteAuthInfoCollection:
-        return orm.SqliteAuthInfoCollection(self)
-
-    @cached_property
-    def comments(self) -> orm.SqliteCommentCollection:
-        return orm.SqliteCommentCollection(self)
-
-    @cached_property
-    def computers(self) -> orm.SqliteComputerCollection:
-        return orm.SqliteComputerCollection(self)
-
-    @cached_property
-    def groups(self) -> orm.SqliteGroupCollection:
-        return orm.SqliteGroupCollection(self)
-
-    @cached_property
-    def logs(self) -> orm.SqliteLogCollection:
-        return orm.SqliteLogCollection(self)
-
-    @cached_property
-    def nodes(self) -> orm.SqliteNodeCollection:
-        return orm.SqliteNodeCollection(self)
-
-    @cached_property
-    def users(self) -> orm.SqliteUserCollection:
-        return orm.SqliteUserCollection(self)
 
     def _clear(self) -> None:
         raise ReadOnlyError()
