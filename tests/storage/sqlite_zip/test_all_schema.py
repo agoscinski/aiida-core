@@ -55,3 +55,14 @@ def test_legacy_downgrade_not_implemented(version, tmp_path):
 
         with pytest.raises(NotImplementedError):
             downgrade(config, '-1')
+
+
+def test_main_0002_downgrade(tmp_path, data_regression):
+    """Test that downgrading from ``main_0002`` restores the ``main_0001`` schema."""
+    database_path = tmp_path / 'database.sqlite'
+
+    with _alembic_connect(database_path) as config:
+        upgrade(config, 'main_0002')
+        downgrade(config, 'main_0001')
+
+    data_regression.check(reflect_schema(database_path), basename='test_main_0001')

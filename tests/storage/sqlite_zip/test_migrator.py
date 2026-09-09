@@ -12,6 +12,7 @@ import json
 import zipfile
 
 import pytest
+from sqlalchemy import text
 
 from aiida import __version__ as aiida_version
 from aiida.common.exceptions import CorruptStorage, StorageMigrationError
@@ -80,6 +81,34 @@ def test_validate_archive_versions():
     # Unknown current version
     with pytest.raises(StorageMigrationError, match='Unknown current version'):
         SqliteZipBackend.validate_archive_versions('unknown_current', latest_version)
+
+
+def test_migrate_main_0001_to_main_0002(tmp_path):
+    """Test the empty v3 migration updates an archive schema revision."""
+    input_path = tmp_path / 'input.aiida'
+    output_path = tmp_path / 'output.aiida'
+    profile = SqliteZipBackend.create_profile(input_path)
+    SqliteZipBackend.initialise(profile)
+
+    with zipfile.ZipFile(input_path) as archive:
+        metadata = json.loads(archive.read('metadata.json'))
+        database = archive.read('db.sqlite3')
+
+    database_path = tmp_path / 'database.sqlite'
+    database_path.write_bytes(database)
+    from aiida.storage.sqlite_zip.utils import create_sqla_engine
+
+    with create_sqla_engine(database_path).begin() as connection:
+        connection.execute(text('CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)'))
+
+    metadata['export_version'] = 'main_0001'
+    with zipfile.ZipFile(input_path, 'w') as archive:
+        archive.writestr('metadata.json', json.dumps(metadata))
+        archive.write(database_path, 'db.sqlite3')
+
+    migrate(input_path, output_path, 'main_0002')
+
+    assert SqliteZipBackend.get_current_archive_version(output_path) == 'main_0002'
 
 
 def test_migrate_no_migration_needed_file_operations(tmp_path):
