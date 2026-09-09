@@ -67,3 +67,13 @@ verdi profile delete archive
 ```
 You will be prompted whether you also want to keep the data.
 If you want to keep the `process.aiida` archive file, select not to delete the data.
+
+## Migrate a mounted archive
+
+If the archive was created with an older AiiDA version, its schema may be behind the running code.
+A mounted archive is migrated in place to the latest schema, just as for a regular profile:
+```{code-block} console
+verdi -p archive storage migrate
+```
+This delegates to the same migration pipeline as {ref}`migrating an archive file <how-to:share:archives>`.
+Use `verdi archive migrate input.aiida output.aiida` instead when you want to keep the original file untouched or migrate to a specific version with `--version`, without mounting the archive as a profile.
