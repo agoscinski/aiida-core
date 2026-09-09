@@ -10,21 +10,15 @@
 
 from __future__ import annotations
 
-import contextlib
-import shutil
-from collections.abc import Iterator
 from functools import cached_property, lru_cache
 from pathlib import Path
 from shutil import rmtree
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from alembic.config import Config
-from alembic.runtime.migration import MigrationContext
-from alembic.script import ScriptDirectory
 from disk_objectstore import Container, backup_utils
 from pydantic import field_validator
-from sqlalchemy import Connection, Engine, MetaData, insert, inspect, select
+from sqlalchemy import Engine, MetaData
 from sqlalchemy.orm import scoped_session, sessionmaker
 
 from aiida.common import exceptions
@@ -33,20 +27,13 @@ from aiida.common.pydantic import AiiDABaseModel, MetadataField
 from aiida.manage.configuration.profile import Profile
 from aiida.manage.configuration.settings import AiiDAConfigDir
 from aiida.orm.implementation import BackendEntity
-from aiida.storage.log import MIGRATE_LOGGER
-from aiida.storage.migrations import TEMPLATE_INVALID_SCHEMA_VERSION
-from aiida.storage.migrator import AlembicMigrator
+from aiida.storage.migrator import AlembicMigrator, BaseDosMigrator
 from aiida.storage.psql_dos import PsqlDosBackend
-from aiida.storage.psql_dos.models.settings import DbSetting
 from aiida.storage.sqlite_zip import models, orm
 from aiida.storage.sqlite_zip.backend import validate_sqlite_version
 from aiida.storage.sqlite_zip.utils import create_sqla_engine
 
 if TYPE_CHECKING:
-    from types import TracebackType
-
-    from typing_extensions import Self
-
     from aiida.orm.entities import EntityTypes
     from aiida.repository.backend import DiskObjectStoreRepositoryBackend
 
@@ -57,9 +44,6 @@ FILENAME_DATABASE = 'database.sqlite'
 FILENAME_CONTAINER = 'container'
 
 
-REPOSITORY_UUID_KEY = 'repository|uuid'
-
-
 def _get_sqlite_metadata() -> MetaData:
     """Return the SQLite ORM metadata."""
     return models.SqliteBase.metadata
@@ -68,7 +52,7 @@ def _get_sqlite_metadata() -> MetaData:
 _ALEMBIC_MIGRATOR = AlembicMigrator(Path(__file__).resolve().parent / 'migrations', _get_sqlite_metadata)
 
 
-class SqliteDosMigrator:
+class SqliteDosMigrator(BaseDosMigrator):
     """Class for validating and migrating `sqlite_dos` storage instances.
 
     .. important:: This class should only be accessed via the storage backend class (apart from for test purposes)
@@ -77,72 +61,16 @@ class SqliteDosMigrator:
     legacy Django and SQLAlchemy branches supported by ``psql_dos``.
     """
 
-    alembic_version_tbl_name = 'alembic_version'
+    alembic_migrator = _ALEMBIC_MIGRATOR
 
-    def __init__(self, profile: Profile) -> None:
-        filepath_database = Path(profile.storage_config['filepath']) / FILENAME_DATABASE
+    def _create_engine(self) -> Engine:
+        filepath_database = Path(self.profile.storage_config['filepath']) / FILENAME_DATABASE
         filepath_database.touch()
-        self.profile = profile
-        self._engine: Engine | None = create_sqla_engine(filepath_database)
-        self._connection: Connection | None = None
-
-    def close(self) -> None:
-        """Close the connection if it was opened and dispose of the engine."""
-        if self._connection is not None:
-            self._connection.close()
-            self._connection = None
-        if self._engine is not None:
-            self._engine.dispose()
-            self._engine = None
-
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(
-        self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
-    ) -> None:
-        self.close()
+        return create_sqla_engine(filepath_database)
 
     @property
-    def connection(self) -> Connection:
-        """Return an open connection to the SQLite database."""
-        if self._connection is None:
-            if self._engine is None:
-                filepath_database = Path(self.profile.storage_config['filepath']) / FILENAME_DATABASE
-                self._engine = create_sqla_engine(filepath_database)
-            self._connection = self._engine.connect()
-        return self._connection
-
-    @classmethod
-    def _alembic_config(cls) -> Config:
-        """Return the Alembic configuration for the SQLite migration graph."""
-        return _ALEMBIC_MIGRATOR._alembic_config()
-
-    @classmethod
-    def _alembic_script(cls) -> ScriptDirectory:
-        """Return the Alembic script directory for the SQLite migration graph."""
-        return _ALEMBIC_MIGRATOR._alembic_script()
-
-    @classmethod
-    def get_schema_versions(cls) -> dict[str, str]:
-        """Return all available schema versions, from oldest to latest."""
-        return _ALEMBIC_MIGRATOR.get_schema_versions()
-
-    @classmethod
-    def get_schema_version_head(cls) -> str:
-        """Return the latest schema version available for this storage."""
-        return _ALEMBIC_MIGRATOR.get_schema_version_head()
-
-    @contextlib.contextmanager
-    def _migration_context(self) -> Iterator[MigrationContext]:
-        with _ALEMBIC_MIGRATOR.migration_context(self.connection, profile=self.profile) as context:
-            yield context
-
-    def migrate_up(self, version: str) -> None:
-        _ALEMBIC_MIGRATOR.migrate_up(self.connection, version, profile=self.profile)
-
-    def migrate_down(self, version: str) -> None:
-        _ALEMBIC_MIGRATOR.migrate_down(self.connection, version, profile=self.profile)
+    def orm_metadata(self) -> MetaData:
+        return models.SqliteBase.metadata
 
     def get_container(self) -> Container:
         """Return the disk-object store container.
@@ -152,167 +80,6 @@ class SqliteDosMigrator:
         filepath_container = Path(self.profile.storage_config['filepath']) / FILENAME_CONTAINER
         return Container(str(filepath_container))
 
-    def get_repository_uuid(self) -> str:
-        """Return the UUID of the configured disk-objectstore container."""
-        try:
-            return self.get_container().container_id
-        except Exception as exception:
-            raise exceptions.UnreachableStorage(
-                f'Could not access disk-objectstore {self.get_container()}: {exception}'
-            ) from exception
-
-    def initialise(self, reset: bool = False) -> bool:
-        """Initialise the repository and database, then migrate to the head."""
-        if reset:
-            self.reset_repository()
-            self.reset_database()
-
-        initialised = False
-        if not self.is_initialised:
-            self.initialise_repository()
-            self.initialise_database()
-            initialised = True
-
-        self.migrate()
-        return initialised
-
-    @property
-    def is_initialised(self) -> bool:
-        """Return whether both the repository and database are initialised."""
-        return self.is_repository_initialised and self.is_database_initialised
-
-    @property
-    def is_repository_initialised(self) -> bool:
-        """Return whether the disk-objectstore container is initialised."""
-        return self.get_container().is_initialised
-
-    def reset_repository(self) -> None:
-        """Delete the disk-objectstore container contents."""
-        try:
-            shutil.rmtree(self.get_container().get_folder())
-        except FileNotFoundError:
-            pass
-
-    def reset_database(self) -> None:
-        """Delete all database contents except the Alembic version table."""
-        self.delete_all_tables(exclude_tables=[self.alembic_version_tbl_name])
-
-    def initialise_repository(self) -> None:
-        """Initialise the disk-objectstore container."""
-        self.get_container().init_container(
-            clear=True,
-            pack_size_target=4 * 1024 * 1024 * 1024,
-            loose_prefix_len=2,
-            hash_type='sha256',
-            compression_algorithm='zlib+1',
-        )
-
-    def delete_all_tables(self, *, exclude_tables: list[str] | None = None) -> None:
-        """Delete all reflected schema tables except the requested exclusions."""
-        if not inspect(self.connection).has_table(self.alembic_version_tbl_name):
-            return
-
-        metadata = MetaData()
-        metadata.reflect(bind=self.connection)
-        for schema_table in reversed(metadata.sorted_tables):
-            if schema_table.name not in (exclude_tables or []):
-                self.connection.execute(schema_table.delete())
-        self.connection.commit()
-
-    def initialise_database(self) -> None:
-        """Initialise the database.
-
-        This assumes that the database has no schema whatsoever and so the initial schema is created directly from the
-        models at the current head version without migrating through all of them one by one.
-        """
-        assert self._engine is not None
-        models.SqliteBase.metadata.create_all(self._engine)
-
-        repository_uuid = self.get_repository_uuid()
-
-        # Create a "sync" between the database and repository, by saving its UUID in the settings table
-        # this allows us to validate inconsistencies between the two
-        self.connection.execute(
-            insert(DbSetting).values(key=REPOSITORY_UUID_KEY, val=repository_uuid, description='Repository UUID')
-        )
-
-        # finally, generate the version table, "stamping" it with the most recent revision
-        with self._migration_context() as context:
-            context.stamp(context.script, 'main@head')  # type: ignore[arg-type]
-            self.connection.commit()
-
-    def get_schema_version_profile(self) -> str | None:
-        """Return the schema version of the backend instance for this profile.
-
-        Note, the version will be None if the database is empty or is a legacy django database.
-        """
-        with self._migration_context() as context:
-            return context.get_current_revision()
-
-    def validate_storage(self) -> None:
-        """Validate that the storage for this profile
-
-        1. That the database schema is at the head version, i.e. is compatible with the code API.
-        2. That the repository ID is equal to the UUID set in the database
-
-        :raises: :class:`aiida.common.exceptions.UnreachableStorage` if the storage cannot be connected to
-        :raises: :class:`aiida.common.exceptions.IncompatibleStorageSchema`
-            if the storage is not compatible with the code API.
-        :raises: :class:`aiida.common.exceptions.CorruptStorage`
-            if the repository ID is not equal to the UUID set in thedatabase.
-        """
-        # check there is an alembic_version table from which to get the schema version
-        if not inspect(self.connection).has_table(self.alembic_version_tbl_name):
-            raise exceptions.IncompatibleStorageSchema('The database has no known version.')
-
-        # now we can check that the alembic version is the latest
-        schema_version_code = self.get_schema_version_head()
-        schema_version_database = self.get_schema_version_profile()
-        if schema_version_database != schema_version_code:
-            raise exceptions.IncompatibleStorageSchema(
-                TEMPLATE_INVALID_SCHEMA_VERSION.format(
-                    schema_version_database=schema_version_database,
-                    schema_version_code=schema_version_code,
-                    profile_name=self.profile.name,
-                )
-            )
-
-        # finally, we check that the ID set within the disk-objectstore is equal to the one saved in the database,
-        # i.e. this container is indeed the one associated with the db
-        repository_uuid = self.get_repository_uuid()
-        stmt = select(DbSetting.val).where(DbSetting.key == REPOSITORY_UUID_KEY)
-        database_repository_uuid = self.connection.execute(stmt).scalar_one_or_none()
-        if database_repository_uuid is None:
-            raise exceptions.CorruptStorage('The database has no repository UUID set.')
-        if database_repository_uuid != repository_uuid:
-            raise exceptions.CorruptStorage(
-                f'The database has a repository UUID configured to {database_repository_uuid} '
-                f"but the disk-objectstore's is {repository_uuid}."
-            )
-
-    @property
-    def is_database_initialised(self) -> bool:
-        """Return whether the database is initialised.
-
-        This is the case if it contains the table that holds the schema version for alembic.
-
-        :returns: ``True`` if the database is initialised, ``False`` otherwise.
-        """
-        return inspect(self.connection).has_table(self.alembic_version_tbl_name)
-
-    def migrate(self) -> None:
-        """Migrate the storage for this profile to the head version.
-
-        :raises: :class:`~aiida.common.exceptions.UnreachableStorage` if the storage cannot be accessed.
-        :raises: :class:`~aiida.common.exceptions.StorageMigrationError` if the storage is not initialised.
-        """
-        if not inspect(self.connection).has_table(self.alembic_version_tbl_name):
-            raise exceptions.StorageMigrationError('storage is uninitialised, cannot migrate.')
-
-        MIGRATE_LOGGER.report('Migrating to the head of the main branch')
-        self.migrate_up('main@head')
-        self.connection.commit()
-
 
 class SqliteDosStorage(PsqlDosBackend):
     """A lightweight storage that is easy to install.
@@ -321,7 +88,7 @@ class SqliteDosStorage(PsqlDosBackend):
     such, this storage plugin does not require any services, making it easy to install and use on most systems.
     """
 
-    migrator = SqliteDosMigrator  # type: ignore[assignment]
+    migrator = SqliteDosMigrator
 
     class CliModel(AiiDABaseModel):
         """Model describing required information to configure an instance of the storage."""

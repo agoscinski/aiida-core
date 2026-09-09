@@ -31,7 +31,18 @@ from sqlalchemy.dialects.sqlite import JSON
 from aiida.orm.entities import EntityTypes
 
 # we need to import all models, to ensure they are loaded on the SQLA Metadata
-from aiida.storage.psql_dos.models import authinfo, base, comment, computer, group, log, node, user
+# note, `settings` is only imported for its side effect of registering `db_dbsetting`, it has no sqlite ORM class
+from aiida.storage.psql_dos.models import (  # noqa: F401
+    authinfo,
+    base,
+    comment,
+    computer,
+    group,
+    log,
+    node,
+    settings,
+    user,
+)
 
 
 class SqliteModel:

@@ -17,31 +17,23 @@ taking a `Profile` as input for the connection configuration.
 from __future__ import annotations
 
 import contextlib
-import pathlib
 from collections.abc import Iterator
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from alembic.config import Config
-from alembic.runtime.migration import MigrationContext
-from alembic.script import ScriptDirectory
-from sqlalchemy import Connection, Engine, MetaData, String, column, desc, insert, inspect, select, table
+from sqlalchemy import Engine, MetaData, String, column, desc, inspect, select, table
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 
 from aiida.common import exceptions
-from aiida.manage.configuration.profile import Profile
 from aiida.storage.log import MIGRATE_LOGGER
-from aiida.storage.migrations import TEMPLATE_INVALID_SCHEMA_VERSION
-from aiida.storage.migrator import AlembicMigrator
-from aiida.storage.psql_dos.models.settings import DbSetting
+from aiida.storage.migrator import AlembicMigrator, BaseDosMigrator
 from aiida.storage.psql_dos.utils import create_sqlalchemy_engine
 
 if TYPE_CHECKING:
-    from types import TracebackType
-
     from disk_objectstore import Container
-    from typing_extensions import Self
 
 TEMPLATE_LEGACY_DJANGO_SCHEMA = """
 Database schema is using the legacy Django schema.
@@ -51,7 +43,7 @@ To migrate the database schema version to the current one, run the following com
 """
 
 
-REPOSITORY_UUID_KEY = 'repository|uuid'
+REPOSITORY_UUID_KEY = BaseDosMigrator.repository_uuid_key
 
 
 def _get_orm_metadata() -> MetaData:
@@ -61,89 +53,33 @@ def _get_orm_metadata() -> MetaData:
     return get_orm_metadata()
 
 
-_ALEMBIC_MIGRATOR = AlembicMigrator(pathlib.Path(__file__).resolve().parent / 'migrations', _get_orm_metadata)
+_ALEMBIC_MIGRATOR = AlembicMigrator(Path(__file__).resolve().parent / 'migrations', _get_orm_metadata)
 
 
-class PsqlDosMigrator:
+class PsqlDosMigrator(BaseDosMigrator):
     """Class for validating and migrating `psql_dos` storage instances.
 
     .. important:: This class should only be accessed via the storage backend class (apart from for test purposes)
     """
 
-    alembic_version_tbl_name = 'alembic_version'
+    alembic_migrator = _ALEMBIC_MIGRATOR
     django_version_table = table(
         'django_migrations', column('id'), column('app', String(255)), column('name', String(255)), column('applied')
     )
 
-    def __init__(self, profile: Profile) -> None:
-        self.profile = profile
-        self._engine: Engine | None = create_sqlalchemy_engine(self.profile.storage_config)  # type: ignore[arg-type]
-        self._connection: Connection | None = None
-
-    def close(self) -> None:
-        """Close the connection if it was opened and dispose of the engine."""
-        if self._connection is not None:
-            self._connection.close()
-            self._connection = None
-        if self._engine is not None:
-            self._engine.dispose()
-            self._engine = None
-
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(
-        self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
-    ) -> None:
-        self.close()
+    def _create_engine(self) -> Engine:
+        return create_sqlalchemy_engine(self.profile.storage_config)  # type: ignore[arg-type]
 
     @property
-    def connection(self) -> Connection:
-        """Return an open connection to the profile database."""
-        if self._connection is None:
-            if self._engine is None:
-                self._engine = create_sqlalchemy_engine(self.profile.storage_config)  # type: ignore[arg-type]
-            try:
-                self._connection = self._engine.connect()
-            except OperationalError as exception:
-                raise exceptions.UnreachableStorage(f'Could not connect to database: {exception}') from exception
-        return self._connection
+    def orm_metadata(self) -> MetaData:
+        from aiida.storage.psql_dos.models.base import get_orm_metadata
 
-    @classmethod
-    def _alembic_config(cls) -> Config:
-        """Return the Alembic configuration for the PostgreSQL migration graph."""
-        return _ALEMBIC_MIGRATOR._alembic_config()
-
-    @classmethod
-    def _alembic_script(cls) -> ScriptDirectory:
-        """Return the Alembic script directory for the PostgreSQL migration graph."""
-        return _ALEMBIC_MIGRATOR._alembic_script()
-
-    @classmethod
-    def get_schema_versions(cls) -> dict[str, str]:
-        """Return all available schema versions, from oldest to latest."""
-        return _ALEMBIC_MIGRATOR.get_schema_versions()
-
-    @classmethod
-    def get_schema_version_head(cls) -> str:
-        """Return the latest schema version available for this storage."""
-        return _ALEMBIC_MIGRATOR.get_schema_version_head()
+        return get_orm_metadata()
 
     @contextlib.contextmanager
     def _alembic_connect(self) -> Iterator[Config]:
-        with _ALEMBIC_MIGRATOR._alembic_connect(self.connection, profile=self.profile) as config:
+        with self.alembic_migrator._alembic_connect(self.connection, profile=self.profile) as config:
             yield config
-
-    @contextlib.contextmanager
-    def _migration_context(self) -> Iterator[MigrationContext]:
-        with _ALEMBIC_MIGRATOR.migration_context(self.connection, profile=self.profile) as context:
-            yield context
-
-    def migrate_up(self, version: str) -> None:
-        _ALEMBIC_MIGRATOR.migrate_up(self.connection, version, profile=self.profile)
-
-    def migrate_down(self, version: str) -> None:
-        _ALEMBIC_MIGRATOR.migrate_down(self.connection, version, profile=self.profile)
 
     def get_schema_version_profile(self, check_legacy: bool = False) -> str | None:
         """Return the schema version of the backend instance for this profile.
@@ -161,51 +97,14 @@ class PsqlDosMigrator:
                 self.connection.rollback()
         return version
 
-    def validate_storage(self) -> None:
-        """Validate that the storage for this profile
-
-        1. That the database schema is at the head version, i.e. is compatible with the code API.
-        2. That the repository ID is equal to the UUID set in the database
-
-        :raises: :class:`aiida.common.exceptions.UnreachableStorage` if the storage cannot be connected to
-        :raises: :class:`aiida.common.exceptions.IncompatibleStorageSchema`
-            if the storage is not compatible with the code API.
-        :raises: :class:`aiida.common.exceptions.CorruptStorage`
-            if the repository ID is not equal to the UUID set in thedatabase.
-        """
-        # check there is an alembic_version table from which to get the schema version
+    def _check_version_table(self) -> None:
+        # A missing alembic version table might mean this is a legacy django database.
         if not inspect(self.connection).has_table(self.alembic_version_tbl_name):
-            # if not present, it might be that this is a legacy django database
             if inspect(self.connection).has_table(self.django_version_table.name):
                 raise exceptions.IncompatibleStorageSchema(
                     TEMPLATE_LEGACY_DJANGO_SCHEMA.format(profile_name=self.profile.name)
                 )
             raise exceptions.IncompatibleStorageSchema('The database has no known version.')
-
-        # now we can check that the alembic version is the latest
-        schema_version_code = self.get_schema_version_head()
-        schema_version_database = self.get_schema_version_profile(check_legacy=False)
-        if schema_version_database != schema_version_code:
-            raise exceptions.IncompatibleStorageSchema(
-                TEMPLATE_INVALID_SCHEMA_VERSION.format(
-                    schema_version_database=schema_version_database,
-                    schema_version_code=schema_version_code,
-                    profile_name=self.profile.name,
-                )
-            )
-
-        # finally, we check that the ID set within the disk-objectstore is equal to the one saved in the database,
-        # i.e. this container is indeed the one associated with the db
-        repository_uuid = self.get_repository_uuid()
-        stmt = select(DbSetting.val).where(DbSetting.key == REPOSITORY_UUID_KEY)
-        database_repository_uuid = self.connection.execute(stmt).scalar_one_or_none()
-        if database_repository_uuid is None:
-            raise exceptions.CorruptStorage('The database has no repository UUID set.')
-        if database_repository_uuid != repository_uuid:
-            raise exceptions.CorruptStorage(
-                f'The database has a repository UUID configured to {database_repository_uuid} '
-                f"but the disk-objectstore's is {repository_uuid}."
-            )
 
     def get_container(self) -> Container:
         """Return the disk-object store container.
@@ -218,96 +117,15 @@ class PsqlDosMigrator:
 
         return Container(get_filepath_container(self.profile))
 
-    def get_repository_uuid(self) -> str:
-        """Return the UUID of the repository.
-
-        :returns: The repository UUID.
-        :raises: :class:`~aiida.common.exceptions.UnreachableStorage` if the UUID cannot be retrieved, which probably
-            means that the repository is not initialised.
-        """
-        try:
-            return self.get_container().container_id
-        except Exception as exception:
-            raise exceptions.UnreachableStorage(
-                f'Could not access disk-objectstore {self.get_container()}: {exception}'
-            ) from exception
-
-    def initialise(self, reset: bool = False) -> bool:
-        """Initialise the storage backend.
-
-        This is typically used once when a new storage backed is created. If this method returns without exceptions the
-        storage backend is ready for use. If the backend already seems initialised, this method is a no-op.
-
-        :param reset: If ``true``, destroy the backend if it already exists including all of its data before recreating
-            and initialising it. This is useful for example for test profiles that need to be reset before or after
-            tests having run.
-        :returns: ``True`` if the storage was initialised by the function call, ``False`` if it was already initialised.
-        """
-        if reset:
-            self.reset_repository()
-            self.reset_database()
-
-        initialised: bool = False
-
-        if not self.is_initialised:
-            self.initialise_repository()
-            self.initialise_database()
-            initialised = True
-
-        # Call migrate in the case the storage was already initialised but not yet at the latest schema version. If it
-        # was, then the following is a no-op anyway.
-        self.migrate()
-
-        return initialised
-
-    @property
-    def is_initialised(self) -> bool:
-        """Return whether the storage is initialised.
-
-        This is the case if both the database and the repository are initialised.
-
-        :returns: ``True`` if the storage is initialised, ``False`` otherwise.
-        """
-        return self.is_repository_initialised and self.is_database_initialised
-
-    @property
-    def is_repository_initialised(self) -> bool:
-        """Return whether the repository is initialised.
-
-        :returns: ``True`` if the repository is initialised, ``False`` otherwise.
-        """
-        return self.get_container().is_initialised
-
     @property
     def is_database_initialised(self) -> bool:
         """Return whether the database is initialised.
 
         This is the case if it contains the table that holds the schema version for alembic or Django.
-
-        :returns: ``True`` if the database is initialised, ``False`` otherwise.
         """
         return inspect(self.connection).has_table(self.alembic_version_tbl_name) or inspect(self.connection).has_table(
             self.django_version_table.name
         )
-
-    def reset_repository(self) -> None:
-        """Reset the repository by deleting all of its contents.
-
-        This will also destroy the configuration and so in order to use it again, it will have to be reinitialised.
-        """
-        import shutil
-
-        try:
-            shutil.rmtree(self.get_container().get_folder())
-        except FileNotFoundError:
-            pass
-
-    def reset_database(self) -> None:
-        """Reset the database by deleting all content from all tables.
-
-        This will also destroy the settings table and so in order to use it again, it will have to be reinitialised.
-        """
-        self.delete_all_tables(exclude_tables=[self.alembic_version_tbl_name])
 
     def initialise_repository(self) -> None:
         """Initialise the repository."""
@@ -317,74 +135,22 @@ class PsqlDosMigrator:
         container.init_container(clear=True, **CONTAINER_DEFAULTS)
 
     def initialise_database(self) -> None:
-        """Initialise the database.
-
-        This assumes that the database has no schema whatsoever and so the initial schema is created directly from the
-        models at the current head version without migrating through all of them one by one.
-        """
-        from aiida.storage.psql_dos.models.base import get_orm_metadata
-
         # setup the database
         # see: https://alembic.sqlalchemy.org/en/latest/cookbook.html#building-an-up-to-date-database-from-scratch
         MIGRATE_LOGGER.report('initialising empty storage schema')
-        assert self._engine is not None
-        get_orm_metadata().create_all(self._engine)
+        super().initialise_database()
 
-        repository_uuid = self.get_repository_uuid()
-
-        # Create a "sync" between the database and repository, by saving its UUID in the settings table
-        # this allows us to validate inconsistencies between the two
-        self.connection.execute(
-            insert(DbSetting).values(key=REPOSITORY_UUID_KEY, val=repository_uuid, description='Repository UUID')
-        )
-
-        # finally, generate the version table, "stamping" it with the most recent revision
-        with self._migration_context() as context:
-            assert context.script is not None
-            context.stamp(context.script, 'main@head')
-            self.connection.commit()
-
-    def delete_all_tables(self, *, exclude_tables: list[str] | None = None) -> None:
-        """Delete all tables of the current database schema.
-
-        The tables are determined dynamically through reflection of the current schema version. Any other tables in the
-        database that are not part of the schema should remain unaffected.
-
-        :param exclude_tables: Optional list of table names that should not be deleted.
-        """
-        exclude_tables = exclude_tables or []
-
-        if inspect(self.connection).has_table(self.alembic_version_tbl_name):
-            metadata = MetaData()
-            metadata.reflect(bind=self.connection)
-
-            # The ``sorted_tables`` property returns the tables sorted by their foreign-key dependencies, with those
-            # that are dependent on others first. Iterate over the list in reverse to ensure that the tables with
-            # the independent rows are deleted first.
-            for schema_table in reversed(metadata.sorted_tables):
-                if schema_table.name in exclude_tables:
-                    continue
-                self.connection.execute(schema_table.delete())
-            self.connection.commit()
-
-    def migrate(self) -> None:
-        """Migrate the storage for this profile to the head version.
-
-        :raises: :class:`~aiida.common.exceptions.UnreachableStorage` if the storage cannot be accessed.
-        :raises: :class:`~aiida.common.exceptions.StorageMigrationError` if the storage is not initialised.
-        """
+    def _migrate_legacy_branches(self) -> None:
         # The database can be in one of a few states:
         # 1. Legacy django database -> we transfer the version to alembic, migrate to the head of the django branch,
         #    reset the revision as one on the main branch, and then migrate to the head of the main branch
         # 2. Legacy sqlalchemy database -> we migrate to the head of the sqlalchemy branch,
         #    reset the revision as one on the main branch, and then migrate to the head of the main branch
-        # 3. Already on the main branch -> we migrate to the head of the main branch
+        # 3. Already on the main branch -> nothing to do here, the caller migrates to the head of the main branch
 
         if inspect(self.connection).has_table(self.alembic_version_tbl_name):
             version = self.get_schema_version_profile()
         else:
-            if not inspect(self.connection).has_table(self.django_version_table.name):
-                raise exceptions.StorageMigrationError('storage is uninitialised, cannot migrate.')
             # the database is a legacy django one,
             # so we need to copy the version from the 'django_migrations' table to the 'alembic_version' one
             legacy_version = self.get_schema_version_profile(check_legacy=True)
@@ -420,11 +186,6 @@ class PsqlDosMigrator:
                 assert context.script is not None
                 context.stamp(context.script, 'main_0001')
                 self.connection.commit()
-
-        # finally migrate to the main head revision
-        MIGRATE_LOGGER.report('Migrating to the head of the main branch')
-        self.migrate_up('main@head')
-        self.connection.commit()
 
     # the following are used for migration tests
 

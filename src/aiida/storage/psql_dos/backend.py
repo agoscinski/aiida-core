@@ -29,6 +29,7 @@ from aiida.manage.configuration.profile import Profile
 from aiida.orm.entities import EntityTypes
 from aiida.orm.implementation import BackendEntity, StorageBackend
 from aiida.storage.log import STORAGE_LOGGER
+from aiida.storage.migrator import BaseDosMigrator
 from aiida.storage.psql_dos.migrator import REPOSITORY_UUID_KEY, PsqlDosMigrator
 from aiida.storage.psql_dos.models import base
 from aiida.storage.psql_dos.orm import authinfos, comments, computers, convert, groups, logs, nodes, querybuilder, users
@@ -135,7 +136,7 @@ class PsqlDosBackend(StorageBackend):
             description='URI to the file repository.',
         )
 
-    migrator = PsqlDosMigrator
+    migrator: type[BaseDosMigrator] = PsqlDosMigrator
 
     @classmethod
     def version_head(cls) -> str:
