@@ -8,6 +8,8 @@
 ###########################################################################
 """Versioning and migration implementation for the sqlite_zip format."""
 
+from __future__ import annotations
+
 import json
 import shutil
 import tarfile
@@ -15,9 +17,10 @@ import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from archive_path import ZipPath, extract_file_in_zip, open_file_in_tar, open_file_in_zip
+from sqlalchemy import Connection, Engine
 
 from aiida.common.exceptions import CorruptStorage, IncompatibleStorageSchema, StorageMigrationError
 from aiida.common.progress_reporter import get_progress_reporter
@@ -36,6 +39,11 @@ from aiida.storage.sqlite_zip.utils import (
     read_version,
 )
 
+if TYPE_CHECKING:
+    from types import TracebackType
+
+    from typing_extensions import Self
+
 
 def _get_sqlite_metadata():
     """Return the SQLite archive ORM metadata."""
@@ -44,18 +52,73 @@ def _get_sqlite_metadata():
     return SqliteBase.metadata
 
 
-alembic_migrator = AlembicMigrator(Path(__file__).resolve().parent / 'migrations', _get_sqlite_metadata)
+_ALEMBIC_MIGRATOR = AlembicMigrator(Path(__file__).resolve().parent / 'migrations', _get_sqlite_metadata)
+
+
+class SqliteZipMigrator:
+    """Archive migration facade owning a SQLite connection.
+
+    It composes the shared Alembic driver while keeping SQLite engine setup at
+    the archive boundary.
+    """
+
+    def __init__(self, database_path: Path, *, enforce_foreign_keys: bool = True) -> None:
+        self._engine: Engine | None = create_sqla_engine(database_path, enforce_foreign_keys=enforce_foreign_keys)
+        self._connection: Connection | None = None
+
+    def close(self) -> None:
+        """Close the connection and dispose of the SQLite engine."""
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+        if self._engine is not None:
+            self._engine.dispose()
+            self._engine = None
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
+    ) -> None:
+        self.close()
+
+    @property
+    def connection(self) -> Connection:
+        """Return the open SQLite connection."""
+        if self._connection is None:
+            if self._engine is None:
+                msg = 'The migrator is closed.'
+                raise RuntimeError(msg)
+            self._connection = self._engine.connect()
+        return self._connection
+
+    def stamp(self, version: str) -> None:
+        """Stamp the archive database with ``version``."""
+        _ALEMBIC_MIGRATOR.stamp(self.connection, version)
+
+    def migrate_up(self, version: str) -> None:
+        """Upgrade the archive database to ``version``."""
+        _ALEMBIC_MIGRATOR.migrate_up(self.connection, version)
+
+    def migrate_down(self, version: str) -> None:
+        """Downgrade the archive database to ``version``."""
+        _ALEMBIC_MIGRATOR.migrate_down(self.connection, version)
+
+    def commit(self) -> None:
+        """Commit the current database transaction."""
+        self.connection.commit()
 
 
 def get_schema_version_head() -> str:
     """Return the head schema version for this storage."""
-    return alembic_migrator.get_schema_version_head()
+    return _ALEMBIC_MIGRATOR.get_schema_version_head()
 
 
 def list_versions() -> list[str]:
     """Return all available schema versions (oldest to latest)."""
     legacy_versions = list(LEGACY_MIGRATE_FUNCTIONS) + [FINAL_LEGACY_VERSION]
-    revisions = alembic_migrator._alembic_script().walk_revisions()
+    revisions = _ALEMBIC_MIGRATOR._alembic_script().walk_revisions()
     alembic_versions = [entry.revision for entry in reversed(list(revisions))]
     return legacy_versions + alembic_versions
 
@@ -227,11 +290,11 @@ def migrate(
                 MIGRATE_LOGGER.report('Performing SQLite migrations:')
                 # See https://alembic.sqlalchemy.org/en/latest/batch.html#dealing-with-referencing-foreign-keys
                 # for why we do not enforce foreign keys here.
-                with create_sqla_engine(db_path, enforce_foreign_keys=False).connect() as connection:
-                    alembic_migrator.stamp(connection, current_version)
-                    connection.commit()
-                    alembic_migrator.migrate_up(connection, version)
-                    connection.commit()
+                with SqliteZipMigrator(db_path, enforce_foreign_keys=False) as migrator:
+                    migrator.stamp(current_version)
+                    migrator.commit()
+                    migrator.migrate_up(version)
+                    migrator.commit()
                 update_metadata(metadata, version)
 
             if not written_repo:

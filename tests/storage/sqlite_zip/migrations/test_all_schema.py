@@ -21,8 +21,7 @@ actually changes the schema.
 
 import pytest
 
-from aiida.storage.sqlite_zip.migrator import alembic_migrator, list_versions
-from aiida.storage.sqlite_zip.utils import create_sqla_engine
+from aiida.storage.sqlite_zip.migrator import SqliteZipMigrator, list_versions
 from tests.storage.sqlite.utils import reflect_schema
 
 # Revisions whose downgrade is not implemented: they raise ``NotImplementedError``.
@@ -34,9 +33,9 @@ def test_main(version, tmp_path, data_regression):
     """Test that each main migration produces the expected database schema."""
     database_path = tmp_path / 'database.sqlite'
 
-    with create_sqla_engine(database_path).connect() as connection:
-        alembic_migrator.migrate_up(connection, version)
-        connection.commit()
+    with SqliteZipMigrator(database_path) as migrator:
+        migrator.migrate_up(version)
+        migrator.commit()
 
     data_regression.check(reflect_schema(database_path), basename=f'test_{version}')
 
@@ -51,9 +50,9 @@ def test_legacy_downgrade_not_implemented(version, tmp_path):
     """
     database_path = tmp_path / 'database.sqlite'
 
-    with create_sqla_engine(database_path).connect() as connection:
-        alembic_migrator.migrate_up(connection, version)
-        connection.commit()
+    with SqliteZipMigrator(database_path) as migrator:
+        migrator.migrate_up(version)
+        migrator.commit()
 
         with pytest.raises(NotImplementedError):
-            alembic_migrator.migrate_down(connection, '-1')
+            migrator.migrate_down('-1')
