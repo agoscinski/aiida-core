@@ -32,6 +32,7 @@ import click
 import pytest
 
 from aiida import get_profile, orm
+from aiida.common.exceptions import NotExistent
 from aiida.common.folders import Folder
 from aiida.common.links import LinkType
 from aiida.manage import get_manager
@@ -58,6 +59,7 @@ if t.TYPE_CHECKING:
 
 pytest_plugins = ['aiida.tools.pytest_fixtures', 'sphinx.testing.fixtures']
 
+LOGGER = logging.getLogger(__name__)
 P = ParamSpec('P')
 
 
@@ -180,6 +182,57 @@ def pytest_addoption(parser):
         help=f'Broker backend to be used for tests {tuple(b.value for b in TestBrokerBackend)}',
         type=broker_backend_type,
     )
+    parser.addoption(
+        '--aiida-test-state-logging',
+        action='store_true',
+        default=False,
+        help='Log the active profile and default-user state at each test setup and teardown.',
+    )
+
+
+def _log_test_profile_state(item: pytest.Item, phase: str) -> None:
+    """Log profile state to diagnose test-induced global-state corruption in CI."""
+    if not item.config.getoption('--aiida-test-state-logging'):
+        return
+
+    profile = get_profile()
+
+    if profile is None:
+        LOGGER.debug('AiiDA test state: phase=%s nodeid=%s profile=<unloaded>', phase, item.nodeid)
+        return
+
+    email = profile.default_user_email
+    user_exists = False
+
+    if email is not None:
+        try:
+            orm.User.collection.get(email=email)
+        except NotExistent:
+            pass
+        else:
+            user_exists = True
+
+    LOGGER.debug(
+        'AiiDA test state: phase=%s nodeid=%s profile=%s uuid=%s storage=%s default_user_email=%s '
+        'default_user_exists=%s',
+        phase,
+        item.nodeid,
+        profile.name,
+        profile.uuid,
+        profile.storage_backend,
+        email,
+        user_exists,
+    )
+
+
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    """Log the AiiDA profile state immediately before each test's fixtures run."""
+    _log_test_profile_state(item, 'setup')
+
+
+def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> None:
+    """Log the AiiDA profile state after each test has completed."""
+    _log_test_profile_state(item, 'teardown')
 
 
 @pytest.fixture(autouse=True)
