@@ -72,8 +72,18 @@ jobs:
       env:
         AIIDA_TEST_PROFILE: test_aiida
         AIIDA_WARN_v3: 1
-      run: |
-        pytest -n auto --db-backend ${{ matrix.database-backend }} --broker-backend ${{ matrix.broker-backend }} -m 'not nightly' tests/ ${{ matrix.python-version == '3.14' && '--cov=src/aiida' || '' }}
+        AIIDA_TEST_STATE_TRACE_DIR: .ci-test-state
+      run: >-
+        pytest -vv --setup-show --full-trace --showlocals --show-capture=all
+        --log-level=DEBUG
+        --log-format='%(asctime)s %(processName)s[%(process)d] %(threadName)s %(name)s %(levelname)s %(message)s'
+        --aiida-test-state-logging
+        -n auto --db-backend ${{ matrix.database-backend }} --broker-backend ${{ matrix.broker-backend }}
+        -m 'not nightly' tests/ ${{ matrix.python-version == '3.14' && '--cov=src/aiida' || '' }}
+
+    - name: Output test-state traces
+      if: failure()
+      run: find .ci-test-state -type f -print -exec cat {} + || true
 
     - name: Upload coverage report
       if: matrix.python-version == 3.14 && github.repository == 'aiidateam/aiida-core'
@@ -125,7 +135,17 @@ jobs:
     - name: Run test suite
       env:
         AIIDA_WARN_v3: 0
-      run: pytest --disable-warnings -n auto --db-backend ${{ matrix.database-backend }} --broker-backend zmq -m 'not nightly' tests/
+        AIIDA_TEST_STATE_TRACE_DIR: .ci-test-state
+      run: >-
+        pytest -vv --setup-show --full-trace --showlocals --show-capture=all
+        --log-level=DEBUG
+        --log-format='%(asctime)s %(processName)s[%(process)d] %(threadName)s %(name)s %(levelname)s %(message)s'
+        --aiida-test-state-logging --disable-warnings
+        -n auto --db-backend ${{ matrix.database-backend }} --broker-backend zmq -m 'not nightly' tests/
+
+    - name: Output test-state traces
+      if: failure()
+      run: find .ci-test-state -type f -print -exec cat {} + || true
 
 
   tests-presto:
@@ -150,7 +170,18 @@ jobs:
     - name: Run test suite
       env:
         AIIDA_WARN_v3: 0
-      run: pytest -n auto --broker-backend zmq -m 'presto' tests/
+        AIIDA_TEST_STATE_TRACE_DIR: .ci-test-state
+      # Keep the full fixture lifecycle, test identity, local variables, and DEBUG records in CI output.
+      # This suite is flaky only in CI, so the resulting log must be sufficient to identify the test that corrupts state.
+      run: >-
+        pytest -vv --setup-show --full-trace --showlocals --show-capture=all
+        --log-level=DEBUG
+        --log-format='%(asctime)s %(processName)s[%(process)d] %(threadName)s %(name)s %(levelname)s %(message)s'
+        --aiida-test-state-logging -n auto --broker-backend zmq -m 'presto' tests/
+
+    - name: Output test-state traces
+      if: failure()
+      run: find .ci-test-state -type f -print -exec cat {} + || true
 
 
   verdi:
@@ -215,7 +246,11 @@ jobs:
       run: .github/workflows/setup_ssh.sh
 
     - name: Test new pytest fixtures
-      run: pytest -v --cov=src/aiida --noconftest tests/tools/pytest_fixtures/
+      run: >-
+        pytest -vv --setup-show --full-trace --showlocals --show-capture=all
+        --log-level=DEBUG
+        --log-format='%(asctime)s %(processName)s[%(process)d] %(threadName)s %(name)s %(levelname)s %(message)s'
+        --cov=src/aiida --noconftest tests/tools/pytest_fixtures/
 
     - name: Upload coverage report
       if: github.repository == 'aiidateam/aiida-core'

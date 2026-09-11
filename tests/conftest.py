@@ -36,6 +36,7 @@ from aiida.common.folders import Folder
 from aiida.common.links import LinkType
 from aiida.manage import get_manager
 from aiida.manage.configuration import Profile, get_config, load_profile
+from aiida.manage.manager import Manager
 
 # Alembic loads migration version scripts under synthetic module names derived from the file names, which do not
 # match the ``aiida`` package coverage is run over with ``--cov aiida``, so the executed lines would never be
@@ -58,6 +59,7 @@ if t.TYPE_CHECKING:
 
 pytest_plugins = ['aiida.tools.pytest_fixtures', 'sphinx.testing.fixtures']
 
+LOGGER = logging.getLogger(__name__)
 P = ParamSpec('P')
 
 
@@ -180,6 +182,60 @@ def pytest_addoption(parser):
         help=f'Broker backend to be used for tests {tuple(b.value for b in TestBrokerBackend)}',
         type=broker_backend_type,
     )
+    parser.addoption(
+        '--aiida-test-state-logging',
+        action='store_true',
+        default=False,
+        help='Log the active profile and default-user state at each test setup and teardown.',
+    )
+
+
+def _log_test_profile_state(item: pytest.Item, phase: str) -> None:
+    """Log profile state to diagnose test-induced global-state corruption in CI."""
+    if not item.config.getoption('--aiida-test-state-logging'):
+        return
+
+    manager = get_manager()
+
+    if not isinstance(manager, Manager):
+        LOGGER.debug('AiiDA test state: phase=%s nodeid=%s manager_type=%s', phase, item.nodeid, type(manager).__name__)
+        return
+
+    profile = manager.get_profile()
+
+    if profile is None:
+        LOGGER.debug('AiiDA test state: phase=%s nodeid=%s profile=<unloaded>', phase, item.nodeid)
+        return
+
+    if not isinstance(profile, Profile):
+        LOGGER.debug(
+            'AiiDA test state: phase=%s nodeid=%s profile_type=%s profile_name=%s',
+            phase,
+            item.nodeid,
+            type(profile).__name__,
+            getattr(profile, 'name', None),
+        )
+        return
+
+    LOGGER.debug(
+        'AiiDA test state: phase=%s nodeid=%s profile=%s uuid=%s storage=%s default_user_email=%s',
+        phase,
+        item.nodeid,
+        profile.name,
+        profile.uuid,
+        profile.storage_backend,
+        profile.default_user_email,
+    )
+
+
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    """Log the AiiDA profile state immediately before each test's fixtures run."""
+    _log_test_profile_state(item, 'setup')
+
+
+def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> None:
+    """Log the AiiDA profile state after each test has completed."""
+    _log_test_profile_state(item, 'teardown')
 
 
 @pytest.fixture(autouse=True)

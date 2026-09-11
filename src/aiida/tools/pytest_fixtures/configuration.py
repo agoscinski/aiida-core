@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import pathlib
 import secrets
-import time
+import traceback
 import typing as t
 
 import pytest
 
 from aiida.manage.configuration.settings import AiiDAConfigDir
+
+LOGGER = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
     from aiida.manage.configuration.config import Config
@@ -177,22 +180,58 @@ def aiida_profile_factory():
                         except DaemonException:
                             pass
 
-                        # ``stop_daemon(wait=True)`` returns once the stop is requested, but the
-                        # daemon process may still be shutting down and briefly report as running.
-                        # Wait until it is confirmed stopped so reset does not clear storage
-                        # underneath a live worker that retains the old default user.
-                        start_time = time.monotonic()
-                        while daemon_client.is_daemon_running:
-                            if time.monotonic() - start_time > 5:
-                                msg = 'The daemon failed to stop before resetting storage.'
-                                raise DaemonTimeoutException(msg)
-                            time.sleep(0.1)
+                        daemon_client._await_condition(
+                            lambda: not daemon_client.is_daemon_running,
+                            DaemonTimeoutException('The daemon failed to stop before resetting storage.'),
+                        )
 
                 default_user_email = target_profile.default_user_email or email
-                manager.get_profile_storage()._clear()
+                storage = manager.get_profile_storage()
+                current_default_user = storage.default_user
+                LOGGER.debug(
+                    'Resetting AiiDA test storage: profile=%s uuid=%s storage=%s configured_default_user=%s '
+                    'stored_default_user=%s',
+                    target_profile.name,
+                    target_profile.uuid,
+                    target_profile.storage_backend,
+                    default_user_email,
+                    current_default_user.email if current_default_user is not None else None,
+                    stack_info=True,
+                )
+                trace_directory = os.environ.get('AIIDA_TEST_STATE_TRACE_DIR')
+                if trace_directory is not None:
+                    trace_filepath = pathlib.Path(trace_directory) / f'{os.getpid()}.log'
+                    with contextlib.suppress(OSError):
+                        trace_filepath.parent.mkdir(parents=True, exist_ok=True)
+                        with trace_filepath.open('a', encoding='utf8') as handle:
+                            handle.write(
+                                f'Resetting profile {target_profile.name} ({target_profile.uuid}): '
+                                f'default_user={default_user_email}\n'
+                            )
+                            handle.writelines(traceback.format_stack())
+                            handle.write('\n')
+                storage._clear()
                 manager.reset_profile()
 
-                User(email=default_user_email).store()
+                user = User(email=default_user_email).store()
+                stored_default_user = manager.get_profile_storage().default_user
+                LOGGER.debug(
+                    'Reset AiiDA test storage: profile=%s uuid=%s created_user=%s storage_default_user=%s',
+                    target_profile.name,
+                    target_profile.uuid,
+                    user.email,
+                    stored_default_user.email if stored_default_user is not None else None,
+                )
+                if trace_directory is not None:
+                    trace_filepath = pathlib.Path(trace_directory) / f'{os.getpid()}.log'
+                    with contextlib.suppress(OSError):
+                        with trace_filepath.open('a', encoding='utf8') as handle:
+                            handle.write(
+                                f'Reset complete: profile={target_profile.name} '
+                                f'created_user={user.email} '
+                                f'storage_default_user='
+                                f'{stored_default_user.email if stored_default_user is not None else None}\n'
+                            )
 
         # Add the ``reset_storage`` method, such that users can empty the storage through the ``Profile`` instance that
         # is returned by this fixture.

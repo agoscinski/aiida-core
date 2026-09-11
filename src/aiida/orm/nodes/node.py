@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import datetime
+import os
 import pathlib
 from collections.abc import Callable, Iterator
 from copy import deepcopy
@@ -1390,6 +1391,30 @@ def create_backend_node(
     user = user if user else backend.default_user
 
     if user is None:
+        manager = get_manager()
+        manager_profile = manager.get_profile()
+        storage_profile = backend.profile
+        manager_profile_email = manager_profile.default_user_email if manager_profile is not None else None
+        trace_message = (
+            f'Missing default user: pid={os.getpid()} node_type={node_type} '
+            f'manager_profile={manager_profile.name if manager_profile is not None else None} '
+            f'manager_profile_uuid={manager_profile.uuid if manager_profile is not None else None} '
+            f'manager_default_user={manager_profile_email} storage_profile={storage_profile.name} '
+            f'storage_profile_uuid={storage_profile.uuid} storage_default_user={storage_profile.default_user_email} '
+            f'config_dir={manager.get_config().dirpath}\n'
+        )
+        AIIDA_LOGGER.error(trace_message.rstrip())
+
+        trace_directory = os.environ.get('AIIDA_TEST_STATE_TRACE_DIR')
+        if trace_directory is not None:
+            trace_filepath = pathlib.Path(trace_directory) / f'{os.getpid()}.log'
+            try:
+                trace_filepath.parent.mkdir(parents=True, exist_ok=True)
+                with trace_filepath.open('a', encoding='utf8') as handle:
+                    handle.write(trace_message)
+            except OSError:
+                pass
+
         raise ValueError('the user cannot be None')
 
     backend_entity = backend.nodes.create(
