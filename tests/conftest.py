@@ -274,6 +274,35 @@ def aiida_profile(
         yield profile
 
 
+@pytest.fixture(autouse=True)
+def _restart_daemon_for_test(request):
+    """Restart the daemon before each test that submits processes to it.
+
+    The daemon is session-scoped and caches profile state at startup. Tests mutating session-global state can
+    otherwise leave a stale worker running whose view of the profile no longer matches storage. Restarting per
+    test trades ~1s of runtime for a worker that always matches the current test. Tests that only need the
+    client or assert a stopped daemon are untouched.
+    """
+    if not {'started_daemon_client', 'submit_and_await'} & set(request.fixturenames):
+        yield
+        return
+
+    from aiida.engine.daemon.client import DaemonTimeoutException
+
+    daemon_client = request.getfixturevalue('daemon_client')
+
+    if daemon_client.is_daemon_running:
+        daemon_client.stop_daemon(wait=True)
+        daemon_client._await_condition(
+            lambda: not daemon_client.is_daemon_running,
+            DaemonTimeoutException('The daemon failed to stop before restarting for test isolation.'),
+        )
+    daemon_client.start_daemon()
+    assert daemon_client.is_daemon_running
+
+    yield
+
+
 @pytest.fixture()
 def non_interactive_editor(request):
     """Fixture to patch default editor.
