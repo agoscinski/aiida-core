@@ -16,7 +16,7 @@ last confirmed compatible version was released in 2020.
 
 import io
 
-from aiida.tools.dbimporters.baseclasses import CifEntry, DbImporter, DbSearchResults
+from aiida_atomistic.tools.dbimporters.baseclasses import CifEntry, DbImporter, DbSearchResults
 
 
 class IcsdImporterExp(Exception):  # noqa: N818
@@ -644,7 +644,7 @@ class IcsdEntry(CifEntry):
 
     def get_ase_structure(self):
         """:return: ASE structure corresponding to the cif file."""
-        from aiida.orm import CifData
+        from aiida_atomistic.orm.nodes.data.cif import CifData
 
         cif = correct_cif(self.cif)
         return CifData.read_cif(io.StringIO(cif))

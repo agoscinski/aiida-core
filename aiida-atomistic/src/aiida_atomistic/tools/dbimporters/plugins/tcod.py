@@ -8,7 +8,7 @@
 ###########################################################################
 """ "Implementation of `DbImporter` for the TCOD database."""
 
-from aiida.tools.dbimporters.plugins.cod import CodDbImporter, CodEntry, CodSearchResults
+from aiida_atomistic.tools.dbimporters.plugins.cod import CodDbImporter, CodEntry, CodSearchResults
 
 
 class TcodDbImporter(CodDbImporter):
@@ -24,7 +24,7 @@ class TcodDbImporter(CodDbImporter):
         specified in ``kwargs``.
 
         :return: an instance of
-            :py:class:`aiida.tools.dbimporters.plugins.tcod.TcodSearchResults`.
+            :py:class:`aiida_atomistic.tools.dbimporters.plugins.tcod.TcodSearchResults`.
         """
         query_statement = self.query_sql(**kwargs)
         self._connect_db()
@@ -63,7 +63,7 @@ class TcodEntry(CodEntry):
         **kwargs,
     ):
         """Creates an instance of
-        :py:class:`aiida.tools.dbimporters.plugins.tcod.TcodEntry`, related
+        :py:class:`aiida_atomistic.tools.dbimporters.plugins.tcod.TcodEntry`, related
         to the supplied URI.
         """
         super().__init__(db_name=db_name, db_uri=db_uri, uri=uri, **kwargs)

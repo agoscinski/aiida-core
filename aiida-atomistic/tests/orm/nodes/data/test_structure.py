@@ -11,7 +11,7 @@
 import numpy as np
 import pytest
 
-from aiida.orm.nodes.data.structure import StructureData, get_formula
+from aiida_atomistic.orm.nodes.data.structure import StructureData, get_formula
 
 
 def test_get_formula_hill():

@@ -8,7 +8,7 @@
 ###########################################################################
 """ "Implementation of `DbImporter` for the COD database."""
 
-from aiida.tools.dbimporters.baseclasses import CifEntry, DbImporter, DbSearchResults
+from aiida_atomistic.tools.dbimporters.baseclasses import CifEntry, DbImporter, DbSearchResults
 
 
 class CodDbImporter(DbImporter):
@@ -172,7 +172,7 @@ class CodDbImporter(DbImporter):
         specified in ``kwargs``.
 
         :return: an instance of
-            :py:class:`aiida.tools.dbimporters.plugins.cod.CodSearchResults`.
+            :py:class:`aiida_atomistic.tools.dbimporters.plugins.cod.CodSearchResults`.
         """
         query_statement = self.query_sql(**kwargs)
         self._connect_db()
@@ -272,7 +272,7 @@ class CodEntry(CifEntry):
         self, uri, db_name='Crystallography Open Database', db_uri='http://www.crystallography.net/cod', **kwargs
     ):
         """Creates an instance of
-        :py:class:`aiida.tools.dbimporters.plugins.cod.CodEntry`, related
+        :py:class:`aiida_atomistic.tools.dbimporters.plugins.cod.CodEntry`, related
         to the supplied URI.
         """
         super().__init__(db_name=db_name, db_uri=db_uri, uri=uri, **kwargs)

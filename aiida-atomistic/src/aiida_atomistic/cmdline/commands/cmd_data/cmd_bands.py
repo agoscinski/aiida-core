@@ -50,7 +50,7 @@ def bands_list(elements, elements_exclusive, raw, formula_mode, past_days, group
 
     from tabulate import tabulate
 
-    from aiida.orm.nodes.data.array.bands import get_bands_and_parents_structure
+    from aiida_atomistic.orm.nodes.data.array.bands import get_bands_and_parents_structure
 
     args = Namespace()
     args.element = elements

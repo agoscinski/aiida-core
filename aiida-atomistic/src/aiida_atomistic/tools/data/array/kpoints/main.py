@@ -10,7 +10,8 @@
 (e.g. band paths, kpoints from a parsed input text file, ...)
 """
 
-from aiida.orm import Dict, KpointsData
+from aiida.orm import Dict
+from aiida_atomistic.orm.nodes.data.array.kpoints import KpointsData
 
 __all__ = ('get_explicit_kpoints_path', 'get_kpoints_path')
 
@@ -106,7 +107,7 @@ def _seekpath_get_kpoints_path(structure, **kwargs):
     :param symprec: the symmetry precision used internally by SPGLIB
     :param angle_tolerance: the angle_tolerance used internally by SPGLIB
     """
-    from aiida.tools.data.array.kpoints import seekpath
+    from aiida_atomistic.tools.data.array.kpoints import seekpath
 
     assert structure.pbc == (True, True, True), 'Seekpath only implemented for three-dimensional structures'
 
@@ -145,7 +146,7 @@ def _seekpath_get_explicit_kpoints_path(structure, **kwargs):
     :param symprec: the symmetry precision used internally by SPGLIB
     :param angle_tolerance: the angle_tolerance used internally by SPGLIB
     """
-    from aiida.tools.data.array.kpoints import seekpath
+    from aiida_atomistic.tools.data.array.kpoints import seekpath
 
     assert structure.pbc == (True, True, True), 'Seekpath only implemented for three-dimensional structures'
 
@@ -166,7 +167,7 @@ def _legacy_get_kpoints_path(structure, **kwargs):
     :param epsilon_length: threshold on lengths comparison, used to get the bravais lattice info
     :param epsilon_angle: threshold on angles comparison, used to get the bravais lattice info
     """
-    from aiida.tools.data.array.kpoints import legacy
+    from aiida_atomistic.tools.data.array.kpoints import legacy
 
     args_recognized = ['cartesian', 'epsilon_length', 'epsilon_angle']
     args_unknown = set(kwargs).difference(args_recognized)
@@ -197,7 +198,7 @@ def _legacy_get_explicit_kpoints_path(structure, **kwargs):
     :param float epsilon_length: threshold on lengths comparison, used to get the bravais lattice info
     :param float epsilon_angle: threshold on angles comparison, used to get the bravais lattice info
     """
-    from aiida.tools.data.array.kpoints import legacy
+    from aiida_atomistic.tools.data.array.kpoints import legacy
 
     args_recognized = ['value', 'kpoint_distance', 'cartesian', 'epsilon_length', 'epsilon_angle']
     args_unknown = set(kwargs).difference(args_recognized)

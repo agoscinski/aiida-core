@@ -8,7 +8,7 @@
 ###########################################################################
 """ "Implementation of `DbImporter` for the NNIN/C database."""
 
-from aiida.tools.dbimporters.baseclasses import DbImporter, DbSearchResults, UpfEntry
+from aiida_atomistic.tools.dbimporters.baseclasses import DbImporter, DbSearchResults, UpfEntry
 
 
 class NnincDbImporter(DbImporter):
@@ -54,7 +54,7 @@ class NnincDbImporter(DbImporter):
         ``keyword = value`` pairs, specified in ``kwargs``.
 
         :return: an instance of
-            :py:class:`aiida.tools.dbimporters.plugins.nninc.NnincSearchResults`.
+            :py:class:`aiida_atomistic.tools.dbimporters.plugins.nninc.NnincSearchResults`.
         """
         import re
         from urllib.request import urlopen
@@ -133,7 +133,7 @@ class NnincEntry(UpfEntry):
 
     def __init__(self, uri, **kwargs):
         """Creates an instance of
-        :py:class:`aiida.tools.dbimporters.plugins.nninc.NnincEntry`, related
+        :py:class:`aiida_atomistic.tools.dbimporters.plugins.nninc.NnincEntry`, related
         to the supplied URI.
         """
         super().__init__(

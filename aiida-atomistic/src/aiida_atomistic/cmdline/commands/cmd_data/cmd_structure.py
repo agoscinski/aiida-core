@@ -53,7 +53,7 @@ def structure_list(elements, raw, formula_mode, past_days, groups, all_users):
     """List StructureData objects."""
     from tabulate import tabulate
 
-    from aiida.orm.nodes.data.structure import StructureData, get_formula, get_symbols_string
+    from aiida_atomistic.orm.nodes.data.structure import StructureData, get_formula, get_symbols_string
 
     elements_only = False
     lst = data_list(
@@ -190,7 +190,7 @@ def structure_import():
 @decorators.with_dbenv()
 def import_aiida_xyz(filename, vacuum_factor, vacuum_addition, pbc, label, group, dry_run):
     """Import structure in XYZ format using AiiDA's internal importer"""
-    from aiida.orm import StructureData
+    from aiida_atomistic.orm.nodes.data.structure import StructureData
 
     with open(filename, encoding='utf8') as fobj:
         xyz_txt = fobj.read()
@@ -229,7 +229,7 @@ def import_aiida_xyz(filename, vacuum_factor, vacuum_addition, pbc, label, group
 @decorators.with_dbenv()
 def import_ase(filename, label, group, dry_run):
     """Import structure with the ase library that supports a number of different formats"""
-    from aiida.orm import StructureData
+    from aiida_atomistic.orm.nodes.data.structure import StructureData
 
     try:
         import ase.io

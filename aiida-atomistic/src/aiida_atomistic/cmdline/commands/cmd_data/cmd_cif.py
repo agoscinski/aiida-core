@@ -34,7 +34,7 @@ def cif_list(raw, formula_mode, past_days, groups, all_users):
     """List store CifData objects."""
     from tabulate import tabulate
 
-    from aiida.orm import CifData
+    from aiida_atomistic.orm.nodes.data.cif import CifData
 
     elements = None
     elements_only = False
@@ -117,7 +117,7 @@ def cif_export(**kwargs):
 @decorators.with_dbenv()
 def cif_import(filename):
     """Import .cif file into CifData object."""
-    from aiida.orm import CifData
+    from aiida_atomistic.orm.nodes.data.cif import CifData
 
     try:
         node, _ = CifData.get_or_create(filename)

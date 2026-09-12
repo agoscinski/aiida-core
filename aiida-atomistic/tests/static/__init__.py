@@ -6,23 +6,8 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Tool for handling data."""
+"""Collection of static test data for aiida-atomistic."""
 
-# AUTO-GENERATED
+import os
 
-# fmt: off
-
-from aiida_atomistic.tools.data.array import *
-from aiida_atomistic.tools.data.orbital import *
-from aiida_atomistic.tools.data.structure import *
-
-__all__ = (
-    'Orbital',
-    'RealhydrogenOrbital',
-    'get_explicit_kpoints_path',
-    'get_kpoints_path',
-    'spglib_tuple_to_structure',
-    'structure_to_spglib_tuple',
-)
-
-# fmt: on
+STATIC_DIR = os.path.dirname(__file__)

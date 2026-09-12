@@ -121,3 +121,45 @@ testpaths = [
 timeout = 240
 timeout_method = "thread"
 xfail_strict = true
+
+[project.entry-points.'aiida.cmdline.data']
+'core.bands' = 'aiida_atomistic.cmdline.commands.cmd_data.cmd_bands:bands'
+'core.cif' = 'aiida_atomistic.cmdline.commands.cmd_data.cmd_cif:cif'
+'core.structure' = 'aiida_atomistic.cmdline.commands.cmd_data.cmd_structure:structure'
+'core.trajectory' = 'aiida_atomistic.cmdline.commands.cmd_data.cmd_trajectory:trajectory'
+'core.upf' = 'aiida_atomistic.cmdline.commands.cmd_data.cmd_upf:upf'
+
+[project.entry-points.'aiida.data']
+'core.array.bands' = 'aiida_atomistic.orm.nodes.data.array.bands:BandsData'
+'core.array.kpoints' = 'aiida_atomistic.orm.nodes.data.array.kpoints:KpointsData'
+'core.array.projection' = 'aiida_atomistic.orm.nodes.data.array.projection:ProjectionData'
+'core.array.trajectory' = 'aiida_atomistic.orm.nodes.data.array.trajectory:TrajectoryData'
+'core.cif' = 'aiida_atomistic.orm.nodes.data.cif:CifData'
+'core.orbital' = 'aiida_atomistic.orm.nodes.data.orbital:OrbitalData'
+'core.structure' = 'aiida_atomistic.orm.nodes.data.structure:StructureData'
+'core.upf' = 'aiida_atomistic.orm.nodes.data.upf:UpfData'
+
+[project.entry-points.'aiida.groups']
+'core.upf' = 'aiida.orm.groups:UpfFamily'
+
+[project.entry-points.'aiida.tools.data.orbitals']
+'core.orbital' = 'aiida_atomistic.tools.data.orbital.orbital:Orbital'
+'core.realhydrogen' = 'aiida_atomistic.tools.data.orbital.realhydrogen:RealhydrogenOrbital'
+
+[project.entry-points.'aiida.tools.dbimporters']
+'core.cod' = 'aiida_atomistic.tools.dbimporters.plugins.cod:CodDbImporter'
+'core.icsd' = 'aiida_atomistic.tools.dbimporters.plugins.icsd:IcsdDbImporter'
+'core.materialsproject' = 'aiida_atomistic.tools.dbimporters.plugins.materialsproject:MaterialsProjectImporter'
+'core.mpds' = 'aiida_atomistic.tools.dbimporters.plugins.mpds:MpdsDbImporter'
+'core.mpod' = 'aiida_atomistic.tools.dbimporters.plugins.mpod:MpodDbImporter'
+'core.nninc' = 'aiida_atomistic.tools.dbimporters.plugins.nninc:NnincDbImporter'
+'core.oqmd' = 'aiida_atomistic.tools.dbimporters.plugins.oqmd:OqmdDbImporter'
+'core.pcod' = 'aiida_atomistic.tools.dbimporters.plugins.pcod:PcodDbImporter'
+'core.tcod' = 'aiida_atomistic.tools.dbimporters.plugins.tcod:TcodDbImporter'
+
+[project.entry-points.'aiida.restapi.translators']
+'bands' = 'aiida_atomistic.restapi.translator.nodes.data.array.bands:BandsDataTranslator'
+'cif' = 'aiida_atomistic.restapi.translator.nodes.data.cif:CifDataTranslator'
+'kpoints' = 'aiida_atomistic.restapi.translator.nodes.data.kpoints:KpointsDataTranslator'
+'structure' = 'aiida_atomistic.restapi.translator.nodes.data.structure:StructureDataTranslator'
+'upf' = 'aiida_atomistic.restapi.translator.nodes.data.upf:UpfDataTranslator'

@@ -8,7 +8,7 @@
 ###########################################################################
 """ "Implementation of `DbImporter` for the OQMD database."""
 
-from aiida.tools.dbimporters.baseclasses import CifEntry, DbImporter, DbSearchResults
+from aiida_atomistic.tools.dbimporters.baseclasses import CifEntry, DbImporter, DbSearchResults
 
 
 class OqmdDbImporter(DbImporter):
@@ -44,7 +44,7 @@ class OqmdDbImporter(DbImporter):
         specified in ``kwargs``.
 
         :return: an instance of
-            :py:class:`aiida.tools.dbimporters.plugins.oqmd.OqmdSearchResults`.
+            :py:class:`aiida_atomistic.tools.dbimporters.plugins.oqmd.OqmdSearchResults`.
         """
         import re
         from urllib.request import urlopen
@@ -113,7 +113,7 @@ class OqmdEntry(CifEntry):
 
     def __init__(self, uri, **kwargs):
         """Creates an instance of
-        :py:class:`aiida.tools.dbimporters.plugins.oqmd.OqmdEntry`, related
+        :py:class:`aiida_atomistic.tools.dbimporters.plugins.oqmd.OqmdEntry`, related
         to the supplied URI.
         """
         super().__init__(db_name='Open Quantum Materials Database', db_uri='http://oqmd.org', uri=uri, **kwargs)

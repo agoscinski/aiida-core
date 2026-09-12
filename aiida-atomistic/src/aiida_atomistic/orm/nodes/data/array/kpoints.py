@@ -170,7 +170,7 @@ class KpointsData(ArrayData):
         :param value: something compatible with a 3x3 tuple of floats
         """
         from aiida.common.exceptions import ModificationNotAllowed
-        from aiida.orm.nodes.data.structure import _get_valid_cell
+        from aiida_atomistic.orm.nodes.data.structure import _get_valid_cell
 
         if self.is_stored:
             raise ModificationNotAllowed('KpointsData cannot be modified, it has already been stored')
@@ -202,7 +202,7 @@ class KpointsData(ArrayData):
     def _set_pbc(self, value):
         """Validate the pbc, then store them"""
         from aiida.common.exceptions import ModificationNotAllowed
-        from aiida.orm.nodes.data.structure import get_valid_pbc
+        from aiida_atomistic.orm.nodes.data.structure import get_valid_pbc
 
         if self.is_stored:
             raise ModificationNotAllowed('The KpointsData object cannot be modified, it has already been stored')
@@ -280,7 +280,7 @@ class KpointsData(ArrayData):
 
         :param structuredata: an instance of StructureData
         """
-        from aiida.orm import StructureData
+        from aiida_atomistic.orm.nodes.data.structure import StructureData
 
         if not isinstance(structuredata, StructureData):
             raise ValueError(

@@ -21,7 +21,7 @@ import numpy
 
 from aiida.common.exceptions import ValidationError
 from aiida.common.utils import join_labels, prettify_labels
-from aiida.orm.nodes.data.array.kpoints import KpointsData
+from aiida_atomistic.orm.nodes.data.array.kpoints import KpointsData
 from aiida.orm.pydantic import OrmMetadataField
 
 __all__ = ('BandsData', 'find_bandgap')
@@ -380,7 +380,7 @@ class BandsData(KpointsData):
     def _set_pbc(self, value):
         """Validate the pbc, then store them"""
         from aiida.common.exceptions import ModificationNotAllowed
-        from aiida.orm.nodes.data.structure import get_valid_pbc
+        from aiida_atomistic.orm.nodes.data.structure import get_valid_pbc
 
         if self.is_stored:
             raise ModificationNotAllowed('The KpointsData object cannot be modified, it has already been stored')
@@ -804,7 +804,7 @@ class BandsData(KpointsData):
         """Prepare a python script using matplotlib to plot the bands
 
         For the possible parameters, see documentation of
-        :py:meth:`~aiida.orm.nodes.data.array.bands.BandsData._matplotlib_get_dict`
+        :py:meth:`~aiida_atomistic.orm.nodes.data.array.bands.BandsData._matplotlib_get_dict`
         """
         all_data = self._matplotlib_get_dict(*args, **kwargs)
 
@@ -822,7 +822,7 @@ class BandsData(KpointsData):
         returned as an independent file.
 
         For the possible parameters, see documentation of
-        :py:meth:`~aiida.orm.nodes.data.array.bands.BandsData._matplotlib_get_dict`
+        :py:meth:`~aiida_atomistic.orm.nodes.data.array.bands.BandsData._matplotlib_get_dict`
         """
         import os
 
@@ -848,7 +848,7 @@ class BandsData(KpointsData):
         returned as an independent file.
 
         For the possible parameters, see documentation of
-        :py:meth:`~aiida.orm.nodes.data.array.bands.BandsData._matplotlib_get_dict`
+        :py:meth:`~aiida_atomistic.orm.nodes.data.array.bands.BandsData._matplotlib_get_dict`
         """
         import os
         import subprocess
@@ -895,7 +895,7 @@ class BandsData(KpointsData):
         returned as an independent file.
 
         For the possible parameters, see documentation of
-        :py:meth:`~aiida.orm.nodes.data.array.bands.BandsData._matplotlib_get_dict`
+        :py:meth:`~aiida_atomistic.orm.nodes.data.array.bands.BandsData._matplotlib_get_dict`
         """
         import os
         import subprocess
@@ -1879,7 +1879,7 @@ def _extract_formula(akinds, asites, args):
 
     :return: a string with formula if the formula is found
     """
-    from aiida.orm.nodes.data.structure import get_formula, get_symbols_string
+    from aiida_atomistic.orm.nodes.data.structure import get_formula, get_symbols_string
 
     if args.element is not None:
         all_symbols = [_['symbols'][0] for _ in akinds]

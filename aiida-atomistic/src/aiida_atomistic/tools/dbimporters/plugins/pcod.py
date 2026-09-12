@@ -8,7 +8,7 @@
 ###########################################################################
 """ "Implementation of `DbImporter` for the PCOD database."""
 
-from aiida.tools.dbimporters.plugins.cod import CodDbImporter, CodEntry, CodSearchResults
+from aiida_atomistic.tools.dbimporters.plugins.cod import CodDbImporter, CodEntry, CodSearchResults
 
 
 class PcodDbImporter(CodDbImporter):
@@ -58,7 +58,7 @@ class PcodDbImporter(CodDbImporter):
         specified in ``kwargs``.
 
         :return: an instance of
-            :py:class:`aiida.tools.dbimporters.plugins.pcod.PcodSearchResults`.
+            :py:class:`aiida_atomistic.tools.dbimporters.plugins.pcod.PcodSearchResults`.
         """
         query_statement = self.query_sql(**kwargs)
         self._connect_db()
@@ -104,7 +104,7 @@ class PcodEntry(CodEntry):
         **kwargs,
     ):
         """Creates an instance of
-        :py:class:`aiida.tools.dbimporters.plugins.pcod.PcodEntry`, related
+        :py:class:`aiida_atomistic.tools.dbimporters.plugins.pcod.PcodEntry`, related
         to the supplied URI.
         """
         super().__init__(db_name=db_name, db_uri=db_uri, uri=uri, **kwargs)

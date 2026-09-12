@@ -19,7 +19,7 @@ class BandsDataTranslator(DataTranslator):
     # A label associated to the present class (coincides with the resource name)
     __label__ = 'bands'
     # The AiiDA class one-to-one associated to the present class
-    from aiida.orm import BandsData
+    from aiida_atomistic.orm.nodes.data.array.bands import BandsData
 
     _aiida_class = BandsData
     # The string name of the AiiDA class

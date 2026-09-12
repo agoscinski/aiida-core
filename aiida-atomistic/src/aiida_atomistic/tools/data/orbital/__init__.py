@@ -12,8 +12,8 @@
 
 # fmt: off
 
-from aiida.tools.data.orbital.orbital import *
-from aiida.tools.data.orbital.realhydrogen import *
+from aiida_atomistic.tools.data.orbital.orbital import *
+from aiida_atomistic.tools.data.orbital.realhydrogen import *
 
 __all__ = (
     'Orbital',

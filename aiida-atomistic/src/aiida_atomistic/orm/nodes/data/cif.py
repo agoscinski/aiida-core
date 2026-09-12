@@ -744,7 +744,7 @@ class CifData(SinglefileData):
             return md5_from_filelike(handle)
 
     def get_structure(self, converter='pymatgen', store=False, **kwargs):
-        """Creates :py:class:`aiida.orm.nodes.data.structure.StructureData`.
+        """Creates :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData`.
 
         :param converter: specify the converter. Default 'pymatgen'.
         :param store: if True, intermediate calculation gets stored in the
@@ -755,10 +755,10 @@ class CifData(SinglefileData):
             the occupancies will be scaled down to 1. (pymatgen only)
         :param site_tolerance: This tolerance is used to determine if two sites are sitting in the same position,
             in which case they will be combined to a single disordered site. Defaults to 1e-4. (pymatgen only)
-        :return: :py:class:`aiida.orm.nodes.data.structure.StructureData` node.
+        :return: :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData` node.
         """
         from aiida.orm import Dict
-        from aiida.tools.data import cif as cif_tools
+        from aiida_atomistic.tools.data import cif as cif_tools
 
         parameters = Dict(kwargs)
 

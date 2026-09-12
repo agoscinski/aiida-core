@@ -11,7 +11,7 @@
 import io
 
 from aiida.engine import calcfunction
-from aiida.orm import CifData
+from aiida_atomistic.orm.nodes.data.cif import CifData
 from aiida.orm.implementation.utils import clean_value
 
 
@@ -74,12 +74,13 @@ def symop_string_from_symop_matrix_tr(matrix, tr=(0, 0, 0), eps=0):
 
 @calcfunction
 def _get_aiida_structure_ase_inline(cif, **kwargs):
-    """Creates :py:class:`aiida.orm.nodes.data.structure.StructureData` using ASE.
+    """Creates :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData` using ASE.
 
     .. note:: unable to correctly import structures of alloys.
     .. note:: requires ASE module.
     """
-    from aiida.orm import Dict, StructureData
+    from aiida.orm import Dict
+    from aiida_atomistic.orm.nodes.data.structure import StructureData
 
     parameters = kwargs.get('parameters', {})
 
@@ -96,7 +97,7 @@ def _get_aiida_structure_ase_inline(cif, **kwargs):
 
 @calcfunction
 def _get_aiida_structure_pymatgen_inline(cif, **kwargs):
-    """Creates :py:class:`aiida.orm.nodes.data.structure.StructureData` using pymatgen.
+    """Creates :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData` using pymatgen.
 
     :param occupancy_tolerance: If total occupancy of a site is between 1 and occupancy_tolerance,
         the occupancies will be scaled down to 1.
@@ -107,7 +108,8 @@ def _get_aiida_structure_pymatgen_inline(cif, **kwargs):
     """
     from pymatgen.io.cif import CifParser
 
-    from aiida.orm import Dict, StructureData
+    from aiida.orm import Dict
+    from aiida_atomistic.orm.nodes.data.structure import StructureData
 
     parameters = kwargs.get('parameters', {})
 
@@ -151,15 +153,15 @@ def _get_aiida_structure_pymatgen_inline(cif, **kwargs):
 
 @calcfunction
 def refine_inline(node):
-    """Refine (reduce) the cell of :py:class:`aiida.orm.nodes.data.cif.CifData`,
+    """Refine (reduce) the cell of :py:class:`aiida_atomistic.orm.nodes.data.cif.CifData`,
     find and remove symmetrically equivalent atoms.
 
-    :param node: a :py:class:`aiida.orm.nodes.data.cif.CifData` instance.
-    :return: dict with :py:class:`aiida.orm.nodes.data.cif.CifData`
+    :param node: a :py:class:`aiida_atomistic.orm.nodes.data.cif.CifData` instance.
+    :return: dict with :py:class:`aiida_atomistic.orm.nodes.data.cif.CifData`
 
     .. note:: can be used as inline calculation.
     """
-    from aiida.orm.nodes.data.structure import StructureData, ase_refine_cell
+    from aiida_atomistic.orm.nodes.data.structure import StructureData, ase_refine_cell
 
     if len(node.values.keys()) > 1:
         raise ValueError(

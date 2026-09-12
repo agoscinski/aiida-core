@@ -11,7 +11,7 @@ complex-valued).
 """
 
 from aiida.common.exceptions import ValidationError
-from aiida.tools.data.orbital.orbital import Orbital, validate_float_or_none, validate_len3_list_or_none
+from aiida_atomistic.tools.data.orbital.orbital import Orbital, validate_float_or_none, validate_len3_list_or_none
 
 __all__ = ('RealhydrogenOrbital',)
 

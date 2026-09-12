@@ -21,7 +21,7 @@ __all__ = ('UpfData',)
 
 def emit_deprecation():
     warn_deprecation(
-        'The `aiida.orm.nodes.data.upf` module is deprecated. For details how to replace it, please see '
+        'The `aiida_atomistic.orm.nodes.data.upf` module is deprecated. For details how to replace it, please see '
         'https://aiida-pseudo.readthedocs.io/en/latest/howto.html#migrate-from-legacy-upfdata-from-aiida-core.',
         version=3,
     )
@@ -212,7 +212,7 @@ def parse_upf(fname, check_filename=True, encoding='utf-8'):
 
     from aiida.common import AIIDA_LOGGER
     from aiida.common.exceptions import ParsingError
-    from aiida.orm.nodes.data.structure import _valid_symbols
+    from aiida_atomistic.orm.nodes.data.structure import _valid_symbols
 
     emit_deprecation()
 
