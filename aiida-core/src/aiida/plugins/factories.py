@@ -41,9 +41,15 @@ if TYPE_CHECKING:
     from aiida.orm.implementation import StorageBackend
     from aiida.parsers import Parser
     from aiida.schedulers import Scheduler
-    from aiida.tools.data.orbital import Orbital
-    from aiida.tools.dbimporters import DbImporter
     from aiida.transports import Transport
+
+    # Moved to `aiida-atomistic` (see MONOREPO.md): imported here only for
+    # type checking; at runtime `OrbitalFactory`/`DbImporterFactory` resolve
+    # via entry points and import lazily with a helpful error when the
+    # subpackage is missing. `type: ignore` keeps single-env (core-only)
+    # mypy runs working; with both packages installed these resolve fully.
+    from aiida_atomistic.tools.data.orbital.orbital import Orbital  # type: ignore[import-not-found]
+    from aiida_atomistic.tools.dbimporters.baseclasses import DbImporter  # type: ignore[import-not-found]
 
 
 def raise_invalid_type_error(entry_point_name: str, entry_point_group: str, valid_classes: tuple[Any, ...]) -> NoReturn:
@@ -230,7 +236,14 @@ def DbImporterFactory(entry_point_name: str, load: bool = True) -> EntryPoint | 
     """
     from inspect import isclass
 
-    from aiida.tools.dbimporters import DbImporter
+    try:
+        from aiida_atomistic.tools.dbimporters.baseclasses import DbImporter
+    except ImportError as exc:
+        msg = (
+            "'DbImporter' moved to the `aiida-atomistic` package, which is not installed. "
+            'Install it with `pip install aiida-atomistic` (or `uv sync --project aiida-atomistic`).'
+        )
+        raise ImportError(msg) from exc
 
     entry_point_group = 'aiida.tools.dbimporters'
     entry_point = BaseFactory(entry_point_group, entry_point_name, load=load)
@@ -296,7 +309,14 @@ def OrbitalFactory(entry_point_name: str, load: bool = True) -> EntryPoint | typ
     """
     from inspect import isclass
 
-    from aiida.tools.data.orbital import Orbital
+    try:
+        from aiida_atomistic.tools.data.orbital.orbital import Orbital
+    except ImportError as exc:
+        msg = (
+            "'Orbital' moved to the `aiida-atomistic` package, which is not installed. "
+            'Install it with `pip install aiida-atomistic` (or `uv sync --project aiida-atomistic`).'
+        )
+        raise ImportError(msg) from exc
 
     entry_point_group = 'aiida.tools.data.orbitals'
     entry_point = BaseFactory(entry_point_group, entry_point_name, load=load)
