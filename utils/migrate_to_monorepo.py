@@ -671,7 +671,7 @@ class Migration:
             '    - name: Run test suite\n      env:\n        AIIDA_WARN_v3: 0\n'
             f"      run: pytest -n auto --broker-backend zmq -m 'presto' {pkg}/tests/\n",
             '  tests-presto:\n    # Presto tests need no external services; they run through the shared template.\n'
-            "    uses: ./.github/workflows/reusable-pytest.yml\n    with:\n      package: "
+            '    uses: ./.github/workflows/reusable-pytest.yml\n    with:\n      package: '
             f'{pkg}\n'
             "      python-version: '3.14'\n"
             f'      test-path: tests/\n      pytest-args: "--broker-backend zmq -m \'presto\'"\n'
