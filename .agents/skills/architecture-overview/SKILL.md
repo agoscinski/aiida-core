@@ -65,5 +65,5 @@ uv run stubgen -p aiida.orm -o /tmp/stubs --include-private
 
 ## Configuration
 
-`pyproject.toml`: dependencies, entry points, Ruff/mypy.
+`pyproject.toml`: dependencies, entry points, Ruff. `mypy.toml`: mypy.
 Other configuration: `uv.lock`, `.pre-commit-config.yaml`, `.readthedocs.yml`, `.github/workflows/`, `.docker/`.

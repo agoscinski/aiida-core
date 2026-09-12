@@ -68,7 +68,7 @@ repos:
   - id: mypy
     name: mypy
     entry: mypy
-    args: [--config-file=pyproject.toml, --pretty, --num-workers=2]
+    args: [--config-file=mypy.toml, --pretty, --num-workers=2]
     language: system
     types: [python]
     require_serial: true
