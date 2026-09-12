@@ -25,6 +25,8 @@ from aiida.cmdline.commands.cmd_data import (
     cmd_show,
     cmd_singlefile,
 )
+from aiida.engine import calcfunction
+from aiida.orm import ArrayData, BandsData, CifData, Dict, Group, KpointsData, RemoteData, StructureData, TrajectoryData
 from aiida_atomistic.cmdline.commands.cmd_data import (
     cmd_bands,
     cmd_cif,
@@ -32,8 +34,6 @@ from aiida_atomistic.cmdline.commands.cmd_data import (
     cmd_trajectory,
     cmd_upf,
 )
-from aiida.engine import calcfunction
-from aiida.orm import ArrayData, BandsData, CifData, Dict, Group, KpointsData, RemoteData, StructureData, TrajectoryData
 from aiida_atomistic.orm.nodes.data.cif import has_pycifrw
 from tests.static import STATIC_DIR
 
