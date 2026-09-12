@@ -122,6 +122,13 @@ jobs:
       if: ${{ !inputs.setup-profile }}
       run: .github/workflows/setup_ssh.sh
 
+    - name: Install aiida-atomistic for backward-compat shims
+      # Core suites import moved types via shims (see ci-code.yml);
+      # no-op for other packages (condition false).
+      if: ${{ inputs.package == 'aiida-core' }}
+      run: uv run --project aiida-core pip install -e ./aiida-atomistic
+      shell: bash
+
     - name: Setup environment
       if: ${{ inputs.setup-profile }}
       run: .github/workflows/setup.sh
