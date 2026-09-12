@@ -668,6 +668,10 @@ tests = [
   'pytest-regressions~=2.2',
   'pytest-instafail~=0.5',
   'pytest-xdist~=3.6',
+  # Needed to run core suites from this venv for shim coverage
+  # (core `tests/conftest.py` loads `sphinx.testing.fixtures`).
+  'sphinx~=7.2.0',
+  'docutils~=0.20'
 ]
 pre-commit = [
   'aiida-atomistic[tests]',
