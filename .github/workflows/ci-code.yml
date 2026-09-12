@@ -65,12 +65,20 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install aiida-atomistic for backward-compat shims
-      # Mixed core suites (test_dataclasses, archive/migration, querybuilder…)
-      # still import moved types via `aiida.orm` shims, which resolve only
-      # with the subpackage present. Install it into the core venv (pip, not
-      # sync, to avoid a dependency cycle in the lockfiles).
-      run: uv run --project aiida-core pip install -e ./aiida-atomistic
+    - name: Sync aiida-atomistic venv for backward-compat shims
+      # Mixed core suites (test_dataclasses, archive/migration,
+      # querybuilder…) still import moved types via `aiida.orm` shims.
+      # The atomistic venv holds local core (uv sources, no PyPI
+      # duplicates) plus the subpackage and its deps, all locked.
+      # (Plain `pip install -e ./aiida-atomistic` is banned here: pip
+      # ignores `tool.uv.sources` and overwrites local core with PyPI.)
+      run: uv sync --project aiida-atomistic --locked --extra tests
+      shell: bash
+      env:
+        UV_PYTHON: ${{ matrix.python-version }}
+
+    - name: Prefer atomistic venv on PATH
+      run: echo "PATH=$GITHUB_WORKSPACE/aiida-atomistic/.venv/bin:$PATH" >> $GITHUB_ENV
       shell: bash
 
     - name: Setup environment
@@ -132,7 +140,13 @@ jobs:
       run: .github/workflows/setup_ssh.sh
 
     - name: Install aiida-atomistic for backward-compat shims
-      run: uv pip install --resolution lowest-direct -e ./aiida-atomistic
+      # Same shims as above, but locked sync would defeat lowest-direct:
+      # install with `--no-deps` (core lowest already provides ase etc.)
+      # plus the one dep core dropped (`upf_to_json`). `--no-deps` also
+      # stops pip resolving `aiida-core` from PyPI over the local install.
+      run: |
+        uv pip install --resolution lowest-direct --no-deps -e ./aiida-atomistic
+        uv pip install --resolution lowest-direct 'upf_to_json~=0.9.2'
       shell: bash
 
     - name: Run test suite

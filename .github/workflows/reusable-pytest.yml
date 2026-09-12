@@ -122,11 +122,14 @@ jobs:
       if: ${{ !inputs.setup-profile }}
       run: .github/workflows/setup_ssh.sh
 
-    - name: Install aiida-atomistic for backward-compat shims
-      # Core suites import moved types via shims (see ci-code.yml);
-      # no-op for other packages (condition false).
+    - name: Sync aiida-atomistic venv for backward-compat shims
+      # Core suites import moved types via shims (see ci-code.yml).
+      # No-op for other packages (condition false). Plain pip is banned:
+      # it ignores `tool.uv.sources` and overwrites local core with PyPI.
       if: ${{ inputs.package == 'aiida-core' }}
-      run: uv run --project aiida-core pip install -e ./aiida-atomistic
+      run: |
+        uv sync --project aiida-atomistic --locked --extra tests
+        echo "PATH=$GITHUB_WORKSPACE/aiida-atomistic/.venv/bin:$PATH" >> $GITHUB_ENV
       shell: bash
 
     - name: Setup environment
