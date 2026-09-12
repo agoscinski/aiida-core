@@ -201,6 +201,11 @@ on:
         default: false
         required: false
         type: boolean
+      test-profile:
+        description: Value of AIIDA_TEST_PROFILE (empty for jobs without a profile, e.g. presto)
+        default: test_aiida
+        required: false
+        type: string
 
 jobs:
 
@@ -258,7 +263,7 @@ jobs:
       # importable at option-parsing time (cwd on `sys.path`).
       working-directory: ${{ inputs.package }}
       env:
-        AIIDA_TEST_PROFILE: test_aiida
+        AIIDA_TEST_PROFILE: ${{ inputs.test-profile }}
         AIIDA_WARN_v3: ${{ inputs.warn-v3 }}
       run: pytest -n auto ${{ inputs.pytest-args }} ${{ inputs.test-path }}
 """
@@ -670,7 +675,7 @@ class Migration:
             f'{pkg}\n'
             "      python-version: '3.14'\n"
             f'      test-path: tests/\n      pytest-args: "--broker-backend zmq -m \'presto\'"\n'
-            "      warn-v3: '0'\n",
+            "      warn-v3: '0'\n      test-profile: ''\n",
         )
 
         # Point all callers at the generalized action.
