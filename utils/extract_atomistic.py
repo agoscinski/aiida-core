@@ -702,7 +702,7 @@ exclude = [
 # Monorepo: test local `aiida-core` instead of PyPI (which still ships the
 # moved entry points and would cause `MultipleEntryPointError` duplicates).
 [tool.uv.sources]
-aiida-core = { path = '../aiida-core', editable = true }
+aiida-core = {{ path = '../aiida-core', editable = true }}
 
 [tool.pytest.ini_options]
 addopts = '--benchmark-skip --durations=5 --durations-min=1 --strict-config --strict-markers -ra'
