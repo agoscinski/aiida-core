@@ -20,12 +20,14 @@ from aiida import orm
 from aiida.cmdline.commands import cmd_group
 from aiida.cmdline.commands.cmd_data import (
     cmd_array,
-    cmd_bands,
-    cmd_cif,
     cmd_dict,
     cmd_remote,
     cmd_show,
     cmd_singlefile,
+)
+from aiida_atomistic.cmdline.commands.cmd_data import (
+    cmd_bands,
+    cmd_cif,
     cmd_structure,
     cmd_trajectory,
     cmd_upf,
