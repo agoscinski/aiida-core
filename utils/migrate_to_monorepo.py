@@ -148,7 +148,9 @@ REUSABLE_PYTEST_YML = """\
 #     with:
 #       package: my-package
 #       python-version: '3.11'
-#       test-path: my-package/tests/
+#       test-path: tests/  # relative to the package dir; the test step
+#                          # runs with `working-directory: <package>` so
+#                          # `tests/conftest.py` options resolve
 # ```
 #
 # Jobs needing extra services (e.g. Slurm) or custom steps stay in the
@@ -170,7 +172,7 @@ on:
         required: false
         type: string
       test-path:
-        description: Test path (relative to the repository root) passed to pytest
+        description: Test path (relative to the package directory) passed to pytest
         default: ''
         required: false
         type: string
@@ -250,6 +252,11 @@ jobs:
       run: .github/workflows/setup.sh
 
     - name: Run test suite
+      # Run from the package directory: `tests/conftest.py` registers
+      # custom options (`--db-backend`, `--broker-backend`) via
+      # `pytest_addoption`, which pytest only picks up when `tests` is
+      # importable at option-parsing time (cwd on `sys.path`).
+      working-directory: ${{ inputs.package }}
       env:
         AIIDA_TEST_PROFILE: test_aiida
         AIIDA_WARN_v3: ${{ inputs.warn-v3 }}
@@ -593,6 +600,32 @@ class Migration:
         # Match the pristine strings so this works with or without any earlier path-prefix pass.
         self.patch_action_file('uv sync --locked', f'uv sync --project {pkg_expr} --locked')
         self.patch_action_file('-e .${{', '-e ./' + pkg_expr + '${{')
+        # `uv sync --project <pkg>` creates `<pkg>/.venv`, while `setup-uv`
+        # with `activate-environment` only puts the root `.venv` on `PATH`.
+        # Put the package venv first so bare `pytest`/`pre-commit`/`verdi`
+        # resolve to the right environment in later steps (idempotent: skip
+        # when the step is already present).
+        new_rel_path = '.github/actions/install-package/action.yml'
+        new_action_path = self.root / new_rel_path
+        if new_action_path.is_file():
+            action_text = new_action_path.read_text(encoding='utf8')
+            venv_marker = 'Add package venv to PATH'
+            if venv_marker not in action_text:
+                anchor_line = (
+                    f'    run: uv sync --project {pkg_expr} --locked'
+                    + "${{ inputs.extras && format('--extra {0}', inputs.extras) || '' }}"
+                )
+                if anchor_line in action_text:
+                    step_block = (
+                        anchor_line + '\n'
+                        '  - name: Add package venv to PATH\n'
+                        "    if: ${{ inputs.from-lock == 'true' }}\n"
+                        f'    run: echo "${{GITHUB_WORKSPACE}}/{pkg_expr}/.venv/bin" >> $GITHUB_PATH\n'
+                    )
+                    action_new = action_text.replace(anchor_line + '\n', step_block)
+                    if not self.dry_run:
+                        new_action_path.write_text(action_new, encoding='utf8')
+                    self.results.append(PatchResult(path=new_rel_path, replacements=1))
 
         # Insert the `package` input once, before the `extras` block.
         new_rel = '.github/actions/install-package/action.yml'
@@ -633,8 +666,10 @@ class Migration:
             '    - name: Run test suite\n      env:\n        AIIDA_WARN_v3: 0\n'
             f"      run: pytest -n auto --broker-backend zmq -m 'presto' {pkg}/tests/\n",
             '  tests-presto:\n    # Presto tests need no external services; they run through the shared template.\n'
-            "    uses: ./.github/workflows/reusable-pytest.yml\n    with:\n      python-version: '3.14'\n"
-            f'      test-path: {pkg}/tests/\n      pytest-args: "--broker-backend zmq -m \'presto\'"\n'
+            "    uses: ./.github/workflows/reusable-pytest.yml\n    with:\n      package: "
+            f'{pkg}\n'
+            "      python-version: '3.14'\n"
+            f'      test-path: tests/\n      pytest-args: "--broker-backend zmq -m \'presto\'"\n'
             "      warn-v3: '0'\n",
         )
 
