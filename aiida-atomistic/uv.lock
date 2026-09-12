@@ -72,7 +72,7 @@ dev = [
 requires-dist = [
     { name = "aiida-atomistic", marker = "extra == 'tests'" },
     { name = "aiida-atomistic", extras = ["tests"], marker = "extra == 'pre-commit'" },
-    { name = "aiida-core" },
+    { name = "aiida-core", editable = "../aiida-core" },
     { name = "ase", specifier = "~=3.21" },
     { name = "ipykernel", marker = "extra == 'tests'", specifier = "~=6.9" },
     { name = "matplotlib", specifier = "~=3.3,>=3.3.4" },
@@ -102,8 +102,7 @@ dev = [{ name = "aiida-atomistic", extras = ["tests", "pre-commit"] }]
 
 [[package]]
 name = "aiida-core"
-version = "2.9.2"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../aiida-core" }
 dependencies = [
     { name = "alembic" },
     { name = "archive-path" },
@@ -112,9 +111,12 @@ dependencies = [
     { name = "circus" },
     { name = "click" },
     { name = "click-spinner" },
+    { name = "dill" },
     { name = "disk-objectstore" },
     { name = "docstring-parser" },
     { name = "graphviz" },
+    { name = "greenback" },
+    { name = "greenlet" },
     { name = "importlib-metadata" },
     { name = "ipython", version = "8.39.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "ipython", version = "9.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -126,7 +128,6 @@ dependencies = [
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "paramiko" },
     { name = "pgsu" },
-    { name = "plumpy" },
     { name = "psutil" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
@@ -137,13 +138,114 @@ dependencies = [
     { name = "tabulate" },
     { name = "tqdm" },
     { name = "typing-extensions" },
-    { name = "upf-to-json" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a3/3e/ca7ddb12fbe235440ab41f9fc837e48493642d0e2b8db0ec27c9b7373dec/aiida_core-2.9.2.tar.gz", hash = "sha256:f5e39b83daa3aba9acee6e90cc63fbc31b9e6b572f3a18316863230d18aca29c", size = 1091579, upload-time = "2026-09-03T06:42:44.224Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2a/b2/cd9cda185430094c1a3a9aaea0315758d0cea3fe21ee2c3dd55e7f0c24c8/aiida_core-2.9.2-py3-none-any.whl", hash = "sha256:72ec503b427936a00a5b5d81ae7224b40e42065373e95def2795ccecded77bdd", size = 1500351, upload-time = "2026-09-03T06:42:41.997Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "aiida-core", extras = ["atomic-tools", "rest"], marker = "extra == 'tests'" },
+    { name = "aiida-core", extras = ["tests"], marker = "extra == 'pre-commit'" },
+    { name = "aiida-export-migration-tests", marker = "extra == 'tests'", specifier = "==0.9.0" },
+    { name = "aiida-shell", marker = "extra == 'tutorials'", specifier = ">=0.9.0" },
+    { name = "aiida-workgraph", marker = "extra == 'tutorials'", specifier = ">=0.9.0" },
+    { name = "alembic", specifier = "~=1.8" },
+    { name = "archive-path", specifier = "~=0.4.2" },
+    { name = "ase", marker = "extra == 'atomic-tools'", specifier = "~=3.21" },
+    { name = "asyncssh", specifier = "~=2.22.0" },
+    { name = "bpython", marker = "extra == 'bpython'", specifier = "~=0.20" },
+    { name = "chardet", marker = "sys_platform == 'win32'", specifier = "~=5.2.0" },
+    { name = "circus", specifier = "~=0.19.0" },
+    { name = "click", specifier = ">=8.1.0,<8.3" },
+    { name = "click-spinner", specifier = "~=0.1.8" },
+    { name = "dill", specifier = ">=0.3.6,<1" },
+    { name = "disk-objectstore", specifier = "~=1.5.0" },
+    { name = "docstring-parser" },
+    { name = "docutils", marker = "extra == 'tests'", specifier = "~=0.20" },
+    { name = "flask", marker = "extra == 'rest'", specifier = "~=2.3.3" },
+    { name = "flask-cors", marker = "extra == 'rest'", specifier = "~=4.0" },
+    { name = "flask-restful", marker = "extra == 'rest'", specifier = "~=0.3.10" },
+    { name = "graphviz", specifier = "~=0.19" },
+    { name = "greenback", specifier = "~=1.0" },
+    { name = "greenlet", specifier = ">=3.2.4" },
+    { name = "gsrd", marker = "extra == 'tutorials'", specifier = ">=0.2.0" },
+    { name = "gssapi", marker = "extra == 'ssh-kerberos'", specifier = "~=1.6" },
+    { name = "importlib-metadata", specifier = "~=6.0" },
+    { name = "ipykernel", marker = "extra == 'tests'", specifier = "~=6.9" },
+    { name = "ipython", specifier = ">=7.6" },
+    { name = "jedi", specifier = "<0.19" },
+    { name = "jinja2", specifier = "~=3.0" },
+    { name = "jupyter", marker = "extra == 'notebook'", specifier = "~=1.0" },
+    { name = "jupyter-client", marker = "extra == 'notebook'", specifier = "~=8.0" },
+    { name = "kiwipy", extras = ["rmq"], specifier = "~=0.9.0" },
+    { name = "matplotlib", marker = "extra == 'atomic-tools'", specifier = "~=3.3,>=3.3.4" },
+    { name = "mypy", marker = "extra == 'pre-commit'", specifier = "~=2.3.0" },
+    { name = "myst-nb", marker = "extra == 'docs'", specifier = "~=1.0.0" },
+    { name = "nbclient", marker = "extra == 'tests'", specifier = "~=0.10" },
+    { name = "nbformat", marker = "extra == 'tests'", specifier = "~=5.10" },
+    { name = "notebook", marker = "extra == 'notebook'", specifier = "~=6.1,>=6.1.5" },
+    { name = "numpy", specifier = ">=1.21,<3" },
+    { name = "packaging", marker = "extra == 'pre-commit'", specifier = "~=23.0" },
+    { name = "paramiko", specifier = "~=3.0" },
+    { name = "pg8000", marker = "extra == 'tests'", specifier = "~=1.13" },
+    { name = "pgsu", specifier = "~=0.3.0" },
+    { name = "pgtest", marker = "extra == 'tests'", specifier = "~=1.3,>=1.3.1" },
+    { name = "pre-commit", marker = "extra == 'pre-commit'", specifier = "~=3.5" },
+    { name = "psutil", specifier = "~=7.0" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.0.2,<4" },
+    { name = "pyasn1", marker = "extra == 'ssh-kerberos'", specifier = "~=0.4.8" },
+    { name = "pycifrw", marker = "extra == 'atomic-tools'", specifier = "~=4.4" },
+    { name = "pydantic", specifier = "~=2.12" },
+    { name = "pydata-sphinx-theme", marker = "extra == 'docs'", specifier = "~=0.15.1" },
+    { name = "pymatgen", marker = "extra == 'atomic-tools'", specifier = ">=2024.3.1" },
+    { name = "pympler", marker = "extra == 'tests'", specifier = "~=1.0" },
+    { name = "pymysql", marker = "extra == 'atomic-tools'", specifier = "~=0.9.3" },
+    { name = "pyparsing", marker = "extra == 'rest'", specifier = "~=3.1" },
+    { name = "pytest", marker = "extra == 'tests'", specifier = "~=7.0" },
+    { name = "pytest-asyncio", marker = "extra == 'tests'", specifier = "~=0.12,<0.17" },
+    { name = "pytest-benchmark", marker = "extra == 'tests'", specifier = "~=4.0" },
+    { name = "pytest-cov", marker = "extra == 'tests'", specifier = "~=7.0" },
+    { name = "pytest-instafail", marker = "extra == 'tests'", specifier = "~=0.5" },
+    { name = "pytest-regressions", marker = "extra == 'tests'", specifier = "~=2.2" },
+    { name = "pytest-rerunfailures", marker = "extra == 'tests'", specifier = "~=12.0" },
+    { name = "pytest-timeout", marker = "extra == 'tests'", specifier = "~=2.0" },
+    { name = "pytest-xdist", marker = "extra == 'tests'", specifier = "~=3.6" },
+    { name = "python-memcached", marker = "extra == 'rest'", specifier = "~=1.59" },
+    { name = "pytz", specifier = "~=2021.1" },
+    { name = "pyyaml", specifier = "~=6.0" },
+    { name = "requests", specifier = "~=2.0" },
+    { name = "seekpath", marker = "extra == 'atomic-tools'", specifier = "~=1.9,>=1.9.3" },
+    { name = "seekpath", marker = "extra == 'rest'", specifier = "~=1.9,>=1.9.3" },
+    { name = "spglib", marker = "extra == 'atomic-tools'", specifier = ">=1.14,<3.0" },
+    { name = "sphinx", marker = "extra == 'docs'", specifier = "~=7.2.0" },
+    { name = "sphinx", marker = "extra == 'tests'", specifier = "~=7.2.0" },
+    { name = "sphinx-copybutton", marker = "extra == 'docs'", specifier = "~=0.5.0" },
+    { name = "sphinx-design", marker = "extra == 'docs'", specifier = "~=0.5.0" },
+    { name = "sphinx-intl", marker = "extra == 'docs'", specifier = "~=2.1.0" },
+    { name = "sphinx-notfound-page", marker = "extra == 'docs'", specifier = "~=1.0" },
+    { name = "sphinx-sqlalchemy", marker = "extra == 'docs'", specifier = "~=0.2.0" },
+    { name = "sphinxext-rediraffe", marker = "extra == 'docs'", specifier = "~=0.2.4" },
+    { name = "sqlalchemy", specifier = ">=2.0.20,<3" },
+    { name = "sqlalchemy", extras = ["mypy"], marker = "extra == 'pre-commit'", specifier = "~=2.0" },
+    { name = "tabulate", specifier = ">=0.9.0,<0.10.0" },
+    { name = "tomli", marker = "extra == 'pre-commit'" },
+    { name = "tqdm", specifier = "~=4.45" },
+    { name = "trogon", marker = "extra == 'tui'" },
+    { name = "types-click-spinner", marker = "extra == 'pre-commit'", specifier = "~=0.1.8" },
+    { name = "types-docutils", marker = "extra == 'pre-commit'", specifier = "~=0.20" },
+    { name = "types-paramiko", marker = "extra == 'pre-commit'", specifier = "~=3.0" },
+    { name = "types-psutil", marker = "extra == 'pre-commit'", specifier = "~=5.6" },
+    { name = "types-pytz", marker = "extra == 'pre-commit'", specifier = "~=2021.1" },
+    { name = "types-pyyaml", marker = "extra == 'pre-commit'", specifier = "~=6.0" },
+    { name = "types-requests", marker = "extra == 'pre-commit'", specifier = "~=2.0" },
+    { name = "types-tabulate", marker = "extra == 'pre-commit'", specifier = ">=0.9.0,<0.10.0" },
+    { name = "types-tqdm", marker = "extra == 'pre-commit'", specifier = "~=4.45" },
+    { name = "typing-extensions", specifier = "~=4.13" },
+    { name = "wrapt", specifier = "~=1.11" },
 ]
+provides-extras = ["atomic-tools", "bpython", "docs", "notebook", "pre-commit", "rest", "ssh-kerberos", "tests", "tui", "tutorials"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "aiida-core", extras = ["atomic-tools", "rest", "tests", "pre-commit", "tests", "docs"] }]
 
 [[package]]
 name = "aio-pika"
@@ -1273,6 +1375,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5a/d3/8ae2869247df154b64c1884d7346d412fed0c49df84db635aab2d1c40e62/deprecation-2.1.0.tar.gz", hash = "sha256:72b3bde64e5d778694b0cf68178aed03d15e15477116add3fb773e581f9518ff", size = 173788, upload-time = "2020-04-20T14:23:38.738Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/02/c3/253a89ee03fc9b9682f1541728eb66db7db22148cd94f89ab22528cd1e1b/deprecation-2.1.0-py2.py3-none-any.whl", hash = "sha256:a10811591210e1fb0e768a8c25517cabeabcba6f0bf96564f8ff45189f90b14a", size = 11178, upload-time = "2020-04-20T14:23:36.581Z" },
+]
+
+[[package]]
+name = "dill"
+version = "0.4.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/81/e1/56027a71e31b02ddc53c7d65b01e68edf64dea2932122fe7746a516f75d5/dill-0.4.1.tar.gz", hash = "sha256:423092df4182177d4d8ba8290c8a5b640c66ab35ec7da59ccfa00f6fa3eea5fa", size = 187315, upload-time = "2026-01-19T02:36:56.85Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1e/77/dc8c558f7593132cf8fefec57c4f60c83b16941c574ac5f619abb3ae7933/dill-0.4.1-py3-none-any.whl", hash = "sha256:1e1ce33e978ae97fcfcff5638477032b801c46c7c65cf717f95fbc2248f79a9d", size = 120019, upload-time = "2026-01-19T02:36:55.663Z" },
 ]
 
 [[package]]
@@ -3512,21 +3623,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
-]
-
-[[package]]
-name = "plumpy"
-version = "0.26.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "greenback" },
-    { name = "greenlet" },
-    { name = "kiwipy", extra = ["rmq"] },
-    { name = "pyyaml" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a6/61/c99882788520d86e8fb8a40e8e03a1d43621d2f42e21829b49f469e7bd3d/plumpy-0.26.1.tar.gz", hash = "sha256:d4f301eed5c67afe0e49af31b27a8c44b6b35c49d5b4b4790992b580ce245424", size = 68781, upload-time = "2026-08-25T07:50:56.675Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2e/31/2f2cc916beaa68dd7230b3a4944c573e82c9bdf1b03bd07a1ca57811b6a4/plumpy-0.26.1-py3-none-any.whl", hash = "sha256:e053949025d76dc4ecbebf114cf3b330788752a322ba56f8ec1bdb9e60de3cc1", size = 76281, upload-time = "2026-08-25T07:50:55.478Z" },
 ]
 
 [[package]]
