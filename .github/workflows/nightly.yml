@@ -93,11 +93,12 @@ jobs:
 
     - name: Run pytest nigthly tests
       id: pytest-tests
+      working-directory: aiida-core
       env:
         AIIDA_TEST_PROFILE: test_aiida
         AIIDA_WARN_v3: 1
       run: |
-        pytest --db-backend psql -m nightly aiida-core/tests/
+        pytest --db-backend psql -m nightly tests/
 
     - name: Run daemon nightly tests
       id: daemon-tests
@@ -164,9 +165,10 @@ jobs:
 
     - name: Run tests
       id: tests
+      working-directory: aiida-core
       env:
         AIIDA_WARN_v3: 0
-      run: pytest -s --db-backend sqlite -m 'requires_rmq' aiida-core/tests/
+      run: pytest -s --db-backend sqlite -m 'requires_rmq' tests/
 
     - name: Slack notification
       # Always run this step (otherwise it would be skipped if any of the previous steps fail)

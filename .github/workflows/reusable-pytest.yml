@@ -18,7 +18,9 @@
 #     with:
 #       package: my-package
 #       python-version: '3.11'
-#       test-path: my-package/tests/
+#       test-path: tests/  # relative to the package dir; the test step
+#                          # runs with `working-directory: <package>` so
+#                          # `tests/conftest.py` options resolve
 # ```
 #
 # Jobs needing extra services (e.g. Slurm) or custom steps stay in the
@@ -40,7 +42,7 @@ on:
         required: false
         type: string
       test-path:
-        description: Test path (relative to the repository root) passed to pytest
+        description: Test path (relative to the package directory) passed to pytest
         default: ''
         required: false
         type: string
@@ -120,6 +122,11 @@ jobs:
       run: .github/workflows/setup.sh
 
     - name: Run test suite
+      # Run from the package directory: `tests/conftest.py` registers
+      # custom options (`--db-backend`, `--broker-backend`) via
+      # `pytest_addoption`, which pytest only picks up when `tests` is
+      # importable at option-parsing time (cwd on `sys.path`).
+      working-directory: ${{ inputs.package }}
       env:
         AIIDA_TEST_PROFILE: test_aiida
         AIIDA_WARN_v3: ${{ inputs.warn-v3 }}

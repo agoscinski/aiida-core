@@ -6,10 +6,10 @@ name: ci-atomistic
 on:
   push:
     branches-ignore: [gh-pages]
-    paths: ['aiida-atomistic/**']
+    paths: [aiida-atomistic/**]
   pull_request:
     branches-ignore: [gh-pages]
-    paths: ['aiida-atomistic/**']
+    paths: [aiida-atomistic/**]
 
 jobs:
   pytest:
@@ -17,4 +17,4 @@ jobs:
     with:
       package: aiida-atomistic
       python-version: '3.10'
-      test-path: aiida-atomistic/tests/
+      test-path: tests/

@@ -20,4 +20,4 @@ jobs:
       package: aiida-atomistic
       tag-prefix: atomistic-v
       init-module: aiida-atomistic/src/aiida_atomistic/__init__.py
-      test-path: aiida-atomistic/tests/
+      test-path: tests/

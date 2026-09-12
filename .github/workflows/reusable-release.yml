@@ -125,6 +125,7 @@ jobs:
         package: ${{ inputs.package }}
 
     - name: Run sub-set of test suite
+      working-directory: ${{ inputs.package }}
       run: pytest -s -m requires_broker --broker-backend zmq --db-backend=sqlite ${{ inputs.test-path }}
 
   publish-pypi:

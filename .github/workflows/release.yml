@@ -20,4 +20,4 @@ jobs:
       package: aiida-core
       tag-prefix: v
       init-module: aiida-core/src/aiida/__init__.py
-      test-path: aiida-core/tests/
+      test-path: tests/

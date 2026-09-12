@@ -13,8 +13,8 @@ import copy
 import pytest
 
 from aiida.common import ValidationError
-from aiida_atomistic.orm.nodes.data.orbital import OrbitalData
 from aiida.plugins import OrbitalFactory
+from aiida_atomistic.orm.nodes.data.orbital import OrbitalData
 
 
 class TestOrbitalData:

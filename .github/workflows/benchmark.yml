@@ -60,7 +60,8 @@ jobs:
         from-lock: 'true'
 
     - name: Run benchmarks
-      run: pytest --db-backend psql --benchmark-only --benchmark-json benchmark.json aiida-core/tests/
+      working-directory: aiida-core
+      run: pytest --db-backend psql --benchmark-only --benchmark-json benchmark.json tests/
 
     - name: Store benchmark result
       uses: aiidateam/github-action-benchmark@v3
@@ -68,7 +69,7 @@ jobs:
         benchmark-data-dir-path: dev/bench/${{ matrix.os }}/psql_dos
         name: pytest-benchmarks:${{ matrix.os }},psql_dos
         metadata: postgres:${{ matrix.postgres }}, rabbitmq:${{ matrix.rabbitmq }}
-        output-file-path: benchmark.json
+        output-file-path: aiida-core/benchmark.json
         render-json-path: .github/workflows/benchmark-config.json
         commit-msg-append: '[ci skip]'
         github-token: ${{ secrets.GITHUB_TOKEN }}
