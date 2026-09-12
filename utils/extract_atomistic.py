@@ -978,7 +978,7 @@ def entry_row_moves(group: str, modpath: str) -> bool:
         # several groups share the ``aiida.orm.groups`` module.
         if group == 'aiida.groups':
             return False
-        return should_rewrite(modpath.split(':')[0]) is not None
+        return should_rewrite(modpath.split(':', maxsplit=1)[0]) is not None
     return False
 
 
@@ -1386,7 +1386,7 @@ def generalize_check_release_tag(ctx: Ctx) -> None:
     assert text.count(old) == 1
     text = text.replace(old, new)
     old_core = (
-        '    assert args.GITHUB_REF.startswith(\'refs/tags/v\'), '
+        "    assert args.GITHUB_REF.startswith('refs/tags/v'), "
         'f\'GITHUB_REF should start with "refs/tags/v": {args.GITHUB_REF}\'\n'
         '    tag_version = args.GITHUB_REF[11:]\n'
         "    pypi_version = get_version_from_module(Path('aiida-core/src/aiida/__init__.py')"
