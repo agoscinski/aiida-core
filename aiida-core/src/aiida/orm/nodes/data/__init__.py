@@ -34,7 +34,6 @@ from aiida.orm.nodes.data.str import *
 __all__ = (
     'AbstractCode',
     'ArrayData',
-    'BandsData',
     'BaseType',
     'Bool',
     'Code',
@@ -48,12 +47,10 @@ __all__ = (
     'InstalledCode',
     'Int',
     'JsonableData',
-    'KpointsData',
     'List',
     'NumericType',
     'PickledData',
     'PortableCode',
-    'ProjectionData',
     'RemoteData',
     'RemoteStashCompressedData',
     'RemoteStashCustomData',
@@ -62,9 +59,7 @@ __all__ = (
     'ShellCode',
     'SinglefileData',
     'Str',
-    'TrajectoryData',
     'XyData',
-    'find_bandgap',
     'to_aiida_type',
 )
 
