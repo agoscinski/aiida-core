@@ -122,14 +122,16 @@ jobs:
       if: ${{ !inputs.setup-profile }}
       run: .github/workflows/setup_ssh.sh
 
-    - name: Sync aiida-atomistic venv for backward-compat shims
+    - name: Install aiida-atomistic into package venv for shims
       # Core suites import moved types via shims (see ci-code.yml).
-      # No-op for other packages (condition false). Plain pip is banned:
-      # it ignores `tool.uv.sources` and overwrites local core with PyPI.
+      # No-op for other packages. Explicit `--python` + `--no-deps`:
+      # plain installs ignore `tool.uv.sources` and overwrite local core
+      # with PyPI; core test venv already provides ase etc., only
+      # upf_to_json (dropped from core) is added explicitly.
       if: ${{ inputs.package == 'aiida-core' }}
       run: |
-        uv sync --project aiida-atomistic --locked --extra tests
-        echo "PATH=$GITHUB_WORKSPACE/aiida-atomistic/.venv/bin:$PATH" >> $GITHUB_ENV
+        uv pip install --python ${{ inputs.package }}/.venv/bin/python --no-deps -e ./aiida-atomistic
+        uv pip install --python ${{ inputs.package }}/.venv/bin/python 'upf_to_json~=0.9.2'
       shell: bash
 
     - name: Setup environment
