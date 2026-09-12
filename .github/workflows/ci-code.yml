@@ -139,6 +139,7 @@ jobs:
       test-path: tests/
       pytest-args: --broker-backend zmq -m 'presto'
       warn-v3: '0'
+      test-profile: ''
 
 
   verdi:
