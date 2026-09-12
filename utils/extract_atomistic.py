@@ -221,7 +221,10 @@ SHIM_PLAN = {
             'from aiida.orm.nodes.data.structure import *',
             'from aiida.orm.nodes.data.upf import *',
         ],
-        list(REDIRECTS_DATA),
+        # `array` names stay re-exported transitively via
+        # `from aiida.orm.nodes.data.array import *` (kept), so their
+        # `__all__` entries must go too, like in `orm/nodes`/`orm`.
+        list(REDIRECTS_DATA) + list(REDIRECTS_DATA_ARRAY),
         {**REDIRECTS_DATA_ARRAY, **REDIRECTS_DATA},
     ),
     'orm/nodes/__init__.py': (
@@ -658,7 +661,12 @@ tests = [
   'pgtest~=1.3,>=1.3.1',
   'pytest~=7.0',
   'pytest-asyncio~=0.12,<0.17',
+  'pytest-timeout~=2.0',
   'pytest-cov~=7.0',
+  'pytest-rerunfailures~=12.0',
+  'pytest-benchmark~=4.0',
+  'pytest-regressions~=2.2',
+  'pytest-instafail~=0.5',
   'pytest-xdist~=3.6',
 ]
 pre-commit = [
@@ -690,6 +698,11 @@ exclude = [
   'uv.lock',
   'uv.toml',
 ]
+
+# Monorepo: test local `aiida-core` instead of PyPI (which still ships the
+# moved entry points and would cause `MultipleEntryPointError` duplicates).
+[tool.uv.sources]
+aiida-core = { path = '../aiida-core', editable = true }
 
 [tool.pytest.ini_options]
 addopts = '--benchmark-skip --durations=5 --durations-min=1 --strict-config --strict-markers -ra'
