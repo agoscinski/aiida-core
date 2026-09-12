@@ -49,7 +49,9 @@ if TYPE_CHECKING:
     # subpackage is missing. `type: ignore` keeps single-env (core-only)
     # mypy runs working; with both packages installed these resolve fully.
     from aiida_atomistic.tools.data.orbital.orbital import Orbital  # type: ignore[import-not-found, unused-ignore]
-    from aiida_atomistic.tools.dbimporters.baseclasses import DbImporter  # type: ignore[import-not-found, unused-ignore]
+    from aiida_atomistic.tools.dbimporters.baseclasses import (
+        DbImporter,  # type: ignore[import-not-found, unused-ignore]
+    )
 
 
 def raise_invalid_type_error(entry_point_name: str, entry_point_group: str, valid_classes: tuple[Any, ...]) -> NoReturn:
@@ -237,7 +239,9 @@ def DbImporterFactory(entry_point_name: str, load: bool = True) -> EntryPoint | 
     from inspect import isclass
 
     try:
-        from aiida_atomistic.tools.dbimporters.baseclasses import DbImporter  # type: ignore[import-not-found, unused-ignore]
+        from aiida_atomistic.tools.dbimporters.baseclasses import (
+            DbImporter,  # type: ignore[import-not-found, unused-ignore]
+        )
     except ImportError as exc:
         msg = (
             "'DbImporter' moved to the `aiida-atomistic` package, which is not installed. "

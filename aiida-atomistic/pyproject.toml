@@ -141,10 +141,7 @@ exclude = [
   'uv.toml'
 ]
 
-# Monorepo: test local `aiida-core` instead of PyPI (which still ships the
-# moved entry points and would cause `MultipleEntryPointError` duplicates).
-[tool.uv.sources]
-aiida-core = { path = '../aiida-core', editable = true }
+[tool.pytest]
 
 [tool.pytest.ini_options]
 addopts = '--benchmark-skip --durations=5 --durations-min=1 --strict-config --strict-markers -ra'
@@ -169,3 +166,8 @@ testpaths = [
 timeout = 240
 timeout_method = "thread"
 xfail_strict = true
+
+# Monorepo: test local `aiida-core` instead of PyPI (which still ships the
+# moved entry points and would cause `MultipleEntryPointError` duplicates).
+[tool.uv.sources]
+aiida-core = {path = '../aiida-core', editable = true}
