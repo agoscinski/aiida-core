@@ -630,7 +630,7 @@ class Migration:
             if venv_marker not in action_text:
                 anchor_line = (
                     f'    run: uv sync --project {pkg_expr} --locked'
-                    + "${{ inputs.extras && format('--extra {0}', inputs.extras) || '' }}"
+                    + " ${{ inputs.extras && format('--extra {0}', inputs.extras) || '' }}"
                 )
                 if anchor_line in action_text:
                     step_block = (
