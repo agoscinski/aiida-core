@@ -440,8 +440,16 @@ class Ctx:
     def git_mv(self, src: Path, dst: Path) -> None:
         rel_s, rel_d = src.relative_to(REPO_ROOT), dst.relative_to(REPO_ROOT)
         if dst.exists():
-            print(f'skip (moved already): {rel_s} -> {rel_d}')
-            return
+            # Stale empty dirs (e.g. leftover __pycache__ from an earlier
+            # run) are not a completed move: clear them and proceed.
+            leftovers = [p for p in dst.rglob('*') if p.is_file() and '__pycache__' not in p.parts]
+            if src.is_dir() and not leftovers:
+                print(f'clear stale empty dir: {rel_d}')
+                if self.execute:
+                    shutil.rmtree(dst)
+            else:
+                print(f'skip (moved already): {rel_s} -> {rel_d}')
+                return
         if not src.exists():
             print(f'WARNING: missing, skipping: {rel_s}')
             return
