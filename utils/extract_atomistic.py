@@ -994,6 +994,7 @@ def phase_rewrite(ctx: Ctx) -> None:
     patch_rest_discovery(ctx)
     template_release_flow(ctx)
     lock_atomistic(ctx)
+    lock_core(ctx)
 
     # 6. Verify the result (compile, leftovers, contracts, smoke import).
     verify_migration(ctx)
@@ -1482,18 +1483,18 @@ def check_translator_contract() -> None:
         print(f'translator contract: OK ({len(REST_TRANSLATORS)} _aiida_type values unchanged)')
 
 
-def lock_atomistic(ctx: Ctx) -> None:
-    """Generate ``aiida-atomistic/uv.lock`` (best effort: needs network)."""
+def lock_project(ctx: Ctx, project: str) -> None:
+    """Regenerate ``<project>/uv.lock`` (best effort: needs network)."""
     if not ctx.execute:
-        print('$ uv lock --project aiida-atomistic')
+        print(f'$ uv lock --project {project}')
         return
     uv = shutil.which('uv')
     if uv is None:
-        print('WARNING: `uv` not found; run `uv lock --project aiida-atomistic` manually')
+        print(f'WARNING: `uv` not found; run `uv lock --project {project}` manually')
         return
-    print('$ uv lock --project aiida-atomistic')
+    print(f'$ uv lock --project {project}')
     result = subprocess.run(
-        [uv, 'lock', '--project', 'aiida-atomistic'],
+        [uv, 'lock', '--project', project],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -1504,7 +1505,17 @@ def lock_atomistic(ctx: Ctx) -> None:
         print('WARNING: `uv lock` failed (offline?); run it manually once online')
         print('\n'.join(result.stderr.strip().splitlines()[-3:]))
     else:
-        print('wrote aiida-atomistic/uv.lock')
+        print(f'wrote {project}/uv.lock')
+
+
+def lock_atomistic(ctx: Ctx) -> None:
+    """Generate ``aiida-atomistic/uv.lock`` (best effort: needs network)."""
+    lock_project(ctx, 'aiida-atomistic')
+
+
+def lock_core(ctx: Ctx) -> None:
+    """Regenerate ``aiida-core/uv.lock`` after pruning (best effort)."""
+    lock_project(ctx, 'aiida-core')
 
 
 def patch_core_init(ctx: Ctx, path: Path, stars: list[str], all_names: list[str], redirects: dict[str, str]) -> None:
