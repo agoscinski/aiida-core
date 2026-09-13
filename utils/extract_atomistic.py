@@ -291,10 +291,10 @@ name: ci-atomistic
 on:
   push:
     branches-ignore: [gh-pages]
-    paths: ['aiida-atomistic/**']
+    paths: [aiida-atomistic/**]
   pull_request:
     branches-ignore: [gh-pages]
-    paths: ['aiida-atomistic/**']
+    paths: [aiida-atomistic/**]
 
 jobs:
   pytest:
@@ -302,7 +302,7 @@ jobs:
     with:
       package: aiida-atomistic
       python-version: '3.10'
-      test-path: aiida-atomistic/tests/
+      test-path: tests/
 """
 MANUAL_CHECKLIST = """\
 Manual follow-ups (only what still needs a human; the script prints this):
@@ -661,7 +661,7 @@ dev = [
 ]
 
 [project]
-authors = [{{name = 'The AiiDA team', email = 'developers@aiida.net'}}]
+authors = [{{ name = 'The AiiDA team', email = 'developers@aiida.net' }}]
 classifiers = [
   'Development Status :: 3 - Alpha',
   'Framework :: AiiDA',
@@ -682,7 +682,7 @@ dependencies = [
 description = 'Atomistic (materials-science) data types and tools for AiiDA.'
 dynamic = ['version']  # read from aiida_atomistic/__init__.py
 keywords = ['aiida', 'workflows', 'materials-science']
-license = {{file = 'LICENSE.txt'}}
+license = {{ file = 'LICENSE.txt' }}
 name = 'aiida-atomistic'
 readme = 'README.md'
 requires-python = '>=3.10'
@@ -1316,14 +1316,14 @@ def update_shared_configs(ctx: Ctx) -> None:
         task_idx = [i for i, line in enumerate(pixi_text.splitlines()) if anchor_key in line]
         assert len(task_idx) == 1, 'pixi anchor changed upstream'
         new_tasks = [
-            'sync-atomistic = {cmd = "uv sync --project aiida-atomistic", '
-            'description = "Sync the aiida-atomistic dev environment"}\n',
-            'test-atomistic = {cmd = "uv run --project aiida-atomistic pytest '
+            'sync-atomistic = { cmd = "uv sync --project aiida-atomistic", '
+            'description = "Sync the aiida-atomistic dev environment" }\n',
+            'test-atomistic = { cmd = "uv run --project aiida-atomistic pytest '
             "aiida-atomistic/tests/ -x -q -m 'not nightly'\", "
-            'description = "Full aiida-atomistic suite (needs PostgreSQL + RabbitMQ)"}\n',
-            'test-smoke-atomistic = {cmd = "uv run --project aiida-atomistic pytest '
+            'description = "Full aiida-atomistic suite (needs PostgreSQL + RabbitMQ)" }\n',
+            'test-smoke-atomistic = { cmd = "uv run --project aiida-atomistic pytest '
             'aiida-atomistic/tests/ -q --collect-only", '
-            'description = "Collect aiida-atomistic tests (no services needed)"}\n',
+            'description = "Collect aiida-atomistic tests (no services needed)" }\n',
         ]
         print('pixi tasks: add sync/test/test-smoke variants for aiida-atomistic')
         if ctx.execute:
