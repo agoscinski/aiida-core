@@ -8,7 +8,7 @@
 ###########################################################################
 """ "Implementation of `DbImporter` for the MPOD database."""
 
-from aiida.tools.dbimporters.baseclasses import CifEntry, DbImporter, DbSearchResults
+from aiida_atomistic.tools.dbimporters.baseclasses import CifEntry, DbImporter, DbSearchResults
 
 
 class MpodDbImporter(DbImporter):
@@ -70,7 +70,7 @@ class MpodDbImporter(DbImporter):
         specified in ``kwargs``.
 
         :return: an instance of
-            :py:class:`aiida.tools.dbimporters.plugins.mpod.MpodSearchResults`.
+            :py:class:`aiida_atomistic.tools.dbimporters.plugins.mpod.MpodSearchResults`.
         """
         import re
         from urllib.request import urlopen
@@ -137,7 +137,7 @@ class MpodEntry(CifEntry):
 
     def __init__(self, uri, **kwargs):
         """Creates an instance of
-        :py:class:`aiida.tools.dbimporters.plugins.mpod.MpodEntry`, related
+        :py:class:`aiida_atomistic.tools.dbimporters.plugins.mpod.MpodEntry`, related
         to the supplied URI.
         """
         super().__init__(

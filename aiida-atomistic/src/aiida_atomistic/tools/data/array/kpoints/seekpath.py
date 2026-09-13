@@ -10,7 +10,8 @@
 
 import seekpath
 
-from aiida.orm import Dict, KpointsData
+from aiida.orm import Dict
+from aiida_atomistic.orm.nodes.data.array.kpoints import KpointsData
 
 
 def get_explicit_kpoints_path(structure, parameters):
@@ -52,7 +53,7 @@ def get_explicit_kpoints_path(structure, parameters):
 
         - ``conv_structure``: A StructureData with the primitive structure
     """
-    from aiida.tools.data.structure import spglib_tuple_to_structure, structure_to_spglib_tuple
+    from aiida_atomistic.tools.data.structure import spglib_tuple_to_structure, structure_to_spglib_tuple
 
     structure_tuple, kind_info, kinds = structure_to_spglib_tuple(structure)
 
@@ -126,7 +127,7 @@ def get_kpoints_path(structure, parameters):
 
         - ``conv_structure``: A StructureData with the primitive structure
     """
-    from aiida.tools.data.structure import spglib_tuple_to_structure, structure_to_spglib_tuple
+    from aiida_atomistic.tools.data.structure import spglib_tuple_to_structure, structure_to_spglib_tuple
 
     structure_tuple, kind_info, kinds = structure_to_spglib_tuple(structure)
 

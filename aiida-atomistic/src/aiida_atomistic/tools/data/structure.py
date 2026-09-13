@@ -19,18 +19,18 @@ import numpy as np
 
 from aiida.common.constants import elements
 from aiida.engine import calcfunction
-from aiida.orm.nodes.data.structure import Kind, Site, StructureData
+from aiida_atomistic.orm.nodes.data.structure import Kind, Site, StructureData
 
 __all__ = ('spglib_tuple_to_structure', 'structure_to_spglib_tuple')
 
 
 @calcfunction
 def _get_cif_ase_inline(struct, parameters):
-    """Creates :py:class:`aiida.orm.nodes.data.cif.CifData` using ASE.
+    """Creates :py:class:`aiida_atomistic.orm.nodes.data.cif.CifData` using ASE.
 
     .. note:: requires ASE module.
     """
-    from aiida.orm import CifData
+    from aiida_atomistic.orm.nodes.data.cif import CifData
 
     kwargs = {}
     if parameters is not None:

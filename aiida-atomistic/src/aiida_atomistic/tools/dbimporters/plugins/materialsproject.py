@@ -14,7 +14,7 @@ import os
 import requests
 from pymatgen.ext.matproj import MPRester
 
-from aiida.tools.dbimporters.baseclasses import CifEntry, DbImporter, DbSearchResults
+from aiida_atomistic.tools.dbimporters.baseclasses import CifEntry, DbImporter, DbSearchResults
 
 
 class MaterialsProjectImporter(DbImporter):

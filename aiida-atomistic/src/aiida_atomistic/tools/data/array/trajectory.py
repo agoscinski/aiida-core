@@ -13,7 +13,7 @@ from aiida.engine import calcfunction
 
 @calcfunction
 def _get_aiida_structure_inline(trajectory, parameters):
-    """CalcFunction to extract a :py:class:`aiida.orm.nodes.data.structure.StructureData`
+    """CalcFunction to extract a :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData`
     from a `TrajectoryData`.
 
     :param parameters: A dictionary whose key-value pairs are passed as

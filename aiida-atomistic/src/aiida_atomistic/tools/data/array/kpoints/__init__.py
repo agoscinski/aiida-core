@@ -14,7 +14,7 @@
 
 # fmt: off
 
-from aiida.tools.data.array.kpoints.main import *
+from aiida_atomistic.tools.data.array.kpoints.main import *
 
 __all__ = (
     'get_explicit_kpoints_path',

@@ -129,11 +129,10 @@ repos:
         aiida-core/src/aiida/transports/cli.py|
         aiida-core/src/aiida/transports/plugins/local.py|
         aiida-core/src/aiida/transports/plugins/ssh.py|
-      )$
-
         aiida-atomistic/src/aiida_atomistic/orm/nodes/data/cif.py|
         aiida-atomistic/src/aiida_atomistic/orm/nodes/data/structure.py|
         aiida-atomistic/src/aiida_atomistic/orm/nodes/data/upf.py|
+        aiida-atomistic/src/aiida_atomistic/restapi/translator/nodes/.*|
         aiida-atomistic/src/aiida_atomistic/tools/data/array/kpoints/legacy.py|
         aiida-atomistic/src/aiida_atomistic/tools/data/array/kpoints/seekpath.py|
         aiida-atomistic/src/aiida_atomistic/tools/data/orbital/orbital.py|

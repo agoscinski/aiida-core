@@ -6,23 +6,18 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Tool for handling data."""
+"""Module for classes and methods that represents molecular orbitals."""
 
 # AUTO-GENERATED
 
 # fmt: off
 
-from aiida.tools.data.array import *
-from aiida.tools.data.orbital import *
-from aiida.tools.data.structure import *
+from aiida_atomistic.tools.data.orbital.orbital import *
+from aiida_atomistic.tools.data.orbital.realhydrogen import *
 
 __all__ = (
     'Orbital',
     'RealhydrogenOrbital',
-    'get_explicit_kpoints_path',
-    'get_kpoints_path',
-    'spglib_tuple_to_structure',
-    'structure_to_spglib_tuple',
 )
 
 # fmt: on
