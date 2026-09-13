@@ -15,6 +15,14 @@ import tempfile
 
 import numpy as np
 import pytest
+from aiida_atomistic.cmdline.commands.cmd_data import (
+    cmd_bands,
+    cmd_cif,
+    cmd_structure,
+    cmd_trajectory,
+    cmd_upf,
+)
+from aiida_atomistic.orm.nodes.data.cif import has_pycifrw
 
 from aiida import orm
 from aiida.cmdline.commands import cmd_group
@@ -27,14 +35,6 @@ from aiida.cmdline.commands.cmd_data import (
 )
 from aiida.engine import calcfunction
 from aiida.orm import ArrayData, BandsData, CifData, Dict, Group, KpointsData, RemoteData, StructureData, TrajectoryData
-from aiida_atomistic.cmdline.commands.cmd_data import (
-    cmd_bands,
-    cmd_cif,
-    cmd_structure,
-    cmd_trajectory,
-    cmd_upf,
-)
-from aiida_atomistic.orm.nodes.data.cif import has_pycifrw
 from tests.static import STATIC_DIR
 
 
