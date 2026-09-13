@@ -368,6 +368,7 @@ def phases_in_head_message(body: str) -> list[str]:
     """Recover already-amended phases from an existing extraction commit message."""
     return [name for name in ('scaffold', 'move', 'rewrite') if PHASE_MSGS[name] in body]
 
+
 # Paths staged for the scaffold commit (everything else stays untouched there).
 SCAFFOLD_PATHS = ['aiida-atomistic', '.github/workflows/ci-atomistic.yml', '.github/CODEOWNERS']
 
@@ -1255,8 +1256,10 @@ def update_shared_configs(ctx: Ctx) -> None:
     kept, added, dropped = _migrate_mypy_excludes(lines, start, end)
     if 'aiida-atomistic/tests/.*|' not in ''.join(kept + added):
         added.append('        aiida-atomistic/tests/.*|')
-    close = next(i for i in range(start, end) if lines[i].strip() == ')$')
-    new_lines = kept + [f'{line}\n' for line in added] + lines[close:end]
+    # `kept` already covers lines[start:end] filtered; insert `added` before
+    # its closing `)$` instead of appending after it (which yields `)$ ... )$`).
+    close_in_kept = next(i for i, line in enumerate(kept) if line.strip() == ')$')
+    new_lines = kept[:close_in_kept] + [f'{line}\n' for line in added] + kept[close_in_kept:]
     if dropped or added:
         print(f'mypy excludes: -{len(dropped)} dead core rows, +{len(added)} atomistic rows')
         for row in dropped:
