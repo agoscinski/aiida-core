@@ -42,7 +42,7 @@ from aiida.orm.computers import Computer
 from aiida.orm.entities import Collection as EntityCollection
 from aiida.orm.entities import Entity, from_backend_entity
 from aiida.orm.extras import EntityExtras
-from aiida.orm.fields import QbAttributesField, QbFields, add_field
+from aiida.orm.qb_fields import QbAttributesField, QbFields, add_field
 from aiida.orm.nodes.attributes import NodeAttributes
 from aiida.orm.nodes.caching import NodeCaching
 from aiida.orm.nodes.comments import NodeComments

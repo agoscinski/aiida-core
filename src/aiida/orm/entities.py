@@ -35,7 +35,7 @@ from aiida.common.lang import call_with_super_check, classproperty, super_check,
 from aiida.common.pydantic import get_metadata
 from aiida.common.warnings import warn_deprecation
 from aiida.manage import get_manager
-from aiida.orm.fields import QbFields, add_field
+from aiida.orm.qb_fields import QbFields, add_field
 from aiida.orm.pydantic import OrmFieldsAsModelDump, OrmMetadataField, OrmModel
 
 if TYPE_CHECKING:
