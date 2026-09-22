@@ -7,8 +7,11 @@
 ###########################################################################
 """Prepare the storage schema for AiiDA v3.0.0.
 
-Rename the ``core.ssh_async`` transport plugin to ``core.ssh``. The legacy paramiko-based
-``core.ssh`` transport plugin was removed in v3.0, and the asynchronous plugin (formerly
+Migration steps:
+
+1. :func:`_migrate_ssh_transports`: migrate SSH computers to the asynchronous ``core.ssh`` transport plugin.
+
+The legacy paramiko-based ``core.ssh`` transport plugin was removed in v3.0, and the asynchronous plugin (formerly
 ``core.ssh_async``) took over its entry point name. Consequently:
 
 * computers configured with ``core.ssh_async`` have their ``transport_type`` rewritten to
@@ -29,6 +32,7 @@ Create Date: 2026-09-07
 """
 
 from alembic import op
+from sqlalchemy.engine import Connection
 
 from aiida.storage.migrations.legacy_ssh import migrate_ssh_transports
 
@@ -38,10 +42,21 @@ branch_labels = None
 depends_on = None
 
 
+def _migrate_ssh_transports(conn: Connection) -> None:
+    """Migrate both kinds of SSH computers to the asynchronous ``core.ssh`` transport plugin.
+
+    Delegates to :func:`~aiida.storage.migrations.legacy_ssh.migrate_ssh_transports`, which converts
+    the legacy ``core.ssh`` computers first and renames the ``core.ssh_async`` computers after, since
+    the rename is what still tells the two kinds apart.
+    """
+    migrate_ssh_transports(conn)
+
+
 def upgrade():
     """Migrations for the upgrade."""
-    migrate_ssh_transports(op.get_bind())
+    _migrate_ssh_transports(op.get_bind())
 
 
 def downgrade():
     """Migrations for the downgrade."""
+    raise NotImplementedError('Downgrade of main_0003.')

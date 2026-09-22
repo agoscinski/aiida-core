@@ -5,14 +5,15 @@
 # The code is hosted on GitHub at https://github.com/aiidateam/aiida-core #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Add the settings table and rename the ``core.ssh_async`` transport plugin to ``core.ssh``.
+"""Prepare the storage schema for AiiDA v3.0.0.
 
-The initial SQLite migration was based on the archive schema, which does not
-contain the settings table. The ``sqlite_dos`` backend, however, requires it
-for the repository UUID.
+Migration steps:
+
+1. :func:`_ensure_settings_table`: backfill the settings table.
+2. :func:`_migrate_ssh_transports`: migrate SSH computers to the asynchronous ``core.ssh`` transport plugin.
 
 See the ``main_0003`` revision of the ``psql_dos`` backend for the rationale of the transport
-rename, which likewise has no inverse: the downgrade only restores the schema revision.
+migration, which likewise has no inverse: the downgrade only restores the schema revision.
 
 Revision ID: main_0003
 Revises: main_0002
@@ -22,6 +23,7 @@ Create Date: 2026-09-07
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.sqlite import JSON
+from sqlalchemy.engine import Connection
 
 from aiida.storage.migrations.legacy_ssh import migrate_ssh_transports
 
@@ -31,9 +33,15 @@ branch_labels = None
 depends_on = None
 
 
-def add_settings_table() -> None:
-    """Create the settings table, unless the database was initialised with it already."""
-    if sa.inspect(op.get_bind()).has_table('db_dbsetting'):
+def _ensure_settings_table(conn: Connection) -> None:
+    """Backfill the settings table.
+
+    The initial SQLite migration was based on the archive schema, which does not contain the settings table.
+    The ``sqlite_dos`` backend, however, requires it for the repository UUID. Fresh profiles created before
+    this migration therefore miss the table, so it is created here if absent. No-op on databases that already
+    have it.
+    """
+    if sa.inspect(conn).has_table('db_dbsetting'):
         return
 
     op.create_table(
@@ -48,12 +56,23 @@ def add_settings_table() -> None:
     )
 
 
+def _migrate_ssh_transports(conn: Connection) -> None:
+    """Migrate both kinds of SSH computers to the asynchronous ``core.ssh`` transport plugin.
+
+    Delegates to :func:`~aiida.storage.migrations.legacy_ssh.migrate_ssh_transports`, which converts
+    the legacy ``core.ssh`` computers first and renames the ``core.ssh_async`` computers after, since
+    the rename is what still tells the two kinds apart.
+    """
+    migrate_ssh_transports(conn)
+
+
 def upgrade():
     """Migrations for the upgrade."""
-    add_settings_table()
-    migrate_ssh_transports(op.get_bind())
+    conn = op.get_bind()
+    _ensure_settings_table(conn)
+    _migrate_ssh_transports(conn)
 
 
 def downgrade():
     """Migrations for the downgrade."""
-    pass
+    raise NotImplementedError('Downgrade of main_0003.')

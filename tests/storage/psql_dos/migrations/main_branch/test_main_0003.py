@@ -52,14 +52,14 @@ def test_migration(perform_migrations: PsqlDosMigrator):
 
 
 def test_downgrade(perform_migrations: PsqlDosMigrator):
-    """Test that downgrading from ``main_0003`` restores the ``main_0002`` revision.
+    """Test that downgrading from ``main_0003`` is refused.
 
-    The transport rename has no inverse, so the downgrade only moves the revision back.
+    Neither migration step has an inverse, so the downgrade raises instead of moving the revision back.
     """
     perform_migrations.migrate_up('main@main_0003')
-    perform_migrations.migrate_down('main@main_0002')
 
-    assert perform_migrations.get_schema_version_profile() == 'main_0002'
+    with pytest.raises(NotImplementedError, match='Downgrade of main_0003'):
+        perform_migrations.migrate_down('main@main_0002')
 
 
 def test_rename_ssh_async_transport(perform_migrations: PsqlDosMigrator, ssh_dir):
