@@ -21,7 +21,8 @@ Revises: main_0002
 """
 
 from alembic import op
-from sqlalchemy.sql import text
+
+from aiida.storage.migrations.legacy_ssh import rename_ssh_async_transport
 
 revision = 'main_0003'
 down_revision = 'main_0002'
@@ -31,9 +32,7 @@ depends_on = None
 
 def upgrade():
     """Migrations for the upgrade."""
-    op.get_bind().execute(
-        text("UPDATE db_dbcomputer SET transport_type = 'core.ssh' WHERE transport_type = 'core.ssh_async'")
-    )
+    rename_ssh_async_transport(op.get_bind())
 
 
 def downgrade():
