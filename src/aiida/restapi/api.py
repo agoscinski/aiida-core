@@ -93,7 +93,6 @@ class AiidaApi(Api):
             ProcessNode,
             QueryBuilder,
             ServerInfo,
-            User,
         )
 
         self.app = app
@@ -179,18 +178,6 @@ class AiidaApi(Api):
             '/calcjobs/<id>/input_files/',
             '/calcjobs/<id>/output_files/',
             endpoint='calcjobs',
-            strict_slashes=False,
-            resource_class_kwargs=kwargs,
-        )
-
-        self.add_resource(
-            User,
-            '/users/',
-            '/users/projectable_properties/',
-            '/users/page/',
-            '/users/page/<int:page>/',
-            '/users/<id>/',
-            endpoint='users',
             strict_slashes=False,
             resource_class_kwargs=kwargs,
         )

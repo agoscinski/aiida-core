@@ -60,13 +60,11 @@ class GroupTranslator(BaseTranslator):
                 'type': 'str',
                 'is_display': True,
             },
-            'user_id': {
-                'display_name': 'Id of creator',
-                'help_text': 'Id of the user that created the node',
-                'is_foreign_key': True,
-                'related_column': 'id',
-                'related_resource': 'users',
-                'type': 'int',
+            'profile_uuid': {
+                'display_name': 'Profile',
+                'help_text': 'UUID of the profile that owns the group',
+                'is_foreign_key': False,
+                'type': 'str',
                 'is_display': False,
             },
             'uuid': {
@@ -79,6 +77,6 @@ class GroupTranslator(BaseTranslator):
         }
 
         # Note: final schema will contain details for only the fields present in column order
-        column_order = ['id', 'label', 'type_string', 'description', 'user_id', 'uuid']
+        column_order = ['id', 'label', 'type_string', 'description', 'profile_uuid', 'uuid']
 
         return projectable_properties, column_order

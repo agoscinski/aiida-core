@@ -18,7 +18,6 @@ from flask_cors.core import ACL_ORIGIN
 
 from aiida import orm
 from aiida.common.links import LinkType
-from aiida.manage import get_manager
 from aiida.orm.nodes.data.array.array import clean_array
 from aiida.restapi.run_api import configure_api
 
@@ -37,8 +36,6 @@ class TestRestApi:
         api = configure_api(catch_internal_server=True)
         self.app = api.app
         self.app.config['TESTING'] = True
-
-        self.user = orm.User.collection.get_default()
 
         # create test inputs
         cell = ((2.0, 0.0, 0.0), (0.0, 2.0, 0.0), (0.0, 0.0, 2.0))
@@ -153,11 +150,6 @@ class TestRestApi:
 
         yield
 
-        # because the `close_thread_connection` decorator, currently, directly closes the SQLA session,
-        # the default user will be detached from the session, and the `_clean` method will fail.
-        # So, we need to reattach the default user to the session.
-        get_manager().get_profile_storage().get_session().add(self.user.backend_entity.bare_model)
-
     def get_dummy_data(self):
         return self._dummy_data
 
@@ -187,7 +179,7 @@ class TestRestApi:
                 comp['uuid'] = str(comp['uuid'])
         self._dummy_data['computers'] = computers
 
-        calculation_projections = ['id', 'uuid', 'user_id', 'node_type']
+        calculation_projections = ['id', 'uuid', 'profile_uuid', 'node_type']
         calculations = (
             orm.QueryBuilder()
             .append(orm.CalculationNode, tag='calc', project=calculation_projections)
@@ -201,7 +193,7 @@ class TestRestApi:
                 calc['uuid'] = str(calc['uuid'])
         self._dummy_data['calculations'] = calculations
 
-        data_projections = ['id', 'uuid', 'user_id', 'node_type']
+        data_projections = ['id', 'uuid', 'profile_uuid', 'node_type']
         data_types = {
             'cifdata': orm.CifData,
             'parameterdata': orm.Dict,
@@ -956,7 +948,7 @@ class TestRestApi:
     ############### projectable_properties #############
     def test_projectable_properties(self):
         """Test projectable_properties endpoint"""
-        for nodetype in ['nodes', 'processes', 'computers', 'users', 'groups']:
+        for nodetype in ['nodes', 'processes', 'computers', 'groups']:
             url = f'{self.get_url_prefix()}/{nodetype}/projectable_properties'
             with self.app.test_client() as client:
                 rv_obj = client.get(url)
@@ -1062,7 +1054,7 @@ class TestRestApi:
             .append(
                 orm.CalculationNode,
                 tag='calc',
-                project=['id', 'uuid', 'user_id'],
+                project=['id', 'uuid', 'profile_uuid'],
             )
             .order_by({'calc': [{'id': {'order': 'desc'}}]})
             .as_dict()
@@ -1107,32 +1099,21 @@ class TestRestApi:
         assert response.get('resource_type', '') == 'QueryBuilder'
         assert qb_api.GET_MESSAGE == response.get('data', {}).get('message', '')
 
-    def test_querybuilder_user(self):
-        """Retrieve a User through the use of the /querybuilder endpoint
+    def test_querybuilder_group(self):
+        """Retrieve a Group through the use of the /querybuilder endpoint
 
         This also checks that `full_type` is _not_ included in the result no matter the entity.
         """
+        orm.Group(label='rest-test-group').store()
         query_dict = (
             orm.QueryBuilder()
             .append(
-                orm.CalculationNode,
-                tag='calc',
-                project=['id', 'user_id'],
+                orm.Group,
+                tag='groups',
+                project=['id', 'label', 'profile_uuid'],
             )
-            .append(
-                orm.User,
-                tag='users',
-                with_node='calc',
-                project=['id', 'email'],
-            )
-            .order_by({'calc': [{'id': {'order': 'desc'}}]})
             .as_dict()
         )
-
-        expected_user_ids = []
-        for calc in self.get_dummy_data()['calculations']:
-            if calc['node_type'].startswith('process.calculation.'):
-                expected_user_ids.append(calc['user_id'])
 
         with self.app.test_client() as client:
             response = client.post(f'{self.get_url_prefix()}/querybuilder', json=query_dict).json
@@ -1140,12 +1121,10 @@ class TestRestApi:
         assert response.get('method', '') == 'POST'
         assert response.get('resource_type', '') == 'QueryBuilder'
 
-        assert len(expected_user_ids) == len(response.get('data', {}).get('users', [])), json.dumps(response, indent=2)
-        assert expected_user_ids == [_.get('id', '') for _ in response.get('data', {}).get('users', [])]
-        assert expected_user_ids == [_.get('user_id', '') for _ in response.get('data', {}).get('calc', [])]
+        assert len(response.get('data', {}).get('groups', [])) > 0, json.dumps(response, indent=2)
         for entities in response.get('data', {}).values():
             for entity in entities:
-                # User is not a Node (no full_type)
+                # Group is not a Node (no full_type)
                 assert 'full_type' not in entity
 
     def test_querybuilder_project_explicit(self):

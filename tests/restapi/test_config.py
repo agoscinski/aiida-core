@@ -10,16 +10,11 @@
 
 import pytest
 
-from aiida import orm
-from aiida.manage import get_manager
-
 
 @pytest.fixture
 def create_app():
     """Set up Flask App"""
     from aiida.restapi.run_api import configure_api
-
-    user = orm.User.collection.get_default()
 
     def _create_app(**kwargs):
         catch_internal_server = kwargs.pop('catch_internal_server', True)
@@ -28,11 +23,6 @@ def create_app():
         return api.app
 
     yield _create_app
-
-    # because the `close_thread_connection` decorator, currently, directly closes the SQLA session,
-    # the default user will be detached from the session, and the `_clean` method will fail.
-    # So, we need to reattach the default user to the session.
-    get_manager().get_profile_storage().get_session().add(user.backend_entity.bare_model)
 
 
 def test_posting(create_app):

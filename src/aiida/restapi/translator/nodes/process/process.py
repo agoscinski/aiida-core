@@ -64,9 +64,9 @@ class ProcessTranslator(NodeTranslator):
                 'type': 'str',
                 'is_display': True,
             },
-            'creator': {
-                'display_name': 'Creator',
-                'help_text': 'User that created the node',
+            'profile_uuid': {
+                'display_name': 'Profile',
+                'help_text': 'UUID of the profile that owns the node',
                 'is_foreign_key': False,
                 'type': 'str',
                 'is_display': True,
@@ -92,15 +92,6 @@ class ProcessTranslator(NodeTranslator):
                 'type': 'str',
                 'is_display': False,
             },
-            'user_id': {
-                'display_name': 'Id of creator',
-                'help_text': 'Id of the user that created the node',
-                'is_foreign_key': True,
-                'related_column': 'id',
-                'related_resource': '_dbusers',
-                'type': 'int',
-                'is_display': False,
-            },
             'uuid': {
                 'display_name': 'Unique ID',
                 'help_text': 'Universally Unique Identifier',
@@ -111,6 +102,13 @@ class ProcessTranslator(NodeTranslator):
         }
 
         # Note: final schema will contain details for only the fields present in column order
-        column_order = ['uuid', 'attributes.process_label', 'ctime', 'mtime', 'creator', 'attributes.process_state']
+        column_order = [
+            'uuid',
+            'attributes.process_label',
+            'ctime',
+            'mtime',
+            'profile_uuid',
+            'attributes.process_state',
+        ]
 
         return projectable_properties, column_order

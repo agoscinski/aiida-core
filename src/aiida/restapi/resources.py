@@ -467,11 +467,7 @@ class Node(BaseResource):
         ## Treat the statistics
         elif query_type == 'statistics':
             headers = self.utils.build_headers(url=request.url, total_count=0)
-            if filters:
-                user_pk = filters['user']['==']
-            else:
-                user_pk = None
-            results = self.trans.get_statistics(user_pk)
+            results = self.trans.get_statistics()
 
         elif query_type == 'full_types':
             headers = self.utils.build_headers(url=request.url, total_count=0)
@@ -598,15 +594,6 @@ class Group(BaseResource):
 
     _translator_class = GroupTranslator
     _parse_pk_uuid = 'uuid'
-
-
-class User(BaseResource):
-    """Resource for User"""
-
-    from aiida.restapi.translator.user import UserTranslator
-
-    _translator_class = UserTranslator
-    _parse_pk_uuid = 'pk'
 
 
 class ProcessNode(Node):

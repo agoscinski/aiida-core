@@ -69,7 +69,16 @@ class NodeTranslator(BaseTranslator):
         # basic initialization
         super().__init__(**kwargs)
 
-        self._default_projections = ['id', 'label', 'node_type', 'process_type', 'ctime', 'mtime', 'uuid', 'user_id']
+        self._default_projections = [
+            'id',
+            'label',
+            'node_type',
+            'process_type',
+            'ctime',
+            'mtime',
+            'uuid',
+            'profile_uuid',
+        ]
 
         # Inspect the subclasses of NodeTranslator, to avoid hard-coding
         # (should resemble the following tree)
@@ -504,7 +513,7 @@ class NodeTranslator(BaseTranslator):
                 {
                     'created_time': cobj.ctime,
                     'modified_time': cobj.mtime,
-                    'user': f'{cobj.user.first_name} {cobj.user.last_name}',
+                    'profile_uuid': cobj.profile_uuid,
                     'message': cobj.content,
                 }
             )
@@ -569,9 +578,9 @@ class NodeTranslator(BaseTranslator):
 
         return results
 
-    def get_statistics(self, user_pk=None):
-        """Return statistics for a given node"""
-        return self._backend.query().get_creation_statistics(user_pk=user_pk)
+    def get_statistics(self):
+        """Return node creation statistics."""
+        return self._backend.query().get_creation_statistics()
 
     @staticmethod
     def get_namespace(user_pk=None, count_nodes=False):
@@ -732,9 +741,9 @@ class NodeTranslator(BaseTranslator):
         :return: dict of projectable properties and column_order list
         """
         projectable_properties = {
-            'creator': {
-                'display_name': 'Creator',
-                'help_text': 'User that created the node',
+            'profile_uuid': {
+                'display_name': 'Profile',
+                'help_text': 'UUID of the profile that owns the node',
                 'is_foreign_key': False,
                 'type': 'str',
                 'is_display': True,
@@ -774,15 +783,6 @@ class NodeTranslator(BaseTranslator):
                 'type': 'str',
                 'is_display': False,
             },
-            'user_id': {
-                'display_name': 'Id of creator',
-                'help_text': 'Id of the user that created the node',
-                'is_foreign_key': True,
-                'related_column': 'id',
-                'related_resource': 'users',
-                'type': 'int',
-                'is_display': False,
-            },
             'uuid': {
                 'display_name': 'Unique ID',
                 'help_text': 'Universally Unique Identifier',
@@ -793,6 +793,6 @@ class NodeTranslator(BaseTranslator):
         }
 
         # Note: final schema will contain details for only the fields present in column order
-        column_order = ['uuid', 'label', 'node_type', 'ctime', 'mtime', 'creator']
+        column_order = ['uuid', 'label', 'node_type', 'ctime', 'mtime', 'profile_uuid']
 
         return projectable_properties, column_order

@@ -27,7 +27,6 @@ SERIALIZER_CONFIG = {'datetime_format': 'default'}  # use 'asinput' or 'default'
 CACHE_CONFIG = {'CACHE_TYPE': 'memcached'}
 CACHING_TIMEOUTS = {  # Caching timeouts in seconds
     'nodes': 10,
-    'users': 10,
     'calculations': 10,
     'computers': 10,
     'datas': 10,
