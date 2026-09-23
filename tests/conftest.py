@@ -592,7 +592,6 @@ def profile_factory() -> t.Callable[t.Concatenate[str, P], Profile]:
         repository_dirpath = kwargs.pop('repository_dirpath', get_config().dirpath)
 
         profile_dictionary = {
-            'default_user_email': kwargs.pop('default_user_email', 'dummy@localhost'),
             'storage': {
                 'backend': kwargs.pop('storage_backend', 'core.psql_dos'),
                 'config': {
@@ -717,14 +716,6 @@ def backend(manager):
 def communicator(manager):
     """Get the ``Communicator`` instance of the currently loaded profile to communicate with RabbitMQ."""
     return manager.get_communicator()
-
-
-@pytest.fixture
-def default_user():
-    """Return the default user."""
-    from aiida.orm import User
-
-    return User.collection.get_default()
 
 
 @pytest.fixture(scope='function')

@@ -561,8 +561,16 @@ class TestVerdiRehash:
         run_cli_command(cmd_node.rehash, options, raises=True)
 
 
+@pytest.mark.usefixtures('aiida_profile_clean')
 class TestVerdiDelete:
-    """Tests for the ``verdi node delete`` command."""
+    """Tests for the ``verdi node delete`` command.
+
+    Each test gets a fresh storage backend: the tests delete nodes out-of-band
+    (via subprocess ``verdi`` invocations) while sharing the session-scoped
+    profile, so leftover identity-map entries for deleted rows would otherwise
+    collide with reused primary keys on subsequent stores and poison the
+    session (see #7553).
+    """
 
     @pytest.fixture(autouse=True)
     def init__(self):

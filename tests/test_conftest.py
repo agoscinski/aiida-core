@@ -9,6 +9,16 @@ from aiida.plugins.entry_point import get_entry_point, load_entry_point
 ENTRY_POINT_GROUP = 'aiida.calculations.importers'
 
 
+def test_config_factory_restores_session_config(aiida_config, aiida_config_factory, tmp_path):
+    """A temporary config must not invalidate the session fixture's in-memory config."""
+    from aiida.manage.configuration import get_config
+
+    assert get_config() is aiida_config
+    with aiida_config_factory(tmp_path):
+        assert get_config() is not aiida_config
+    assert get_config() is aiida_config
+
+
 def test_entry_points_add_invalid(entry_points):
     """Test the :meth:`EntryPointManager.add` method."""
     with pytest.raises(TypeError, match='`entry_point_string` should be a string when defined'):

@@ -94,10 +94,10 @@ def test_group_option_names_do_not_overlap_with_ancestors():
 @pytest.mark.usefixtures('config_with_profile')
 def test_invalid_cmd_matches(run_cli_command):
     """Test that verdi with an invalid command will return matches if somewhat close"""
-    result = run_cli_command(cmd_verdi.verdi, ['usr'], raises=True)
+    result = run_cli_command(cmd_verdi.verdi, ['compter'], raises=True)
     assert 'is not a verdi command' in result.output
     assert 'The most similar commands are' in result.output
-    assert 'user' in result.output
+    assert 'computer' in result.output
 
 
 @pytest.mark.usefixtures('config_with_profile')

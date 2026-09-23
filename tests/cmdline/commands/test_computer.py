@@ -321,7 +321,6 @@ class TestVerdiComputerConfigure:
         from aiida.orm.utils.builders.computer import ComputerBuilder
 
         self.cli_runner = run_cli_command
-        self.user = orm.User.collection.get_default()
         self.comp_builder = ComputerBuilder(label='test_comp_setup')
         self.comp_builder.hostname = 'localhost'
         self.comp_builder.description = 'Test Computer'
@@ -389,7 +388,7 @@ class TestVerdiComputerConfigure:
         result = self.cli_runner(computer_configure, ['core.local', comp.label], user_input=f'{invalid}\n{valid}\n')
         assert comp.is_configured, result.output
 
-        new_auth_params = comp.get_authinfo(self.user).get_auth_params()
+        new_auth_params = comp.get_authinfo().get_auth_params()
         assert new_auth_params['safe_interval'] == 1.0
         assert new_auth_params['use_login_shell'] is False
 
@@ -417,7 +416,7 @@ class TestVerdiComputerConfigure:
 
         result = self.cli_runner(computer_configure, ['core.ssh', comp.label], user_input=command_input)
         assert comp.is_configured, result.output
-        new_auth_params = comp.get_authinfo(self.user).get_auth_params()
+        new_auth_params = comp.get_authinfo().get_auth_params()
         assert new_auth_params['username'] == remote_username
         assert new_auth_params['port'] == port
         assert new_auth_params['look_for_keys'] == look_for_keys
@@ -488,7 +487,7 @@ class TestVerdiComputerConfigure:
         username = 'TEST'
         options = ['core.ssh', comp.label, '--non-interactive', f'--username={username}', '--safe-interval', '1']
         result = self.cli_runner(computer_configure, options)
-        auth_info = orm.AuthInfo.collection.get(dbcomputer_id=comp.pk, aiidauser_id=self.user.pk)
+        auth_info = orm.AuthInfo.collection.get(dbcomputer_id=comp.pk)
         assert comp.is_configured, result.output
         assert auth_info.get_auth_params()['username'] == username
 
@@ -700,7 +699,6 @@ class TestVerdiComputerCommands:
         self.comp.set_append_text('text to append')
         self.comp.store()
         self.comp.configure()
-        self.user = orm.User.collection.get_default()
         assert self.comp.is_configured, 'There was a problem configuring the test computer'
         self.cli_runner = run_cli_command
 

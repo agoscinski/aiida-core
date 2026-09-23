@@ -33,9 +33,6 @@ def test_base_properties(profile_factory):
     # Verify that the uuid property returns a valid UUID by attempting to construct an UUID instance from it
     uuid.UUID(profile.uuid)
 
-    # Check that the default user email field is not None
-    assert profile.default_user_email is not None
-
 
 @pytest.mark.parametrize('test_profile', (True, False))
 def test_is_test_profile(profile_factory, test_profile):
@@ -191,37 +188,6 @@ class TestProfileDump:
         assert result_path.is_dir()
         assert (result_path / 'groups' / group.label).exists()
         assert not (result_path / 'groups' / extra_group.label).exists()
-
-    def test_dump_by_user(self, tmp_path, profile_with_minimal_data):
-        """Test dumping data for specific user."""
-        profile = profile_with_minimal_data
-        output_path = tmp_path / 'profile_dump_user'
-
-        default_user = orm.User.collection.get_default()
-
-        # Create a second user
-        other_user = orm.User(email='other@example.com', first_name='Other', last_name='User')
-        other_user.store()
-
-        # Create a calculation node for the other user
-        other_calc = orm.CalculationNode()
-        other_calc.user = other_user
-        other_calc.store().seal()
-
-        group = orm.load_group(TEST_GROUP_LABEL)
-        group.add_nodes(other_calc)
-
-        result_path = profile.dump(
-            output_path=output_path,
-            user=default_user,
-            groups=[TEST_GROUP_LABEL],
-        )
-
-        assert result_path.exists()
-        assert result_path.is_dir()
-        assert (result_path / 'groups' / TEST_GROUP_LABEL / 'calculations').exists()
-        # Calculation created by other user is not dumped
-        assert not (result_path / 'groups' / TEST_GROUP_LABEL / 'calculations' / f'{other_calc.pk}').exists()
 
     def test_dump_empty_scope_returns_none(self, tmp_path, profile_with_minimal_data, caplog):
         """Test that dumping with no scope returns None."""

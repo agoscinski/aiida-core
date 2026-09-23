@@ -94,7 +94,6 @@ def test_code_list(run_cli_command, code):
     code2.store()
 
     options = [
-        '-A',
         '-a',
         '-d',
         'core.arithmetic.add',
@@ -103,7 +102,7 @@ def test_code_list(run_cli_command, code):
         'full_label',
         'pk',
         'entry_point',
-        'user',
+        'uuid',
     ]
     result = run_cli_command(cmd_code.code_list, options)
     assert str(code.pk) in result.output
@@ -130,7 +129,7 @@ def test_code_list_also_no_computer(run_cli_command, code, tmp_path):
     code_portable.store()
 
     # I filter on computer, so the PortableCode should not appear in the results
-    options = ['-A', '-a', f'--computer={code.computer.label}', '-P', 'full_label', 'pk', 'entry_point', 'user']
+    options = ['-a', f'--computer={code.computer.label}', '-P', 'full_label', 'pk', 'entry_point', 'uuid']
     result = run_cli_command(cmd_code.code_list, options)
     # Both code and code2 in results output
     assert str(code.pk) in result.output
@@ -140,7 +139,7 @@ def test_code_list_also_no_computer(run_cli_command, code, tmp_path):
     assert code_portable.label not in result.output
 
     # No filter on computer, so the PortableCode should appear in the results
-    options = ['-A', '-a', '-P', 'full_label', 'pk', 'entry_point', 'user']
+    options = ['-a', '-P', 'full_label', 'pk', 'entry_point', 'uuid']
     result = run_cli_command(cmd_code.code_list, options)
     # Both code and code2 in results output
     assert str(code.pk) in result.output
@@ -154,7 +153,7 @@ def test_code_list_also_no_computer(run_cli_command, code, tmp_path):
 def test_code_list_hide(run_cli_command, code):
     """Test that hidden codes are shown (or not) properly."""
     code.is_hidden = True
-    options = ['-A']
+    options = []
     result = run_cli_command(cmd_code.code_list, options)
     assert code.full_label not in result.output
 

@@ -30,7 +30,7 @@ class TestVerdiHelpCommand:
         assert result_help.output == result_verdi.output
 
     def test_cmd_help(self, run_cli_command):
-        """Ensure we get the same help for `verdi user --help` and `verdi help user`"""
-        result_help = run_cli_command(cmd_verdi.verdi, ['help', 'user'])
-        result_user = run_cli_command(cmd_verdi.verdi, ['user', '--help'])
+        """Ensure we get the same help for `verdi computer --help` and `verdi help computer`"""
+        result_help = run_cli_command(cmd_verdi.verdi, ['help', 'computer'])
+        result_user = run_cli_command(cmd_verdi.verdi, ['computer', '--help'])
         assert result_help.output == result_user.output

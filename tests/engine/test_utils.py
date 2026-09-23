@@ -38,7 +38,7 @@ class TestExponentialBackoffRetry:
     def init_profile(self, aiida_localhost):
         """Initialize the profile."""
         self.computer = aiida_localhost
-        self.authinfo = self.computer.get_authinfo(orm.User.collection.get_default())
+        self.authinfo = self.computer.get_authinfo()
 
     @staticmethod
     def test_exp_backoff_success():

@@ -112,11 +112,9 @@ class TestVerdiGroup:
         orm.Group(label='group_test_delete_01').store()
         orm.Group(label='group_test_delete_02').store()
         orm.Group(label='group_test_delete_03').store()
-        do_not_delete_user = orm.User(email='user0@example.com')
-        do_not_delete_group = orm.Group(label='do_not_delete_group', user=do_not_delete_user).store()
+        do_not_delete_group = orm.Group(label='do_not_delete_group').store()
         do_not_delete_node = orm.CalculationNode().store()
         do_not_delete_group.add_nodes(do_not_delete_node)
-        do_not_delete_user.store()
 
         # 0) do nothing if no groups or no filters are passed
         result = run_cli_command(cmd_group.group_delete, ['--force'])
@@ -201,18 +199,6 @@ class TestVerdiGroup:
         # 8) Should raise if both groups and query options are passed
         result = run_cli_command(
             cmd_group.group_delete,
-            ['--force', 'do_not_delete_group', '--all-users'],
-            raises=True,
-        )
-        assert b'Cannot specify both GROUPS and any of the other filters' in result.stderr_bytes
-        result = run_cli_command(
-            cmd_group.group_delete,
-            ['--force', 'do_not_delete_group', '--user', do_not_delete_user.email],
-            raises=True,
-        )
-        assert b'Cannot specify both GROUPS and any of the other filters' in result.stderr_bytes
-        result = run_cli_command(
-            cmd_group.group_delete,
             ['--force', 'do_not_delete_group', '--type-string', 'non_existent'],
             raises=True,
         )
@@ -248,22 +234,14 @@ class TestVerdiGroup:
         )
         assert b'Cannot specify both GROUPS and any of the other filters' in result.stderr_bytes
 
-        # 9) --user should delete groups for a specific user
-        #   --all-users should delete groups for all users
-        user1 = orm.User(email='user1@example.com')
-        user2 = orm.User(email='user2@example.com')
-        user3 = orm.User(email='user3@example.com')
-        user1.store()
-        user2.store()
-        user3.store()
-
-        orm.Group(label='group_test_delete_08', user=user1).store()
-        orm.Group(label='group_test_delete_09', user=user2).store()
-        orm.Group(label='group_test_delete_10', user=user3).store()
+        # 9) label filters delete only matching groups
+        orm.Group(label='group_test_delete_08').store()
+        orm.Group(label='group_test_delete_09').store()
+        orm.Group(label='group_test_delete_10').store()
 
         result = run_cli_command(
             cmd_group.group_delete,
-            ['--force', '--user', user1.email],
+            ['--force', '--startswith', 'group_test_delete_08'],
         )
         with pytest.raises(exceptions.NotExistent):
             orm.load_group(label='group_test_delete_08')
@@ -272,7 +250,7 @@ class TestVerdiGroup:
 
         result = run_cli_command(
             cmd_group.group_delete,
-            ['--force', '--all-users'],
+            ['--force', '--startswith', 'group_test_delete_'],
         )
         with pytest.raises(exceptions.NotExistent):
             orm.load_group(label='group_test_delete_09')

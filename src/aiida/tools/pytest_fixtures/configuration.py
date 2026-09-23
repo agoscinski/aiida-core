@@ -43,6 +43,7 @@ def aiida_config_factory():
     @contextlib.contextmanager
     def factory(dirpath: pathlib.Path):
         from aiida.common.exceptions import MissingConfigurationError
+        from aiida.manage import configuration
         from aiida.manage.configuration import get_config, reset_config, settings
 
         try:
@@ -62,10 +63,9 @@ def aiida_config_factory():
         try:
             yield config
         finally:
-            if current_config:
-                reset_config()
+            if current_config is not None:
                 AiiDAConfigDir.set(pathlib.Path(current_config.dirpath))
-                get_config()
+                configuration.CONFIG = current_config
 
             if current_path_variable is None:
                 os.environ.pop(settings.DEFAULT_AIIDA_PATH_VARIABLE, None)

@@ -16,7 +16,6 @@ import pytest
 from aiida.engine.processes.calcjobs.manager import JobManager, JobsList
 from aiida.engine.processes.events import get_or_create_event_loop
 from aiida.engine.transports import TransportQueue
-from aiida.orm import User
 
 
 class TestJobManager:
@@ -27,9 +26,8 @@ class TestJobManager:
         """Initialize the profile."""
         self.loop = get_or_create_event_loop()
         self.transport_queue = TransportQueue(self.loop)
-        self.user = User.collection.get_default()
         self.computer = aiida_localhost
-        self.auth_info = self.computer.get_authinfo(self.user)
+        self.auth_info = self.computer.get_authinfo()
         self.manager = JobManager(self.transport_queue)
 
     def test_get_jobs_list(self):
@@ -57,9 +55,8 @@ class TestJobsList:
         """Initialize the profile."""
         self.loop = get_or_create_event_loop()
         self.transport_queue = TransportQueue(self.loop)
-        self.user = User.collection.get_default()
         self.computer = aiida_localhost
-        self.auth_info = self.computer.get_authinfo(self.user)
+        self.auth_info = self.computer.get_authinfo()
         self.jobs_list = JobsList(self.auth_info, self.transport_queue)
 
     def test_get_minimum_update_interval(self):

@@ -185,8 +185,8 @@ def test_config_set_option_requires_daemon_restart(
 def test_config_set_option_global_only(run_cli_command, config_with_profile_factory):
     """Test that `global_only` options are only set globally even if the `--global` flag is not set."""
     config_with_profile_factory()
-    option_name = 'autofill.user.email'
-    option_value = 'some@email.com'
+    option_name = 'warnings.development_version'
+    option_value = False
 
     options = ['config', 'set', option_name, str(option_value)]
     result = run_cli_command(cmd_verdi.verdi, options, use_subprocess=False)
@@ -195,7 +195,7 @@ def test_config_set_option_global_only(run_cli_command, config_with_profile_fact
     result = run_cli_command(cmd_verdi.verdi, options, use_subprocess=False)
 
     # Check that the current profile name is not in the output
-    assert option_value in result.output.strip()
+    assert str(option_value) in result.output.strip()
     assert get_profile().name not in result.output.strip()
 
 

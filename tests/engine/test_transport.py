@@ -12,7 +12,6 @@ import asyncio
 
 import pytest
 
-from aiida import orm
 from aiida.engine.transports import TransportQueue
 
 
@@ -23,7 +22,7 @@ class TestTransportQueue:
     def init_profile(self, aiida_localhost):
         """Initialize the profile."""
         self.computer = aiida_localhost
-        self.authinfo = self.computer.get_authinfo(orm.User.collection.get_default())
+        self.authinfo = self.computer.get_authinfo()
 
     def test_simple_request(self):
         """Test a simple transport request"""

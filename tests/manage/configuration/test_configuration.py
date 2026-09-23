@@ -25,7 +25,6 @@ def test_create_profile(isolated_config, tmp_path, entry_point):
     profile = create_profile(
         isolated_config,
         name=profile_name,
-        email='test@localhost',
         storage_backend=entry_point,
         storage_config={'filepath': str(tmp_path)},
     )

@@ -8,7 +8,6 @@
 ###########################################################################
 """Tests for ``verdi profile``."""
 
-import typing as t
 from unittest.mock import patch
 
 import click
@@ -21,7 +20,6 @@ from aiida.common import docs
 from aiida.engine.daemon.client import DaemonException, DaemonStalePidException, DaemonTimeoutException
 from aiida.manage import configuration
 from aiida.manage.configuration import profile_context
-from aiida.plugins import StorageFactory
 from aiida.tools.archive.create import create_archive
 
 # NOTE: Most of these tests would work with sqlite_dos,
@@ -340,29 +338,6 @@ def test_setup_set_as_default(run_cli_command, isolated_config, tmp_path, set_as
         assert isolated_config.default_profile_name == profile_name
     else:
         assert isolated_config.default_profile_name != profile_name
-
-
-@pytest.mark.parametrize('entry_point', ('core.sqlite_zip', 'core.sqlite_dos'))
-def test_setup_email_required(run_cli_command, isolated_config, tmp_path, entry_point):
-    """Test the ``--email`` option is not required for read-only storage plugins."""
-    storage_cls = StorageFactory(entry_point)
-    profile_name = f'profile_{entry_point}'
-
-    if entry_point == 'core.sqlite_zip':
-        tmp_path = tmp_path / 'archive.aiida'
-        create_archive([], filename=tmp_path)
-
-    isolated_config.unset_option('autofill.user.email')
-
-    options = [entry_point, '-n', '--filepath', str(tmp_path), '--profile-name', profile_name]
-
-    if storage_cls.read_only:
-        result = run_cli_command(cmd_profile.profile_setup, options, use_subprocess=False)
-        assert f'Created new profile `{profile_name}`.' in result.output
-        assert profile_name in isolated_config.profile_names
-    else:
-        result = run_cli_command(cmd_profile.profile_setup, options, use_subprocess=False, raises=True)
-        assert 'Invalid value for --email: The option is required for storages that are not read-only.' in result.output
 
 
 @pytest.mark.parametrize('broker', ('core.rabbitmq', 'core.zeromq', 'none'))
@@ -802,16 +777,13 @@ class TestVerdiProfileDumpCLI:
         result = run_cli_command(cmd_profile.profile_dump, options)
         assert result.exception is None, result.output
 
-    def test_dump_user_parsing(self, run_cli_command, tmp_path):
-        """Test that user argument is parsed correctly."""
-        group = orm.Group(label='test_user_group').store()
+    def test_dump_group_parsing(self, run_cli_command, tmp_path):
+        """Test that group argument is parsed correctly."""
+        group = orm.Group(label='test_dump_group').store()
         node = orm.CalculationNode().store()
         group.add_nodes([node])
-        test_path = tmp_path / 'user-test'
+        test_path = tmp_path / 'group-test'
 
-        default_user = orm.User.collection.get_default()
-        t.cast(orm.User, default_user)
-
-        options = ['--path', str(test_path), '--user', default_user.email]
+        options = ['--path', str(test_path), '--groups', group.label]
         result = run_cli_command(cmd_profile.profile_dump, options)
         assert result.exception is None, result.output
