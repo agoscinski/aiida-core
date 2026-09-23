@@ -54,7 +54,7 @@ def _computer_test_get_jobs(transport, scheduler, authinfo, computer):
 
     :param transport: an open transport
     :param scheduler: the corresponding scheduler class
-    :param authinfo: the AuthInfo object (from which one can get computer and aiidauser)
+    :param authinfo: the AuthInfo object (from which one can get computer)
     :return: tuple of boolean indicating success or failure and an optional string message
     """
     found_jobs = scheduler.get_jobs(as_dict=True)
@@ -71,7 +71,7 @@ def _computer_test_no_unexpected_output(transport, scheduler, authinfo, computer
 
     :param transport: an open transport
     :param scheduler: the corresponding scheduler class
-    :param authinfo: the AuthInfo object (from which one can get computer and aiidauser)
+    :param authinfo: the AuthInfo object (from which one can get computer)
     :return: tuple of boolean indicating success or failure and an optional string message
     """
     # Execute a command that should not return any error, except ``NotImplementedError``
@@ -126,7 +126,7 @@ def _computer_create_temp_file(transport, scheduler, authinfo, computer):
 
     :param transport: an open transport
     :param scheduler: the corresponding scheduler class
-    :param authinfo: the AuthInfo object (from which one can get computer and aiidauser)
+    :param authinfo: the AuthInfo object (from which one can get computer)
     :return: tuple of boolean indicating success or failure and an optional string message
     """
     import datetime
@@ -317,10 +317,15 @@ def computer_setup(ctx, non_interactive, **kwargs):
     else:
         echo.echo_success(f'Computer<{computer.pk}> {computer.label} created')
 
-    echo.echo_report('Note: before the computer can be used, it has to be configured with the command:')
+    if non_interactive:
+        profile = ctx.obj['profile']
+        echo.echo_report('Note: before the computer can be used, it has to be configured with the command:')
+        echo.echo_report(f'  verdi -p {profile.name} computer configure {computer.transport_type} {computer.label}')
+        return
 
-    profile = ctx.obj['profile']
-    echo.echo_report(f'  verdi -p {profile.name} computer configure {computer.transport_type} {computer.label}')
+    echo.echo_report('Configuring the transport for the new computer.')
+    configure_cmd = computer_configure.get_command(ctx, computer.transport_type)
+    ctx.invoke(configure_cmd, computer=computer, non_interactive=non_interactive)
 
 
 @verdi_computer.command('duplicate')
@@ -371,58 +376,56 @@ def computer_duplicate(ctx, computer, non_interactive, **kwargs):
     else:
         echo.echo_success(f'Computer<{computer.pk}> {computer.label} created')
 
-    if not computer.is_configured:
-        echo.echo_report('Note: before the computer can be used, it has to be configured with the command:')
-
+    if non_interactive:
         profile = ctx.obj['profile']
+        echo.echo_report('Note: before the computer can be used, it has to be configured with the command:')
         echo.echo_report(f'  verdi -p {profile.name} computer configure {computer.transport_type} {computer.label}')
+        return
+
+    echo.echo_report('Configuring the transport for the new computer.')
+    configure_cmd = computer_configure.get_command(ctx, computer.transport_type)
+    ctx.invoke(configure_cmd, computer=computer, non_interactive=non_interactive)
 
 
 @verdi_computer.command('enable')
 @arguments.COMPUTER()
-@arguments.USER()
 @with_dbenv()
-def computer_enable(computer, user):
-    """Enable the computer for the given user."""
+def computer_enable(computer):
+    """Enable the computer."""
     from aiida.common.exceptions import NotExistent
 
     try:
-        authinfo = computer.get_authinfo(user)
+        authinfo = computer.get_authinfo()
     except NotExistent:
-        echo.echo_critical(f"User with email '{user.email}' is not configured for computer '{computer.label}' yet.")
+        echo.echo_critical(f"Computer '{computer.label}' is not configured yet.")
 
     if not authinfo.enabled:
         authinfo.enabled = True
-        echo.echo_report(f"Computer '{computer.label}' enabled for user {user.get_full_name()}.")
+        echo.echo_report(f"Computer '{computer.label}' enabled.")
     else:
-        echo.echo_report(
-            f"Computer '{computer.label}' was already enabled for user {user.first_name} {user.last_name}."
-        )
+        echo.echo_report(f"Computer '{computer.label}' was already enabled.")
 
 
 @verdi_computer.command('disable')
 @arguments.COMPUTER()
-@arguments.USER()
 @with_dbenv()
-def computer_disable(computer, user):
-    """Disable the computer for the given user.
+def computer_disable(computer):
+    """Disable the computer.
 
-    Thi can be useful, for example, when a computer is under maintenance.
+    This can be useful, for example, when a computer is under maintenance.
     """
     from aiida.common.exceptions import NotExistent
 
     try:
-        authinfo = computer.get_authinfo(user)
+        authinfo = computer.get_authinfo()
     except NotExistent:
-        echo.echo_critical(f"User with email '{user.email}' is not configured for computer '{computer.label}' yet.")
+        echo.echo_critical(f"Computer '{computer.label}' is not configured yet.")
 
     if authinfo.enabled:
         authinfo.enabled = False
-        echo.echo_report(f"Computer '{computer.label}' disabled for user {user.get_full_name()}.")
+        echo.echo_report(f"Computer '{computer.label}' disabled.")
     else:
-        echo.echo_report(
-            f"Computer '{computer.label}' was already disabled for user {user.first_name} {user.last_name}."
-        )
+        echo.echo_report(f"Computer '{computer.label}' was already disabled.")
 
 
 @verdi_computer.command('list')
@@ -431,21 +434,20 @@ def computer_disable(computer, user):
 @with_dbenv()
 def computer_list(all_entries, raw):
     """List all available computers."""
-    from aiida.orm import Computer, User
+    from aiida.orm import Computer
 
     if not raw:
         echo.echo_report('List of configured computers')
         echo.echo_report("Use 'verdi computer show COMPUTERLABEL' to display more detailed information")
 
     computers = Computer.collection.all()
-    user = User.collection.get_default()
 
     if not computers:
         echo.echo_report("No computers configured yet. Use 'verdi computer setup'")
 
     sort = lambda computer: computer.label  # noqa: E731
-    highlight = lambda comp: comp.is_configured and comp.is_user_enabled(user)  # noqa: E731
-    hide = lambda comp: not (comp.is_configured and comp.is_user_enabled(user)) and not all_entries  # noqa: E731
+    highlight = lambda comp: comp.is_configured and comp.is_enabled  # noqa: E731
+    hide = lambda comp: not (comp.is_configured and comp.is_enabled) and not all_entries  # noqa: E731
     echo.echo_formatted_list(computers, ['label'], sort=sort, highlight=highlight, hide=hide)
 
 
@@ -523,15 +525,10 @@ def computer_relabel(computer, label):
 
 
 @verdi_computer.command('test')
-@options.USER(
-    required=False,
-    help='Test the connection for a given AiiDA user, specified by'
-    'their email address. If not specified, uses the current default user.',
-)
 @options.PRINT_TRACEBACK()
 @arguments.COMPUTER()
 @with_dbenv()
-def computer_test(user, print_traceback, computer):
+def computer_test(print_traceback, computer):
     """Test the connection to a computer.
 
     It tries to connect, to get the list of calculations on the queue and
@@ -539,22 +536,17 @@ def computer_test(user, print_traceback, computer):
     """
     import traceback
 
-    from aiida import orm
     from aiida.common.exceptions import NotExistent
 
-    # Set a user automatically if one is not specified in the command line
-    if user is None:
-        user = orm.User.collection.get_default()
-
-    echo.echo_report(f'Testing computer<{computer.label}> for user<{user.email}>...')
+    echo.echo_report(f'Testing computer<{computer.label}>...')
 
     try:
-        authinfo = computer.get_authinfo(user)
+        authinfo = computer.get_authinfo()
     except NotExistent:
-        echo.echo_critical(f'Computer<{computer.label}> is not yet configured for user<{user.email}>')
+        echo.echo_critical(f'Computer<{computer.label}> is not yet configured')
 
     if not authinfo.enabled:
-        echo.echo_warning(f'Computer<{computer.label}> is disabled for user<{user.email}>')
+        echo.echo_warning(f'Computer<{computer.label}> is disabled')
         click.confirm('Do you really want to test it?', abort=True)
 
     scheduler = authinfo.computer.get_scheduler()
@@ -704,7 +696,7 @@ class LazyConfigureGroup(VerdiCommandGroup):
 
 @verdi_computer.group('configure', cls=LazyConfigureGroup)
 def computer_configure():
-    """Configure the transport for a computer and user."""
+    """Configure the transport for a computer."""
 
 
 @computer_configure.command('show')
@@ -712,11 +704,8 @@ def computer_configure():
     '--defaults', is_flag=True, default=False, help='Show the default configuration settings for this computer.'
 )
 @click.option('--as-option-string', is_flag=True)
-@options.USER(
-    help='Email address of the AiiDA user for whom to configure this computer (if different from default user).'
-)
 @arguments.COMPUTER()
-def computer_config_show(computer, user, defaults, as_option_string):
+def computer_config_show(computer, defaults, as_option_string):
     """Show the current configuration for a computer."""
     from aiida.common.escaping import escape_for_bash
     from aiida.transports import cli as transport_cli
@@ -732,7 +721,7 @@ def computer_config_show(computer, user, defaults, as_option_string):
     if defaults:
         config = {option.name: transport_cli.transport_option_default(option.name, computer) for option in option_list}
     else:
-        config = computer.get_configuration(user)
+        config = computer.get_configuration()
 
     option_items = []
     if as_option_string:
@@ -816,14 +805,11 @@ def computer_export_setup(computer, output_file, overwrite, sort):
 @computer_export.command('config')
 @arguments.COMPUTER()
 @arguments.OUTPUT_FILE(type=click.Path(exists=False, path_type=pathlib.Path), required=False)
-@options.USER(
-    help='Email address of the AiiDA user from whom to export this computer (if different from default user).'
-)
 @options.OVERWRITE()
 @options.SORT()
 @with_dbenv()
-def computer_export_config(computer, output_file, user, overwrite, sort):
-    """Export computer transport configuration for a user to a YAML file."""
+def computer_export_config(computer, output_file, overwrite, sort):
+    """Export computer transport configuration to a YAML file."""
     import yaml
 
     if not computer.is_configured:
@@ -840,20 +826,14 @@ def computer_export_config(computer, output_file, user, overwrite, sort):
             raise click.BadParameter(str(exception), param_hint='OUTPUT_FILE') from exception
 
     try:
-        computer_configuration = computer.get_configuration(user)
+        computer_configuration = computer.get_configuration()
         output_file.write_text(yaml.dump(computer_configuration, sort_keys=sort), 'utf-8')
 
     except Exception as exception:
         error_traceback = traceback.format_exc()
         echo.CMDLINE_LOGGER.debug(error_traceback)
-        if user is None:
-            echo.echo_critical(
-                f'Unexpected error while exporting configuration for Computer<{computer.pk}> {computer.label}: {exception!s}.'  # noqa: E501
-            )
-        else:
-            echo.echo_critical(
-                f'Unexpected error while exporting configuration for Computer<{computer.pk}> {computer.label}'
-                f' and User<{user.pk}> {user.email}: {exception!s}.'
-            )
+        echo.echo_critical(
+            f'Unexpected error while exporting configuration for Computer<{computer.pk}> {computer.label}: {exception!s}.'  # noqa: E501
+        )
     else:
         echo.echo_success(f'Computer<{computer.pk}> {computer.label} configuration exported to file `{output_file}`.')

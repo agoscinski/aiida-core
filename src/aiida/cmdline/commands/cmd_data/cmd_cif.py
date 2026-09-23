@@ -30,7 +30,7 @@ def cif():
 @options.FORMULA_MODE()
 @list_options
 @decorators.with_dbenv()
-def cif_list(raw, formula_mode, past_days, groups, all_users):
+def cif_list(raw, formula_mode, past_days, groups):
     """List store CifData objects."""
     from tabulate import tabulate
 
@@ -39,9 +39,7 @@ def cif_list(raw, formula_mode, past_days, groups, all_users):
     elements = None
     elements_only = False
 
-    entry_list = data_list(
-        CifData, LIST_PROJECT_HEADERS, elements, elements_only, formula_mode, past_days, groups, all_users
-    )
+    entry_list = data_list(CifData, LIST_PROJECT_HEADERS, elements, elements_only, formula_mode, past_days, groups)
 
     counter = 0
     cif_list_data = []

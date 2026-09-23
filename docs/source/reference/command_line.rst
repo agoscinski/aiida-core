@@ -121,11 +121,11 @@ Below is a list with all available subcommands.
       --help  Show this message and exit.
 
     Commands:
-      configure  Configure the transport for a computer and user.
+      configure  Configure the transport for a computer.
       delete     Delete a computer.
-      disable    Disable the computer for the given user.
+      disable    Disable the computer.
       duplicate  Duplicate a computer allowing to change some parameters.
-      enable     Enable the computer for the given user.
+      enable     Enable the computer.
       export     Export the setup or configuration of a computer.
       goto       Open a shell connecting to the remote computer.
       list       List all available computers.
@@ -336,7 +336,6 @@ Below is a list with all available subcommands.
       setup. The command performs the following actions:
 
       * Create a new profile that is set as the new default
-      * Create a default user for the profile (email can be configured through the `--email` option)
       * Set up the localhost as a `Computer` and configure it
       * Set a number of configuration options with sensible defaults
 
@@ -359,7 +358,6 @@ Below is a list with all available subcommands.
       -p, --profile-name TEXT         Name of the profile. By default, a unique name starting
                                       with `presto` is automatically generated.  [default:
                                       (dynamic)]
-      --email TEXT                    Email of the default user.  [default: (dynamic)]
       --use-postgres                  When toggled on, the profile uses a PostgreSQL database
                                       instead of an SQLite one. The connection details to the
                                       PostgreSQL server can be configured with the relevant
@@ -465,12 +463,6 @@ Below is a list with all available subcommands.
                                       define one. In interactive mode, the CLI will prompt for
                                       each interactive option.   [default: (--interactive)]
       --profile PROFILE               The name of the new profile.  [required]
-      --email EMAIL                   Email address associated with the data you generate. The
-                                      email address is exported along with the data, when
-                                      sharing it.  [required]
-      --first-name NONEMPTYSTRING     First name of the user.  [required]
-      --last-name NONEMPTYSTRING      Last name of the user.  [required]
-      --institution NONEMPTYSTRING    Institution of the user.  [required]
       --db-engine [postgresql_psycopg|postgresql_psycopg2]
                                       Engine to use to connect to the database. (deprecated)
       --db-backend [core.psql_dos]    Database backend to use.  [required]
@@ -572,12 +564,6 @@ Below is a list with all available subcommands.
                                       define one. In interactive mode, the CLI will prompt for
                                       each interactive option.   [default: (--interactive)]
       --profile PROFILE               The name of the new profile.  [required]
-      --email EMAIL                   Email address associated with the data you generate. The
-                                      email address is exported along with the data, when
-                                      sharing it.  [required]
-      --first-name NONEMPTYSTRING     First name of the user.  [required]
-      --last-name NONEMPTYSTRING      Last name of the user.  [required]
-      --institution NONEMPTYSTRING    Institution of the user.  [required]
       --db-engine [postgresql_psycopg|postgresql_psycopg2]
                                       Engine to use to connect to the database. (deprecated)
       --db-backend [core.psql_dos]    Database backend to use.  [required]
@@ -664,26 +650,6 @@ Below is a list with all available subcommands.
       maintain   Performs maintenance tasks on the repository.
       migrate    Migrate the storage to the latest schema version.
       version    Print the current version of the storage schema.
-
-
-.. _reference:command-line:verdi-user:
-
-``verdi user``
---------------
-
-.. code:: console
-
-    Usage:  [OPTIONS] COMMAND [ARGS]...
-
-      Inspect and manage users.
-
-    Options:
-      --help  Show this message and exit.
-
-    Commands:
-      configure    Configure a new or existing user.
-      list         Show a list of all users.
-      set-default  Set a user as the default user for the profile.
 
 
 

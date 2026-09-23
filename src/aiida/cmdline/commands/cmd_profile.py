@@ -33,15 +33,11 @@ def command_create_profile(
     storage_cls,
     profile: Profile,
     set_as_default: bool = True,
-    email: str | None = None,
-    first_name: str | None = None,
-    last_name: str | None = None,
-    institution: str | None = None,
     broker: str = 'core.rabbitmq',
     use_rabbitmq: bool | None = None,
     **kwargs,
 ):
-    """Create a new profile, initialise its storage and create a default user.
+    """Create a new profile and initialise its storage.
 
     :param ctx: The context of the CLI command.
     :param storage_cls: The storage class obtained through loading the entry point from ``aiida.storage`` group.
@@ -49,10 +45,6 @@ def command_create_profile(
     :param profile: The profile instance. This is an empty ``Profile`` instance created by the command line argument
         which currently only contains the selected profile name for the profile that is to be created.
     :param set_as_default: Whether to set the created profile as the new default.
-    :param email: Email for the default user.
-    :param first_name: First name for the default user.
-    :param last_name: Last name for the default user.
-    :param institution: Institution for the default user.
     :param broker: Message broker backend ('core.rabbitmq', 'core.zeromq', or 'none').
     :param use_rabbitmq: Deprecated. Use ``broker`` instead. If False, equivalent to ``broker='none'``.
     :param kwargs: Arguments to initialise instance of the selected storage implementation.
@@ -66,12 +58,6 @@ def command_create_profile(
             broker = 'none'
     from aiida.common import docs
     from aiida.plugins.entry_point import get_entry_point_from_class
-
-    if not storage_cls.read_only and email is None:
-        raise click.BadParameter(
-            'The option is required for storages that are not read-only.',
-            param_hint='--email',
-        )
 
     _, storage_entry_point = get_entry_point_from_class(storage_cls.__module__, storage_cls.__name__)
     assert storage_entry_point is not None
@@ -111,10 +97,6 @@ def command_create_profile(
         profile = create_profile(
             ctx.obj.config,
             name=profile.name,
-            email=email,  # type: ignore[arg-type]
-            first_name=first_name,
-            last_name=last_name,
-            institution=institution,
             storage_backend=storage_entry_point.name,
             storage_config=kwargs,
             broker_backend=broker_backend,
@@ -142,10 +124,6 @@ def command_create_profile(
     shared_options=[
         setup.SETUP_PROFILE_NAME(),
         setup.SETUP_PROFILE_SET_AS_DEFAULT(),
-        setup.SETUP_USER_EMAIL(required=False),
-        setup.SETUP_USER_FIRST_NAME(),
-        setup.SETUP_USER_LAST_NAME(),
-        setup.SETUP_USER_INSTITUTION(),
         setup.SETUP_BROKER_BACKEND(),
         setup.SETUP_USE_RABBITMQ(),  # Deprecated, for backward compatibility
     ],
@@ -464,7 +442,6 @@ def profile_delete(force, delete_data, profiles):
 @options.CODES()
 @options.COMPUTERS()
 @options.GROUPS()
-@options.USER()
 @options.PAST_DAYS()
 @options.START_DATE()
 @options.END_DATE()
@@ -493,7 +470,6 @@ def profile_dump(
     codes,
     computers,
     groups,
-    user,
     past_days,
     start_date,
     end_date,
@@ -557,7 +533,6 @@ def profile_dump(
             overwrite=overwrite,
             all_entries=all_entries,
             groups=list(groups) if groups else None,
-            user=user,
             computers=computers,
             codes=codes,
             past_days=past_days,
@@ -579,9 +554,7 @@ def profile_dump(
             dump_unsealed=dump_unsealed,
         )
 
-        if not dry_run and (
-            all_entries or bool(codes or computers or groups or past_days or start_date or end_date or user)
-        ):
+        if not dry_run and (all_entries or bool(codes or computers or groups or past_days or start_date or end_date)):
             msg = f'Raw files for profile `{profile.name}` dumped into folder `{dump_base_output_path.name}`.'
             echo.echo_success(msg)
         elif dry_run:

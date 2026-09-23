@@ -148,8 +148,6 @@ def group_move_nodes(source_group, target_group, force, nodes, all_entries):
 
 @verdi_group.command('delete')
 @arguments.GROUPS()
-@options.ALL_USERS(help='Filter and delete groups for all users, rather than only for the current user.')
-@options.USER(help='Add a filter to delete groups belonging to a specific user.')
 @options.TYPE_STRING(help='Filter to only include groups of this type string.')
 @options.PAST_DAYS(help='Add a filter to delete only groups created in the past N days.', default=None)
 @click.option(
@@ -186,8 +184,6 @@ def group_delete(
     delete_nodes,
     dry_run,
     force,
-    all_users,
-    user,
     type_string,
     past_days,
     startswith,
@@ -202,9 +198,7 @@ def group_delete(
     from aiida import orm
     from aiida.tools import delete_group_nodes
 
-    filters_provided = any(
-        [all_users or user or past_days or startswith or endswith or contains or node or type_string]
-    )
+    filters_provided = any([past_days or startswith or endswith or contains or node or type_string])
 
     if groups and filters_provided:
         echo.echo_critical('Cannot specify both GROUPS and any of the other filters.')
@@ -245,19 +239,6 @@ def group_delete(
 
         builder.append(orm.Group, filters=filters, tag='group', project='*')
 
-        # Query groups that belong to specific user
-        if user:
-            user_email = user.email
-        else:
-            # By default: only groups of this user
-            if not (default_user := orm.User.collection.get_default()):
-                echo.echo_critical('Could not get default user')
-            user_email = default_user.email
-
-        # Query groups that belong to all users
-        if not all_users:
-            builder.append(orm.User, filters={'email': user_email}, with_group='group')
-
         # Query groups that contain a particular node
         if node:
             builder.append(orm.Node, filters={'id': node.pk}, with_group='group')
@@ -276,13 +257,12 @@ def group_delete(
         'label': lambda group: group.label,
         'type_string': lambda group: group.type_string,
         'count': lambda group: group.count(),
-        'user': lambda group: group.user.email.strip(),
         'description': lambda group: group.description,
     }
 
     table = []
-    projection_header = ['PK', 'Label', 'Type string', 'User']
-    projection_fields = ['pk', 'label', 'type_string', 'user']
+    projection_header = ['PK', 'Label', 'Type string']
+    projection_fields = ['pk', 'label', 'type_string']
     for group in groups:
         table.append([projection_lambdas[field](group) for field in projection_fields])
 
@@ -405,8 +385,6 @@ def group_show(group, raw, limit, uuid):
 
 
 @verdi_group.command('list')
-@options.ALL_USERS(help='Show groups for all users, rather than only for the current user.')
-@options.USER(help='Add a filter to show only groups belonging to a specific user.')
 @options.ALL(help='Show groups of all types.')
 @options.TYPE_STRING(default='core', help='Filter to only include groups of this type string.')
 @click.option(
@@ -440,8 +418,6 @@ def group_show(group, raw, limit, uuid):
 @options.NODE(help='Show only the groups that contain this node.')
 @with_dbenv()
 def group_list(
-    all_users,
-    user,
     all_entries,
     type_string,
     with_description,
@@ -487,19 +463,6 @@ def group_list(
 
     builder.append(orm.Group, filters=filters, tag='group', project='*')
 
-    # Query groups that belong to specific user
-    if user:
-        user_email = user.email
-    else:
-        # By default: only groups of this user
-        if not (default_user := orm.User.collection.get_default()):
-            echo.echo_critical('Could not get default user')
-        user_email = default_user.email
-
-    # Query groups that belong to all users
-    if not all_users:
-        builder.append(orm.User, filters={'email': user_email}, with_group='group')
-
     # Query groups that contain a particular node
     if node:
         builder.append(orm.Node, filters={'id': node.pk}, with_group='group')
@@ -511,13 +474,12 @@ def group_list(
         'label': lambda group: group.label,
         'type_string': lambda group: group.type_string,
         'count': lambda group: group.count(),
-        'user': lambda group: group.user.email.strip(),
         'description': lambda group: group.description,
     }
 
     table = []
-    projection_header = ['PK', 'Label', 'Type string', 'User']
-    projection_fields = ['pk', 'label', 'type_string', 'user']
+    projection_header = ['PK', 'Label', 'Type string']
+    projection_fields = ['pk', 'label', 'type_string']
 
     if with_description:
         projection_header.append('Description')

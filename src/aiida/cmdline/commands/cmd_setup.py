@@ -22,10 +22,6 @@ from aiida.manage.configuration import Profile, load_profile
 @verdi.command('setup', deprecated='Please use `verdi profile setup` instead.')
 @options.NON_INTERACTIVE()
 @options_setup.SETUP_PROFILE()
-@options_setup.SETUP_USER_EMAIL()
-@options_setup.SETUP_USER_FIRST_NAME()
-@options_setup.SETUP_USER_LAST_NAME()
-@options_setup.SETUP_USER_INSTITUTION()
 @options_setup.SETUP_DATABASE_ENGINE()
 @options_setup.SETUP_DATABASE_BACKEND()
 @options_setup.SETUP_DATABASE_HOSTNAME()
@@ -48,10 +44,6 @@ def setup(
     ctx,
     non_interactive,
     profile: Profile,
-    email,
-    first_name,
-    last_name,
-    institution,
     db_engine,
     db_backend,
     db_host,
@@ -73,11 +65,6 @@ def setup(
 
     This method assumes that an empty PSQL database has been created and that the database user has been created.
     """
-    from aiida import orm
-
-    # store default user settings so user does not have to re-enter them
-    _store_default_user_settings(ctx.obj.config, email, first_name, last_name, institution)
-
     if profile_uuid is not None:
         profile.uuid = profile_uuid
 
@@ -128,14 +115,6 @@ def setup(
     else:
         echo.echo_success('storage initialisation completed.')
 
-    # Create the user if it does not yet exist
-    created, user = orm.User.collection.get_or_create(
-        email=email, first_name=first_name, last_name=last_name, institution=institution
-    )
-    if created:
-        user.store()
-    config.set_default_user_email(profile, user.email)
-
     # store the updated configuration
     config.store()
     echo.echo_success(f'created new profile `{profile.name}`.')
@@ -151,10 +130,6 @@ def setup(
 # will be validated before the prompt to choose another. The `contextual_default` however, will not trigger the
 # validation but will populate the default in the prompt.
 @options_setup.SETUP_PROFILE(contextual_default=lambda x: 'quicksetup')
-@options_setup.SETUP_USER_EMAIL()
-@options_setup.SETUP_USER_FIRST_NAME()
-@options_setup.SETUP_USER_LAST_NAME()
-@options_setup.SETUP_USER_INSTITUTION()
 @options_setup.QUICKSETUP_DATABASE_ENGINE()
 @options_setup.QUICKSETUP_DATABASE_BACKEND()
 @options_setup.QUICKSETUP_DATABASE_HOSTNAME()
@@ -179,10 +154,6 @@ def quicksetup(
     ctx,
     non_interactive,
     profile,
-    email,
-    first_name,
-    last_name,
-    institution,
     db_engine,
     db_backend,
     db_host,
@@ -204,9 +175,6 @@ def quicksetup(
 ):
     """Setup a new profile in a fully automated fashion."""
     from aiida.manage.external.postgres import Postgres, manual_setup_instructions
-
-    # store default user settings so user does not have to re-enter them
-    _store_default_user_settings(ctx.obj.config, email, first_name, last_name, institution)
 
     if non_interactive and db_engine != 'postgresql_psycopg':
         echo.echo_deprecated('The `--db-engine` option is deprecated and has no effect.')
@@ -241,10 +209,6 @@ def quicksetup(
     setup_parameters = {
         'non_interactive': non_interactive,
         'profile': profile,
-        'email': email,
-        'first_name': first_name,
-        'last_name': last_name,
-        'institution': institution,
         'db_engine': db_engine,
         'db_backend': db_backend,
         'db_name': db_name,
@@ -263,12 +227,3 @@ def quicksetup(
         'test_profile': test_profile,
     }
     ctx.invoke(setup, **setup_parameters)
-
-
-def _store_default_user_settings(config, email, first_name, last_name, institution):
-    """Store the default user settings if not already present."""
-    config.set_option('autofill.user.email', email, override=False)
-    config.set_option('autofill.user.first_name', first_name, override=False)
-    config.set_option('autofill.user.last_name', last_name, override=False)
-    config.set_option('autofill.user.institution', institution, override=False)
-    config.store()

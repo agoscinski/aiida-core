@@ -41,7 +41,6 @@ __all__ = (
     'ProcessParamType',
     'ProfileParamType',
     'ShebangParamType',
-    'UserParamType',
     'VerdiCommandGroup',
     'WorkflowParamType',
     'dbenv',

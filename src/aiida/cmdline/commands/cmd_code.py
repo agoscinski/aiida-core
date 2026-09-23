@@ -367,7 +367,6 @@ VALID_PROJECTIONS = {
     'label': [('code', 'label')],
     'default_calc_job_plugin': [('code', 'attributes.input_plugin')],
     'computer': [('computer', 'label')],
-    'user': [('user', 'email')],
 }
 
 
@@ -380,23 +379,13 @@ VALID_PROJECTIONS = {
     help='Filter codes by their optional default calculation job plugin.',
 )
 @options.ALL(help='Include hidden codes.')
-@options.ALL_USERS(help='Include codes from all users.')
 @options.PROJECT(type=click.Choice(list(VALID_PROJECTIONS.keys())), default=['full_label', 'pk', 'entry_point'])
 @options.RAW()
-@click.option('-o', '--show-owner', 'show_owner', is_flag=True, default=False, help='Show owners of codes.')
 @with_dbenv()
-def code_list(computer, default_calc_job_plugin, all_entries, all_users, raw, show_owner, project):
+def code_list(computer, default_calc_job_plugin, all_entries, raw, project):
     """List the available codes."""
     from aiida import orm
     from aiida.orm.utils.node import load_node_class
-
-    if show_owner:
-        echo.echo_deprecated(
-            'the `-o/--show-owner` option is deprecated. To show the user use the `-P/--project` option instead, e.g., '
-            '`verdi code list -P full_label user`.'
-        )
-        if 'user' not in project:
-            project = project + ('user',)
 
     filters: dict[str, t.Any] = defaultdict(dict)
     projections: dict[str, t.Any] = defaultdict(list)
@@ -408,12 +397,6 @@ def code_list(computer, default_calc_job_plugin, all_entries, all_users, raw, sh
 
     if not all_entries:
         filters['code'][f'extras.{orm.AbstractCode._KEY_EXTRA_IS_HIDDEN}'] = {'!==': True}
-
-    if not all_users:
-        if default_user := orm.User.collection.get_default():
-            filters['user']['email'] = default_user.email
-        else:
-            echo.echo_critical("No default user set. Set the default user or specify '--all-users'")
 
     if computer is not None:
         filters['computer']['uuid'] = computer.uuid
@@ -433,9 +416,6 @@ def code_list(computer, default_calc_job_plugin, all_entries, all_users, raw, sh
         project=projections.get('computer', None),
         filters=filters.get('computer', None),  # Possibly filter on computers, if required on the command line
     )
-    query.append(
-        orm.User, tag='user', with_node='code', project=projections.get('user', None), filters=filters.get('user', None)
-    )
     query.order_by({'code': {'id': 'asc'}})
     tot_num_results = query.count()
 
@@ -446,13 +426,6 @@ def code_list(computer, default_calc_job_plugin, all_entries, all_users, raw, sh
         code_filters = {'dbcomputer_id': {'==': None}}  # Filter all those without a computer
         code_filters.update(filters.get('code', {}))
         query_nocomp.append(orm.AbstractCode, tag='code', project=projections.get('code', None), filters=code_filters)
-        query_nocomp.append(
-            orm.User,
-            tag='user',
-            with_node='code',
-            project=projections.get('user', None),
-            filters=filters.get('user', None),
-        )
         query_nocomp.order_by({'code': {'id': 'asc'}})
         tot_num_results += query_nocomp.count()
 

@@ -34,7 +34,6 @@ DEFAULT_MODULES_LIST = [
     ('aiida.orm', 'Computer', 'Computer'),
     ('aiida.orm', 'Group', 'Group'),
     ('aiida.orm', 'QueryBuilder', 'QueryBuilder'),
-    ('aiida.orm', 'User', 'User'),
     ('aiida.orm', 'AuthInfo', 'AuthInfo'),
     ('aiida.orm', 'load_code', 'load_code'),
     ('aiida.orm', 'load_computer', 'load_computer'),

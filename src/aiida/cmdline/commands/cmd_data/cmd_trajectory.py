@@ -29,7 +29,7 @@ def trajectory():
 @trajectory.command('list')
 @list_options
 @decorators.with_dbenv()
-def trajectory_list(raw, past_days, groups, all_users):
+def trajectory_list(raw, past_days, groups):
     """List TrajectoryData objects stored in the database."""
     from tabulate import tabulate
 
@@ -39,7 +39,7 @@ def trajectory_list(raw, past_days, groups, all_users):
     elements_only = False
     formulamode = None
     entry_list = data_list(
-        TrajectoryData, LIST_PROJECT_HEADERS, elements, elements_only, formulamode, past_days, groups, all_users
+        TrajectoryData, LIST_PROJECT_HEADERS, elements, elements_only, formulamode, past_days, groups
     )
 
     counter = 0

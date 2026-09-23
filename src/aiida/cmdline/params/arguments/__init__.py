@@ -35,7 +35,6 @@ __all__ = (
     'PROCESSES',
     'PROFILE',
     'PROFILES',
-    'USER',
     'WORKFLOW',
     'WORKFLOWS',
     'OverridableArgument',

@@ -20,7 +20,6 @@ import click
 from aiida.cmdline.commands.cmd_verdi import verdi
 from aiida.cmdline.params import options
 from aiida.cmdline.utils import echo
-from aiida.manage.configuration import get_config_option
 
 DEFAULT_PROFILE_NAME_PREFIX: str = 'presto'
 
@@ -117,12 +116,6 @@ def detect_postgres_config(
     'automatically generated.',
 )
 @click.option(
-    '--email',
-    default=lambda: get_config_option('autofill.user.email') or 'aiida@localhost',
-    show_default=True,
-    help='Email of the default user.',
-)
-@click.option(
     '--use-postgres',
     is_flag=True,
     help='When toggled on, the profile uses a PostgreSQL database instead of an SQLite one. The connection details to '
@@ -161,7 +154,6 @@ def detect_postgres_config(
 def verdi_presto(
     ctx,
     profile_name,
-    email,
     use_postgres,
     use_zeromq,
     no_broker,
@@ -183,7 +175,6 @@ def verdi_presto(
 
     \b
     * Create a new profile that is set as the new default
-    * Create a default user for the profile (email can be configured through the `--email` option)
     * Set up the localhost as a `Computer` and configure it
     * Set a number of configuration options with sensible defaults
 
@@ -261,7 +252,6 @@ def verdi_presto(
         profile = create_profile(
             ctx.obj.config,
             name=profile_name,
-            email=email,
             storage_backend=storage_backend,
             storage_config=storage_config,
             broker_backend=broker_backend,

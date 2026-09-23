@@ -13,7 +13,6 @@ from aiida.cmdline.params import options
 LIST_OPTIONS = [
     options.GROUPS,
     options.PAST_DAYS,
-    options.ALL_USERS,
     options.RAW,
 ]
 
@@ -26,7 +25,7 @@ def list_options(func):
     return func
 
 
-def query(datatype, project, past_days, group_pks, all_users):
+def query(datatype, project, past_days, group_pks):
     """Perform the query"""
     import datetime
 
@@ -34,15 +33,6 @@ def query(datatype, project, past_days, group_pks, all_users):
     from aiida.common import timezone
 
     qbl = orm.QueryBuilder()
-    if all_users is False:
-        user = orm.User.collection.get_default()
-        if user is None:
-            # TODO: Print warning
-            qbl.append(orm.User, tag='creator')
-        else:
-            qbl.append(orm.User, tag='creator', filters={'email': user.email})
-    else:
-        qbl.append(orm.User, tag='creator')
 
     # If there is a time restriction
     data_filters = {}
@@ -59,7 +49,7 @@ def query(datatype, project, past_days, group_pks, all_users):
         project.append('ctime')
         pop_ctime = True
 
-    qbl.append(datatype, tag='data', with_user='creator', filters=data_filters, project=project)
+    qbl.append(datatype, tag='data', filters=data_filters, project=project)
 
     # If there is a group restriction
     if group_pks is not None:
@@ -78,7 +68,7 @@ def query(datatype, project, past_days, group_pks, all_users):
     return results
 
 
-def data_list(datatype, columns, elements, elements_only, formula_mode, past_days, groups, all_users):
+def data_list(datatype, columns, elements, elements_only, formula_mode, past_days, groups):
     """List stored objects"""
     columns_dict = {
         'ID': 'id',
@@ -96,4 +86,4 @@ def data_list(datatype, columns, elements, elements_only, formula_mode, past_day
     group_pks = None
     if groups is not None:
         group_pks = [g.pk for g in groups]
-    return query(datatype, project, past_days, group_pks, all_users)
+    return query(datatype, project, past_days, group_pks)

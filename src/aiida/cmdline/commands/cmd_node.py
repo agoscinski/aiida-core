@@ -681,10 +681,9 @@ def comment_update(comment_id, content):
 
 
 @verdi_comment.command('show')
-@options.USER()
 @arguments.NODES()
 @decorators.with_dbenv()
-def comment_show(user, nodes):
+def comment_show(nodes):
     """Show the comments of one or multiple nodes."""
     for node in nodes:
         msg = f'* Comments for Node<{node.pk}>'
@@ -692,22 +691,11 @@ def comment_show(user, nodes):
         echo.echo(msg)
         echo.echo('*' * len(msg))
 
-        all_comments = node.base.comments.all()
-
-        if user is not None:
-            comments = [comment for comment in all_comments if comment.user.email == user.email]
-
-            if not comments:
-                valid_users = ', '.join(set(comment.user.email for comment in all_comments))
-                echo.echo_warning(f'no comments found for user {user}')
-                echo.echo_report(f'valid users found for Node<{node.pk}>: {valid_users}')
-
-        else:
-            comments = all_comments
+        comments = node.base.comments.all()
 
         for comment in comments:
             comment_msg = [
-                f'Comment<{comment.pk}> for Node<{node.pk}> by {comment.user.email}',
+                f'Comment<{comment.pk}> for Node<{node.pk}>',
                 f'Created on {timezone.localtime(comment.ctime).strftime("%Y-%m-%d %H:%M")}',
                 f'Last modified on {timezone.localtime(comment.mtime).strftime("%Y-%m-%d %H:%M")}',
                 f'\n{comment.content}\n',

@@ -27,7 +27,6 @@ from aiida.cmdline.params.types.plugin import *
 from aiida.cmdline.params.types.process import *
 from aiida.cmdline.params.types.profile import *
 from aiida.cmdline.params.types.strings import *
-from aiida.cmdline.params.types.user import *
 from aiida.cmdline.params.types.workflow import *
 
 __all__ = (
@@ -54,7 +53,6 @@ __all__ = (
     'ProcessParamType',
     'ProfileParamType',
     'ShebangParamType',
-    'UserParamType',
     'WorkflowParamType',
 )
 

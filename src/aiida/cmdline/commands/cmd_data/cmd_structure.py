@@ -49,7 +49,7 @@ def structure():
 @options.WITH_ELEMENTS()
 @list_options
 @decorators.with_dbenv()
-def structure_list(elements, raw, formula_mode, past_days, groups, all_users):
+def structure_list(elements, raw, formula_mode, past_days, groups):
     """List StructureData objects."""
     from tabulate import tabulate
 
@@ -64,7 +64,6 @@ def structure_list(elements, raw, formula_mode, past_days, groups, all_users):
         formula_mode,
         past_days,
         groups,
-        all_users,
     )
 
     entry_list = []

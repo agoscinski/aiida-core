@@ -35,7 +35,6 @@ __all__ = (
     'PROCESSES',
     'PROFILE',
     'PROFILES',
-    'USER',
     'WORKFLOW',
     'WORKFLOWS',
 )
@@ -82,7 +81,5 @@ INPUT_FILE = OverridableArgument('input_file', metavar='INPUT_FILE', type=click.
 OUTPUT_FILE = OverridableArgument('output_file', metavar='OUTPUT_FILE', type=click.Path())
 
 LABEL = OverridableArgument('label', type=click.STRING)
-
-USER = OverridableArgument('user', metavar='USER', type=types.UserParamType())
 
 CONFIG_OPTION = OverridableArgument('option', type=types.ConfigOptionParamType())

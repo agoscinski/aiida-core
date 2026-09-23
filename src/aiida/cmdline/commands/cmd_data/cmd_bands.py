@@ -44,7 +44,7 @@ def bands():
 @options.WITH_ELEMENTS()
 @options.WITH_ELEMENTS_EXCLUSIVE()
 @options.FORMULA_MODE()
-def bands_list(elements, elements_exclusive, raw, formula_mode, past_days, groups, all_users):
+def bands_list(elements, elements_exclusive, raw, formula_mode, past_days, groups):
     """List BandsData objects."""
     from argparse import Namespace
 
@@ -62,7 +62,6 @@ def bands_list(elements, elements_exclusive, raw, formula_mode, past_days, group
         args.group_pk = [group.pk for group in groups]
     else:
         args.group_pk = None
-    args.all_users = all_users
 
     entry_list = get_bands_and_parents_structure(args)
 

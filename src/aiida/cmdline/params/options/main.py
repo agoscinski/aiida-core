@@ -31,7 +31,6 @@ if t.TYPE_CHECKING:
 __all__ = (
     'ALL',
     'ALL_STATES',
-    'ALL_USERS',
     'ALSO_UNGROUPED',
     'APPEND_TEXT',
     'ARCHIVE_FORMAT',
@@ -124,11 +123,6 @@ __all__ = (
     'TRANSPORT',
     'TRAVERSAL_RULE_HELP_STRING',
     'TYPE_STRING',
-    'USER',
-    'USER_EMAIL',
-    'USER_FIRST_NAME',
-    'USER_INSTITUTION',
-    'USER_LAST_NAME',
     'VERBOSITY',
     'VISUALIZATION_FORMAT',
     'WITH_ELEMENTS',
@@ -384,24 +378,6 @@ NON_INTERACTIVE = OverridableOption(
 
 DRY_RUN = OverridableOption('-n', '--dry-run', is_flag=True, help='Perform a dry run.')
 
-USER_EMAIL = OverridableOption(
-    '--email',
-    'email',
-    type=types.EmailType(),
-    help='Email address associated with the data you generate. The email address is exported along with the data, '
-    'when sharing it.',
-)
-
-USER_FIRST_NAME = OverridableOption(
-    '--first-name', type=types.NonEmptyStringParamType(), help='First name of the user.'
-)
-
-USER_LAST_NAME = OverridableOption('--last-name', type=types.NonEmptyStringParamType(), help='Last name of the user.')
-
-USER_INSTITUTION = OverridableOption(
-    '--institution', type=types.NonEmptyStringParamType(), help='Institution of the user.'
-)
-
 DB_ENGINE = OverridableOption(
     '--db-engine',
     required=False,
@@ -647,10 +623,6 @@ ALL = OverridableOption(
 
 ALL_STATES = OverridableOption('-A', '--all-states', is_flag=True, help='Do not limit to items in running state.')
 
-ALL_USERS = OverridableOption(
-    '-A', '--all-users', 'all_users', is_flag=True, default=False, help='Include all entries regardless of the owner.'
-)
-
 GROUP_CLEAR = OverridableOption(
     '-c', '--clear', is_flag=True, default=False, help='Remove all the nodes from the group.'
 )
@@ -681,8 +653,6 @@ SCHEDULER = OverridableOption(
     required=True,
     help='A scheduler plugin (as listed in `verdi plugin list aiida.schedulers`).',
 )
-
-USER = OverridableOption('-u', '--user', 'user', type=types.UserParamType(), help='Email address of the user.')
 
 PORT = OverridableOption('-P', '--port', 'port', type=click.INT, help='Port number.')
 

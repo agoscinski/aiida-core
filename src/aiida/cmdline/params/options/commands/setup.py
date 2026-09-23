@@ -18,7 +18,7 @@ import click
 
 from aiida.brokers.rabbitmq.defaults import BROKER_DEFAULTS
 from aiida.cmdline.params import options, types
-from aiida.manage.configuration import Profile, get_config, get_config_option
+from aiida.manage.configuration import Profile, get_config
 from aiida.manage.external.postgres import DEFAULT_DBINFO  # type: ignore[attr-defined]
 
 PASSWORD_UNCHANGED = '***'
@@ -202,34 +202,6 @@ SETUP_PROFILE_SET_AS_DEFAULT = options.OverridableOption(
     help='Whether to set the profile as the default.',
     is_flag=True,
     default=True,
-    cls=options.interactive.InteractiveOption,
-)
-
-SETUP_USER_EMAIL = options.USER_EMAIL.clone(
-    prompt='Email Address (for sharing data)',
-    default=functools.partial(get_config_option, 'autofill.user.email'),
-    required=True,
-    cls=options.interactive.InteractiveOption,
-)
-
-SETUP_USER_FIRST_NAME = options.USER_FIRST_NAME.clone(
-    prompt='First name',
-    default=lambda: get_config_option('autofill.user.first_name') or 'John',
-    required=True,
-    cls=options.interactive.InteractiveOption,
-)
-
-SETUP_USER_LAST_NAME = options.USER_LAST_NAME.clone(
-    prompt='Last name',
-    default=lambda: get_config_option('autofill.user.last_name') or 'Doe',
-    required=True,
-    cls=options.interactive.InteractiveOption,
-)
-
-SETUP_USER_INSTITUTION = options.USER_INSTITUTION.clone(
-    prompt='Institution',
-    default=lambda: get_config_option('autofill.user.institution') or 'Unknown',
-    required=True,
     cls=options.interactive.InteractiveOption,
 )
 
