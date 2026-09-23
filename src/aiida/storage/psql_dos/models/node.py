@@ -54,12 +54,7 @@ class DbNode(Base):
         nullable=True,
         index=True,
     )
-    user_id = Column(
-        Integer,
-        ForeignKey('db_dbuser.id', deferrable=True, initially='DEFERRED', ondelete='RESTRICT'),
-        nullable=False,
-        index=True,
-    )
+    profile_uuid = Column(String(36), nullable=False, index=True)
 
     # TODO SP: The 'passive_deletes=all' argument here means that SQLAlchemy
     # won't take care of automatic deleting in the DbLink table. This still
@@ -68,14 +63,6 @@ class DbNode(Base):
     # we would remove all link with x as an output.
 
     dbcomputer = relationship('DbComputer', backref=backref('dbnodes', passive_deletes='all', cascade='merge'))
-    user = relationship(
-        'DbUser',
-        backref=backref(
-            'dbnodes',
-            passive_deletes='all',
-            cascade='merge',
-        ),
-    )
 
     # outputs via db_dblink table
     outputs_q = relationship(

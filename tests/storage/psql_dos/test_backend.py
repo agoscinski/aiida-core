@@ -11,7 +11,7 @@
 import pytest
 
 from aiida.manage import get_manager
-from aiida.orm import User, load_node
+from aiida.orm import load_node
 
 
 def test_all_tests_marked_with_requires_psql(request):
@@ -20,11 +20,6 @@ def test_all_tests_marked_with_requires_psql(request):
 
     assert len(own_markers) == 1
     assert own_markers[0] == 'requires_psql'
-
-
-@pytest.mark.usefixtures('aiida_profile_clean')
-def test_default_user():
-    assert isinstance(get_manager().get_profile_storage().default_user, User)
 
 
 @pytest.mark.usefixtures('aiida_profile_clean')

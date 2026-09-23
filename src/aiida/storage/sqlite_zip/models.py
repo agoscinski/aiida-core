@@ -31,7 +31,7 @@ from sqlalchemy.dialects.sqlite import JSON
 from aiida.orm.entities import EntityTypes
 
 # we need to import all models, to ensure they are loaded on the SQLA Metadata
-from aiida.storage.psql_dos.models import authinfo, base, comment, computer, group, log, node, user
+from aiida.storage.psql_dos.models import authinfo, base, comment, computer, group, log, node
 
 
 class SqliteModel:
@@ -118,7 +118,6 @@ def create_orm_cls(klass: base.Base) -> SqliteBase:
 for table in base.Base.metadata.sorted_tables:
     pg_to_sqlite(table)
 
-DbUser = create_orm_cls(user.DbUser)
 DbComputer = create_orm_cls(computer.DbComputer)
 DbAuthInfo = create_orm_cls(authinfo.DbAuthInfo)
 DbGroup = create_orm_cls(group.DbGroup)
@@ -129,17 +128,10 @@ DbLog = create_orm_cls(log.DbLog)
 DbLink = create_orm_cls(node.DbLink)
 
 # to-do ideally these relationships should be auto-generated in `create_orm_cls`, but this proved difficult
-DbAuthInfo.aiidauser = sa_orm.relationship(  # type: ignore[attr-defined]
-    'DbUser', backref=sa_orm.backref('authinfos', passive_deletes=True, cascade='all, delete')
-)
 DbAuthInfo.dbcomputer = sa_orm.relationship(  # type: ignore[attr-defined]
     'DbComputer', backref=sa_orm.backref('authinfos', passive_deletes=True, cascade='all, delete')
 )
 DbComment.dbnode = sa_orm.relationship('DbNode', backref='dbcomments')  # type: ignore[attr-defined]
-DbComment.user = sa_orm.relationship('DbUser')  # type: ignore[attr-defined]
-DbGroup.user = sa_orm.relationship(  # type: ignore[attr-defined]
-    'DbUser', backref=sa_orm.backref('dbgroups', cascade='merge')
-)
 DbGroup.dbnodes = sa_orm.relationship(  # type: ignore[attr-defined]
     'DbNode', secondary='db_dbgroup_dbnodes', backref='dbgroups', lazy='dynamic'
 )
@@ -149,17 +141,7 @@ DbLog.dbnode = sa_orm.relationship(  # type: ignore[attr-defined]
 DbNode.dbcomputer = sa_orm.relationship(  # type: ignore[attr-defined]
     'DbComputer', backref=sa_orm.backref('dbnodes', passive_deletes='all', cascade='merge')
 )
-DbNode.user = sa_orm.relationship(
-    'DbUser',
-    backref=sa_orm.backref(  # type: ignore[attr-defined]
-        'dbnodes',
-        passive_deletes='all',
-        cascade='merge',
-    ),
-)
-
 MAP_ENTITY_TYPE_TO_MODEL = {
-    EntityTypes.USER: DbUser,
     EntityTypes.AUTHINFO: DbAuthInfo,
     EntityTypes.GROUP: DbGroup,
     EntityTypes.NODE: DbNode,

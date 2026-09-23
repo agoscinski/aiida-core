@@ -34,10 +34,10 @@ ConfigType = dict[str, t.Any]
 # When the configuration file format is changed in a backwards-incompatible way, the oldest compatible version should
 # be set to the new current version.
 
-CURRENT_CONFIG_VERSION = 11
-OLDEST_COMPATIBLE_CONFIG_VERSION = 11
+CURRENT_CONFIG_VERSION = 12
+OLDEST_COMPATIBLE_CONFIG_VERSION = 12
 # Highest configuration version for which this code can run downgrade migrations, even if it cannot load it.
-MAXIMUM_DOWNGRADE_CONFIG_VERSION = 11
+MAXIMUM_DOWNGRADE_CONFIG_VERSION = 12
 
 CONFIG_LOGGER = AIIDA_LOGGER.getChild('config')
 
@@ -508,6 +508,40 @@ class AiidaV3Migration(SingleMigration):
             self._downgrade_options(profile.get('options', {}))
 
 
+class RemoveDefaultUser(SingleMigration):
+    """Drop per-profile user identity now that ``orm.User`` is replaced by a profile label.
+
+    Removes ``default_user_email`` from profiles and the ``autofill.user.*`` global
+    options. Downgrade is a no-op: discarded contact strings cannot be restored.
+    """
+
+    down_revision = 11
+    down_compatible = 11
+    up_revision = 12
+    up_compatible = 12
+
+    autofill_user_options = (
+        'autofill.user.email',
+        'autofill.user.first_name',
+        'autofill.user.last_name',
+        'autofill.user.institution',
+    )
+
+    def upgrade(self, config: ConfigType) -> None:
+        for profile_name, profile in config.get('profiles', {}).items():
+            if profile.pop('default_user_email', None) is not None:
+                CONFIG_LOGGER.warning(
+                    f"profile '{profile_name}' had a 'default_user_email' key which was removed: "
+                    'user identity is now the profile itself.'
+                )
+        global_options = config.get('options', {})
+        for option_name in self.autofill_user_options:
+            global_options.pop(option_name, None)
+
+    def downgrade(self, config: ConfigType) -> None:
+        CONFIG_LOGGER.warning('downgrading past the user removal will not restore user identity configuration.')
+
+
 MIGRATIONS = (
     Initial,
     AddProfileUuid,
@@ -520,6 +554,7 @@ MIGRATIONS = (
     AddPrefixToStorageBackendTypes,
     RenameRmqAndLogging,
     AiidaV3Migration,
+    RemoveDefaultUser,
 )
 
 

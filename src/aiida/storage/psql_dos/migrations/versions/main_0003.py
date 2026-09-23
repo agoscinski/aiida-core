@@ -10,6 +10,7 @@
 Migration steps:
 
 1. :func:`_migrate_legacy_codes`: migrate the deprecated ``Code`` data plugin.
+2. :func:`_migrate_users_to_profile`: replace user ownership with a profile UUID label.
 
 Revision ID: main_0003
 Revises: main_0002
@@ -85,9 +86,23 @@ def _migrate_legacy_codes(conn):
         conn.execute(text(statement))
 
 
+def _migrate_users_to_profile():
+    """Replace per-row user ownership with a profile UUID label.
+
+    Every row is stamped with the UUID of the profile being migrated (the
+    single-owner model); ``db_dbuser`` and all user foreign keys are dropped.
+    See :func:`aiida.storage.migrations.migrate_users_to_profile`.
+    """
+    from aiida.storage.migrations import migrate_users_to_profile
+
+    profile_uuid: str = op.get_context().opts['aiida_profile'].uuid
+    migrate_users_to_profile(op, profile_uuid)
+
+
 def upgrade():
     """Migrations for the upgrade."""
     _migrate_legacy_codes(op.get_bind())
+    _migrate_users_to_profile()
 
 
 def downgrade():

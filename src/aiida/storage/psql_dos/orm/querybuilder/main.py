@@ -50,26 +50,19 @@ PROJECT_MAP = {
     'db_dbauthinfo': {
         'pk': 'id',
         'computer': 'dbcomputer_id',
-        'user': 'aiidauser_id',
     },
     'db_dbnode': {
         'pk': 'id',
         'computer': 'dbcomputer_id',
-        'user': 'user_id',
-    },
-    'db_dbuser': {
-        'pk': 'id',
     },
     'db_dbcomputer': {
         'pk': 'id',
     },
     'db_dbgroup': {
         'pk': 'id',
-        'user': 'user_id',
     },
     'db_dbcomment': {
         'pk': 'id',
-        'user': 'user_id',
         'node': 'dbnode_id',
     },
     'db_dblog': {
@@ -81,7 +74,6 @@ PROJECT_MAP = {
 ALIAS_MAP = {
     'id': 'pk',
     'dbcomputer_id': 'computer',
-    'user_id': 'user',
     'dbnode_id': 'node',
 }
 
@@ -151,12 +143,6 @@ class SqlaQueryBuilder(BackendQueryBuilder):
         import aiida.storage.psql_dos.models.computer
 
         return aiida.storage.psql_dos.models.computer.DbComputer
-
-    @property
-    def User(self):
-        import aiida.storage.psql_dos.models.user
-
-        return aiida.storage.psql_dos.models.user.DbUser
 
     @property
     def Group(self):
@@ -293,7 +279,6 @@ class SqlaQueryBuilder(BackendQueryBuilder):
             EntityTypes.GROUP.value: self.Group,
             EntityTypes.NODE.value: self.Node,
             EntityTypes.LOG.value: self.Log,
-            EntityTypes.USER.value: self.User,
             EntityTypes.LINK.value: self.Link,
         }
         for path in data['path']:
@@ -826,7 +811,7 @@ class SqlaQueryBuilder(BackendQueryBuilder):
         rows = self.get_session().execute(text(f'EXPLAIN{options} {compiled.string}')).fetchall()
         return '\n'.join(row[0] for row in rows)
 
-    def get_creation_statistics(self, user_pk: int | None = None) -> dict[str, t.Any]:
+    def get_creation_statistics(self) -> dict[str, t.Any]:
         session = self.get_session()
         retdict: dict[t.Any, t.Any] = {}
 
@@ -856,11 +841,6 @@ class SqlaQueryBuilder(BackendQueryBuilder):
             cday.label('cday'),
             sa_func.count(self.Node.id),
         )
-
-        if user_pk is not None:
-            total_query = total_query.filter(self.Node.user_id == user_pk)
-            types_query = types_query.filter(self.Node.user_id == user_pk)
-            stat_query = stat_query.filter(self.Node.user_id == user_pk)
 
         # Total number of nodes
         retdict['total'] = total_query.count()

@@ -76,7 +76,12 @@ class SqliteDosMigrator(PsqlDosMigrator):
         filepath_database.touch()
 
         self.profile = profile
-        self._engine = create_sqla_engine(filepath_database)
+        # The migrator connection runs without foreign key enforcement: table rebuilds
+        # DROP and recreate parent tables, and with enforcement on SQLite turns the DROP
+        # into an implicit DELETE FROM which cascades into child tables and silently
+        # destroys data (see https://alembic.sqlalchemy.org/en/latest/batch.html#dealing-with-referencing-foreign-keys).
+        # The storage backend itself keeps enforcement on; only migrations use this engine.
+        self._engine = create_sqla_engine(filepath_database, enforce_foreign_keys=False)
         self._connection = None
 
     def get_container(self) -> Container:
@@ -314,10 +319,6 @@ class SqliteDosStorage(PsqlDosBackend):
     @cached_property
     def nodes(self) -> orm.SqliteNodeCollection:
         return orm.SqliteNodeCollection(self)
-
-    @cached_property
-    def users(self) -> orm.SqliteUserCollection:
-        return orm.SqliteUserCollection(self)
 
     @staticmethod
     @lru_cache(maxsize=18)

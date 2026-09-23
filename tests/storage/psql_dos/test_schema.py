@@ -16,8 +16,8 @@ from aiida.common.links import LinkType
 from aiida.common.utils import get_new_uuid
 from aiida.manage import get_manager
 from aiida.orm import CalculationNode, Data
+from aiida.storage.psql_dos.models.computer import DbComputer
 from aiida.storage.psql_dos.models.node import DbNode
-from aiida.storage.psql_dos.models.user import DbUser
 
 
 class TestRelationshipsSQLA:
@@ -84,17 +84,17 @@ class TestRelationshipsSQLA:
         out = {_.pk for _ in n_3.backend_entity.bare_model.inputs}
         assert out == set([n_2.pk])
 
-    def test_user_node_1(self):
-        """Test that when a user and a node having that user are created,
-        storing NODE induces storage of the USER
+    def test_computer_node_1(self):
+        """Test that when a computer and a node having that computer are created,
+        storing NODE induces storage of the COMPUTER
 
-        Assert the correct storage of user and node.
+        Assert the correct storage of computer and node.
         """
         # Create user
-        dbu1 = DbUser(email='test1@schema', first_name='spam', last_name='eggs', institution='monty')
+        dbu1 = DbComputer(label=get_new_uuid(), hostname='localhost')
 
         # Creat node
-        node_dict = dict(user=dbu1)
+        node_dict = dict(dbcomputer=dbu1, profile_uuid=get_manager().get_profile().uuid)
         dbn_1 = DbNode(**node_dict)
 
         # Check that the two are neither flushed nor committed
@@ -111,17 +111,17 @@ class TestRelationshipsSQLA:
         assert dbn_1.id is not None
         assert dbu1.id is not None
 
-    def test_user_node_2(self):
-        """Test that when a user and a node having that user are created,
-        storing USER does NOT induce storage of the NODE
+    def test_computer_node_2(self):
+        """Test that when a computer and a node having that computer are created,
+        storing COMPUTER does NOT induce storage of the NODE
 
-        Assert the correct storage of user and node.
+        Assert the correct storage of computer and node.
         """
         # Create user
-        dbu1 = DbUser(email='test2@schema', first_name='spam', last_name='eggs', institution='monty')
+        dbu1 = DbComputer(label=get_new_uuid(), hostname='localhost')
 
         # Creat node
-        node_dict = dict(user=dbu1)
+        node_dict = dict(dbcomputer=dbu1, profile_uuid=get_manager().get_profile().uuid)
         dbn_1 = DbNode(**node_dict)
 
         # Check that the two are neither flushed nor committed
@@ -143,19 +143,19 @@ class TestRelationshipsSQLA:
         assert dbu1.id is not None
         assert dbn_1.id is None
 
-    def test_user_node_3(self):
-        """Test that when a user and two nodes having that user are created,
-        storing only ONE NODE induces storage of that node, of the user but
+    def test_computer_node_3(self):
+        """Test that when a computer and two nodes having that computer are created,
+        storing only ONE NODE induces storage of that node, of the computer but
         not of the other node
 
-        Assert the correct storage of the user and node. Assert the
+        Assert the correct storage of the computer and node. Assert the
         non-storage of the other node.
         """
         # Create user
-        dbu1 = DbUser(email='test3@schema', first_name='spam', last_name='eggs', institution='monty')
+        dbu1 = DbComputer(label=get_new_uuid(), hostname='localhost')
 
         # Creat node
-        node_dict = dict(user=dbu1)
+        node_dict = dict(dbcomputer=dbu1, profile_uuid=get_manager().get_profile().uuid)
         dbn_1 = DbNode(**node_dict)
         dbn_2 = DbNode(**node_dict)
 
@@ -179,17 +179,17 @@ class TestRelationshipsSQLA:
         assert dbn_1.id is not None
         assert dbn_2.id is None
 
-    def test_user_node_4(self):
-        """Test that when several nodes are created with the same user and each
+    def test_computer_node_4(self):
+        """Test that when several nodes are created with the same computer and each
         of them is assigned to the same name, storage of last node object
         associated to that node does not trigger storage of all objects.
 
 
-        Assert the correct storage of the user and node. Assert the
+        Assert the correct storage of the computer and node. Assert the
         non-storage of the other nodes.
         """
         # Create user
-        dbu1 = DbUser(email='test4@schema', first_name='spam', last_name='eggs', institution='monty')
+        dbu1 = DbComputer(label=get_new_uuid(), hostname='localhost')
 
         # Creat node objects assigningd them to the same name
         # Check https://docs.python.org/2/tutorial/classes.html subsec. 9.1
@@ -198,7 +198,7 @@ class TestRelationshipsSQLA:
             # It is important to change the uuid each time (or any other
             # variable) so that a different objects (with a different pointer)
             # is actually created in this scope.
-            dbn_1 = DbNode(user=dbu1, uuid=get_new_uuid())
+            dbn_1 = DbNode(dbcomputer=dbu1, uuid=get_new_uuid(), profile_uuid=get_manager().get_profile().uuid)
 
         # Check that the two are neither flushed nor committed
         assert dbu1.id is None

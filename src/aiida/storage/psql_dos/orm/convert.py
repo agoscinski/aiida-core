@@ -16,7 +16,6 @@ from aiida.storage.psql_dos.models.computer import DbComputer
 from aiida.storage.psql_dos.models.group import DbGroup
 from aiida.storage.psql_dos.models.log import DbLog
 from aiida.storage.psql_dos.models.node import DbLink, DbNode
-from aiida.storage.psql_dos.models.user import DbUser
 
 
 #####################################################################
@@ -32,14 +31,6 @@ def get_backend_entity(dbmodel, backend):
 ################################
 # Singledispatch for SQLA Models
 ################################
-@get_backend_entity.register(DbUser)
-def _(dbmodel, backend):
-    """get_backend_entity for SQLA DbUser"""
-    from aiida.storage.psql_dos.orm import users
-
-    return users.SqlaUser.from_dbmodel(dbmodel, backend)
-
-
 @get_backend_entity.register(DbGroup)
 def _(dbmodel, backend):
     """get_backend_entity for SQLA DbGroup"""

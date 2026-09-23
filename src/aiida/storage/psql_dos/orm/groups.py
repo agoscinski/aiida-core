@@ -11,10 +11,9 @@
 import logging
 
 from aiida.common.exceptions import UniquenessError
-from aiida.common.lang import type_check
 from aiida.orm.implementation.groups import BackendGroup, BackendGroupCollection
 from aiida.storage.psql_dos.models.group import DbGroup, DbGroupNode
-from aiida.storage.psql_dos.orm import entities, users, utils
+from aiida.storage.psql_dos.orm import entities, utils
 from aiida.storage.psql_dos.orm.extras_mixin import ExtrasMixin
 from aiida.storage.psql_dos.orm.nodes import SqlaNode
 
@@ -27,24 +26,25 @@ class SqlaGroup(entities.SqlaModelEntity[DbGroup], ExtrasMixin, BackendGroup):
     """The SQLAlchemy Group object"""
 
     MODEL_CLASS = DbGroup
-    USER_CLASS = users.SqlaUser
     NODE_CLASS = SqlaNode
     GROUP_NODE_CLASS = DbGroupNode
 
-    def __init__(self, backend, label, user, description='', type_string='', time=None):
+    def __init__(self, backend, label, description='', type_string='', time=None):
         """Construct a new SQLA group
 
         :param backend: the backend to use
         :param label: the group label
-        :param user: the owner of the group
         :param description: an optional group description
         :param type_string: an optional type for the group to contain
         """
-        type_check(user, self.USER_CLASS)
         super().__init__(backend)
 
         dbgroup = self.MODEL_CLASS(
-            label=label, description=description, user=user.bare_model, type_string=type_string, time=time
+            label=label,
+            description=description,
+            profile_uuid=backend.profile.uuid,
+            type_string=type_string,
+            time=time,
         )
         self._model = utils.ModelWrapper(dbgroup, backend)
 
@@ -87,13 +87,8 @@ class SqlaGroup(entities.SqlaModelEntity[DbGroup], ExtrasMixin, BackendGroup):
         return self.model.type_string
 
     @property
-    def user(self):
-        return self.backend.users.ENTITY_CLASS.from_dbmodel(self.model.user, self.backend)
-
-    @user.setter
-    def user(self, new_user):
-        type_check(new_user, self.USER_CLASS)
-        self.model.user = new_user.bare_model
+    def profile_uuid(self):
+        return self.model.profile_uuid
 
     @property
     def pk(self):

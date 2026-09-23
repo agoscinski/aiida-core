@@ -9,7 +9,7 @@
 """Module to manage computers for the SQLA backend."""
 
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import backref, relationship
+from sqlalchemy.orm import relationship
 from sqlalchemy.schema import Column, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.types import DateTime, Integer, String, Text
 
@@ -57,14 +57,8 @@ class DbGroup(Base):
     time = Column(DateTime(timezone=True), default=timezone.now, nullable=False)
     description = Column(Text, default='', nullable=False)
     extras = Column(JSONB, default=dict, nullable=False)
-    user_id = Column(
-        Integer,
-        ForeignKey('db_dbuser.id', ondelete='CASCADE', deferrable=True, initially='DEFERRED'),
-        nullable=False,
-        index=True,
-    )
+    profile_uuid = Column(String(36), nullable=False, index=True)
 
-    user = relationship('DbUser', backref=backref('dbgroups', cascade='merge'))
     dbnodes = relationship('DbNode', secondary=table_groups_nodes, backref='dbgroups', lazy='dynamic')
 
     __table_args__ = (

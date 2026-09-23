@@ -12,30 +12,26 @@ from aiida.common import exceptions
 from aiida.common.lang import type_check
 from aiida.orm.implementation.authinfos import BackendAuthInfo, BackendAuthInfoCollection
 from aiida.storage.psql_dos.models.authinfo import DbAuthInfo
-from aiida.storage.psql_dos.orm import computers, entities, users, utils
+from aiida.storage.psql_dos.orm import computers, entities, utils
 
 
 class SqlaAuthInfo(entities.SqlaModelEntity[DbAuthInfo], BackendAuthInfo):
     """SqlAlchemy backend implementation for the `AuthInfo` ORM class."""
 
     MODEL_CLASS = DbAuthInfo
-    USER_CLASS = users.SqlaUser
     COMPUTER_CLASS = computers.SqlaComputer
 
-    def __init__(self, backend, computer, user, enabled, auth_params, metadata):
+    def __init__(self, backend, computer, enabled, auth_params, metadata):
         """Construct a new instance.
 
         :param computer: a :class:`aiida.orm.implementation.computers.BackendComputer` instance
-        :param user: a :class:`aiida.orm.implementation.users.BackendUser` instance
         :return: an :class:`aiida.orm.implementation.authinfos.BackendAuthInfo` instance
         """
         super().__init__(backend)
-        type_check(user, self.USER_CLASS)
         type_check(computer, self.COMPUTER_CLASS)
         self._model = utils.ModelWrapper(
             self.MODEL_CLASS(
                 dbcomputer=computer.bare_model,
-                aiidauser=user.bare_model,
                 enabled=enabled,
                 auth_params=auth_params,
                 metadata=metadata,
@@ -78,14 +74,6 @@ class SqlaAuthInfo(entities.SqlaModelEntity[DbAuthInfo], BackendAuthInfo):
         :return: :class:`aiida.orm.implementation.computers.BackendComputer`
         """
         return self.backend.computers.ENTITY_CLASS.from_dbmodel(self.model.dbcomputer, self.backend)
-
-    @property
-    def user(self):
-        """Return the user associated with this instance.
-
-        :return: :class:`aiida.orm.implementation.users.BackendUser`
-        """
-        return self.backend.users.ENTITY_CLASS.from_dbmodel(self.model.aiidauser, self.backend)
 
     def get_auth_params(self):
         """Return the dictionary of authentication parameters

@@ -31,7 +31,7 @@ from aiida.orm.implementation import BackendEntity, StorageBackend
 from aiida.storage.log import STORAGE_LOGGER
 from aiida.storage.psql_dos.migrator import REPOSITORY_UUID_KEY, PsqlDosMigrator
 from aiida.storage.psql_dos.models import base
-from aiida.storage.psql_dos.orm import authinfos, comments, computers, convert, groups, logs, nodes, querybuilder, users
+from aiida.storage.psql_dos.orm import authinfos, comments, computers, convert, groups, logs, nodes, querybuilder
 from aiida.storage.utils import _create_smarter_in_clause
 
 if t.TYPE_CHECKING:
@@ -176,7 +176,6 @@ class PsqlDosBackend(StorageBackend):
         self._groups = groups.SqlaGroupCollection(self)
         self._logs = logs.SqlaLogCollection(self)
         self._nodes = nodes.SqlaNodeCollection(self)
-        self._users = users.SqlaUserCollection(self)
 
     @property
     def is_closed(self) -> bool:
@@ -283,10 +282,6 @@ class PsqlDosBackend(StorageBackend):
     def query(self) -> querybuilder.SqlaQueryBuilder:
         return querybuilder.SqlaQueryBuilder(self)
 
-    @property
-    def users(self) -> users.SqlaUserCollection:
-        return self._users
-
     @contextmanager
     def transaction(self) -> Iterator[Session]:
         """Open a transaction to be used as a context manager.
@@ -325,7 +320,6 @@ class PsqlDosBackend(StorageBackend):
         from aiida.storage.psql_dos.models.group import DbGroup, DbGroupNode
         from aiida.storage.psql_dos.models.log import DbLog
         from aiida.storage.psql_dos.models.node import DbLink, DbNode
-        from aiida.storage.psql_dos.models.user import DbUser
 
         model = {
             EntityTypes.AUTHINFO: DbAuthInfo,
@@ -334,7 +328,6 @@ class PsqlDosBackend(StorageBackend):
             EntityTypes.GROUP: DbGroup,
             EntityTypes.LOG: DbLog,
             EntityTypes.NODE: DbNode,
-            EntityTypes.USER: DbUser,
             EntityTypes.LINK: DbLink,
             EntityTypes.GROUP_NODE: DbGroupNode,
         }[entity_type]

@@ -18,22 +18,16 @@ from aiida.storage.psql_dos.models.base import Base
 
 
 class DbAuthInfo(Base):
-    """Database model to store data for :py:class:`aiida.orm.AuthInfo`, and keep computer authentication data, per user.
+    """Database model to store data for :py:class:`aiida.orm.AuthInfo`, and keep computer authentication data.
 
-    Specifications are user-specific of how to submit jobs in the computer.
+    Specifications of how to submit jobs on the computer. There is at most one
+    row per computer: authentication is per-computer, not per-user.
     The model also has an ``enabled`` logical switch that indicates whether the device is available for use or not.
-    This last one can be set and unset by the user.
     """
 
     __tablename__ = 'db_dbauthinfo'
 
     id = Column(Integer, primary_key=True)
-    aiidauser_id = Column(
-        Integer,
-        ForeignKey('db_dbuser.id', ondelete='CASCADE', deferrable=True, initially='DEFERRED'),
-        nullable=False,
-        index=True,
-    )
     dbcomputer_id = Column(
         Integer,
         ForeignKey('db_dbcomputer.id', ondelete='CASCADE', deferrable=True, initially='DEFERRED'),
@@ -44,12 +38,11 @@ class DbAuthInfo(Base):
     auth_params = Column(JSONB, default=dict, nullable=False)
     enabled = Column(Boolean, default=True, nullable=False)
 
-    aiidauser = relationship('DbUser', backref=backref('authinfos', passive_deletes=True, cascade='all, delete'))
     dbcomputer = relationship('DbComputer', backref=backref('authinfos', passive_deletes=True, cascade='all, delete'))
 
-    __table_args__ = (UniqueConstraint('aiidauser_id', 'dbcomputer_id'),)
+    __table_args__ = (UniqueConstraint('dbcomputer_id'),)
 
     def __str__(self):
         if self.enabled:
-            return f'DB authorization info for {self.aiidauser.email} on {self.dbcomputer.label}'
-        return f'DB authorization info for {self.aiidauser.email} on {self.dbcomputer.label} [DISABLED]'
+            return f'DB authorization info on {self.dbcomputer.label}'
+        return f'DB authorization info on {self.dbcomputer.label} [DISABLED]'

@@ -33,7 +33,7 @@ columns:
   - default: null
     name: uuid
     nullable: false
-    type: VARCHAR(32)
+    type: CHAR(32)
   - default: null
     name: dbnode_id
     nullable: false
@@ -62,7 +62,7 @@ columns:
   - default: null
     name: uuid
     nullable: false
-    type: VARCHAR(32)
+    type: CHAR(32)
   - default: null
     name: label
     nullable: false
@@ -95,7 +95,7 @@ columns:
   - default: null
     name: uuid
     nullable: false
-    type: VARCHAR(32)
+    type: CHAR(32)
   - default: null
     name: label
     nullable: false
@@ -162,7 +162,7 @@ columns:
   - default: null
     name: uuid
     nullable: false
-    type: VARCHAR(32)
+    type: CHAR(32)
   - default: null
     name: time
     nullable: false
@@ -195,7 +195,7 @@ columns:
   - default: null
     name: uuid
     nullable: false
-    type: VARCHAR(32)
+    type: CHAR(32)
   - default: null
     name: node_type
     nullable: false
@@ -240,27 +240,6 @@ columns:
     name: profile_uuid
     nullable: false
     type: VARCHAR(36)
-  db_dbsetting:
-  - default: null
-    name: id
-    nullable: false
-    type: INTEGER
-  - default: null
-    name: key
-    nullable: false
-    type: VARCHAR(1024)
-  - default: null
-    name: val
-    nullable: true
-    type: JSON
-  - default: null
-    name: description
-    nullable: false
-    type: TEXT
-  - default: null
-    name: time
-    nullable: false
-    type: DATETIME
 constraints:
   check:
     alembic_version: []
@@ -272,7 +251,6 @@ constraints:
     db_dblink: []
     db_dblog: []
     db_dbnode: []
-    db_dbsetting: []
   primary_keys:
     alembic_version:
       constrained_columns:
@@ -310,10 +288,6 @@ constraints:
       constrained_columns:
       - id
       name: db_dbnode_pkey
-    db_dbsetting:
-      constrained_columns:
-      - id
-      name: db_dbsetting_pkey
   unique:
     alembic_version: []
     db_dbauthinfo:
@@ -353,10 +327,6 @@ constraints:
     - column_names:
       - uuid
       name: uq_db_dbnode_uuid
-    db_dbsetting:
-    - column_names:
-      - key
-      name: uq_db_dbsetting_key
 foreign_keys:
   alembic_version: []
   db_dbauthinfo:
@@ -452,7 +422,6 @@ foreign_keys:
     - id
     referred_schema: null
     referred_table: db_dbcomputer
-  db_dbsetting: []
 indexes:
   alembic_version: []
   db_dbauthinfo:
@@ -573,4 +542,3 @@ indexes:
     dialect_options: {}
     name: ix_db_dbnode_db_dbnode_profile_uuid
     unique: 0
-  db_dbsetting: []

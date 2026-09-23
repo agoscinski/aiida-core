@@ -92,7 +92,6 @@ class SqliteTempBackend(StorageBackend):
     @staticmethod
     def create_profile(
         name: str = 'temp',
-        default_user_email: str = 'user@email.com',
         options: dict | None = None,
         debug: bool = False,
         filepath: str | Path | None = None,
@@ -101,7 +100,6 @@ class SqliteTempBackend(StorageBackend):
         return Profile(
             name,
             {
-                'default_user_email': default_user_email,
                 'storage': {
                     'backend': 'core.sqlite_temp',
                     'config': {
@@ -187,7 +185,6 @@ class SqliteTempBackend(StorageBackend):
             engine = create_sqla_engine(':memory:', echo=self.profile.storage_config.get('debug', False))
             models.SqliteBase.metadata.create_all(engine)
             self._session = Session(engine, future=True)
-            self._session.add(models.DbUser(email=self.profile.default_user_email or 'user@email.com'))  # type: ignore[operator]
             self._session.commit()
         return self._session
 
@@ -254,10 +251,6 @@ class SqliteTempBackend(StorageBackend):
     def nodes(self) -> orm.SqliteNodeCollection:
         return orm.SqliteNodeCollection(self)
 
-    @functools.cached_property
-    def users(self) -> orm.SqliteUserCollection:
-        return orm.SqliteUserCollection(self)
-
     def get_info(self, detailed: bool = False) -> dict:
         results = super().get_info(detailed=detailed)
         # results['repository'] = self.get_repository().get_info(detailed)
@@ -281,7 +274,6 @@ class SqliteTempBackend(StorageBackend):
             DbLink,
             DbLog,
             DbNode,
-            DbUser,
         )
 
         model = {
@@ -291,7 +283,6 @@ class SqliteTempBackend(StorageBackend):
             EntityTypes.GROUP: DbGroup,
             EntityTypes.LOG: DbLog,
             EntityTypes.NODE: DbNode,
-            EntityTypes.USER: DbUser,
             EntityTypes.LINK: DbLink,
             EntityTypes.GROUP_NODE: DbGroupNodes,
         }[entity_type]

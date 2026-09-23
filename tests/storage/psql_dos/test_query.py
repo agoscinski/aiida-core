@@ -10,7 +10,7 @@
 
 import pytest
 
-from aiida.orm import Computer, Data, Group, Node, ProcessNode, QueryBuilder, User
+from aiida.orm import Computer, Data, Group, Node, ProcessNode, QueryBuilder
 
 
 def test_qb_clsf_sqla():
@@ -18,7 +18,7 @@ def test_qb_clsf_sqla():
     from aiida.orm.querybuilder import _get_ormclass
 
     for aiida_cls, orm_name in zip(
-        (Group, User, Computer, Node, Data, ProcessNode), ('group', 'user', 'computer', 'node', 'node', 'node')
+        (Group, Computer, Node, Data, ProcessNode), ('group', 'computer', 'node', 'node', 'node')
     ):
         cls, _ = _get_ormclass(aiida_cls, None)
 

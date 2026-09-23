@@ -15,30 +15,27 @@ from sqlalchemy.orm.exc import NoResultFound
 from aiida.common import exceptions, lang
 from aiida.orm.implementation.comments import BackendComment, BackendCommentCollection
 from aiida.storage.psql_dos.models import comment as models
-from aiida.storage.psql_dos.orm import entities, users, utils
+from aiida.storage.psql_dos.orm import entities, utils
 
 
 class SqlaComment(entities.SqlaModelEntity[models.DbComment], BackendComment):
     """Comment implementation for Sqla."""
 
     MODEL_CLASS = models.DbComment
-    USER_CLASS = users.SqlaUser
 
-    def __init__(self, backend, node, user, content=None, ctime=None, mtime=None):
+    def __init__(self, backend, node, content=None, ctime=None, mtime=None):
         """Construct a SqlaComment.
 
         :param node: a Node instance
-        :param user: a User instance
         :param content: the comment content
         :param ctime: The creation time as datetime object
         :param mtime: The modification time as datetime object
         """
         super().__init__(backend)
-        lang.type_check(user, self.USER_CLASS)
 
         arguments = {
             'dbnode': node.bare_model,
-            'user': user.bare_model,
+            'profile_uuid': backend.profile.uuid,
             'content': content,
         }
 
@@ -53,10 +50,10 @@ class SqlaComment(entities.SqlaModelEntity[models.DbComment], BackendComment):
         self._model = utils.ModelWrapper(self.MODEL_CLASS(**arguments), backend)
 
     def store(self):
-        """Can only store if both the node and user are stored as well."""
-        if self.model.dbnode.id is None or self.model.user.id is None:
+        """Can only store if the node is stored as well."""
+        if self.model.dbnode.id is None:
             self.model.dbnode = None
-            raise exceptions.ModificationNotAllowed('The corresponding node and/or user are not stored')
+            raise exceptions.ModificationNotAllowed('The corresponding node is not stored')
 
         super().store()
 
@@ -80,11 +77,8 @@ class SqlaComment(entities.SqlaModelEntity[models.DbComment], BackendComment):
         return self.backend.nodes.ENTITY_CLASS.from_dbmodel(self.model.dbnode, self.backend)
 
     @property
-    def user(self):
-        return self.backend.users.ENTITY_CLASS.from_dbmodel(self.model.user, self.backend)
-
-    def set_user(self, value):
-        self.model.user = value
+    def profile_uuid(self):
+        return self.model.profile_uuid
 
     @property
     def content(self):
@@ -99,15 +93,14 @@ class SqlaCommentCollection(BackendCommentCollection):
 
     ENTITY_CLASS = SqlaComment
 
-    def create(self, node, user, content=None, **kwargs):
-        """Create a Comment for a given node and user
+    def create(self, node, content=None, **kwargs):
+        """Create a Comment for a given node
 
         :param node: a Node instance
-        :param user: a User instance
         :param content: the comment content
-        :return: a Comment object associated to the given node and user
+        :return: a Comment object associated to the given node
         """
-        return self.ENTITY_CLASS(self.backend, node, user, content, **kwargs)
+        return self.ENTITY_CLASS(self.backend, node, content, **kwargs)
 
     def delete(self, comment_id):
         """Remove a Comment from the collection with the given id

@@ -112,7 +112,7 @@ def test_migrate_full(load_config_sample, monkeypatch):
     """Test the full config migration."""
     config_initial = load_config_sample('input/0.json')
     # this should be always the most recent version
-    config_target = load_config_sample('reference/11.json')
+    config_target = load_config_sample('reference/12.json')
 
     # This change is necessary for the migration to version 2.
     monkeypatch.setattr(uuid, 'uuid4', lambda: uuid.UUID(hex='0' * 32))
@@ -132,11 +132,37 @@ def test_migrate_full_downgrade(load_config_sample, monkeypatch):
     """
     monkeypatch.setattr(uuid, 'uuid4', lambda: uuid.UUID(hex='0' * 32))
 
-    upgraded = upgrade_config(load_config_sample('input/0.json'), 11, migrations=(m for m in MIGRATIONS))
-    assert upgraded['CONFIG_VERSION']['CURRENT'] == 11
+    upgraded = upgrade_config(load_config_sample('input/0.json'), 12, migrations=(m for m in MIGRATIONS))
+    assert upgraded['CONFIG_VERSION']['CURRENT'] == 12
 
     downgraded = downgrade_config(upgraded, 0, migrations=(m for m in MIGRATIONS))
     assert downgraded['CONFIG_VERSION']['CURRENT'] == 0
+
+
+def test_remove_default_user_upgrade_drops_identity():
+    """Upgrade to version 12 should drop per-profile user identity and autofill options."""
+    config = {
+        'CONFIG_VERSION': {'CURRENT': 11, 'OLDEST_COMPATIBLE': 11},
+        'profiles': {
+            'default': {
+                'default_user_email': 'email@aiida.net',
+                'storage': {'backend': 'core.psql_dos', 'config': {}},
+                'process_control': {'backend': 'rabbitmq', 'config': {}},
+            }
+        },
+        'options': {
+            'autofill.user.email': 'email@aiida.net',
+            'autofill.user.first_name': 'John',
+            'autofill.user.last_name': 'Doe',
+            'autofill.user.institution': 'Institute',
+            'warnings.showdeprecations': True,
+        },
+    }
+
+    migrated = upgrade_config(config, 12)
+
+    assert 'default_user_email' not in migrated['profiles']['default']
+    assert migrated['options'] == {'warnings.showdeprecations': True}
 
 
 @pytest.mark.parametrize('initial, target', ((m.down_revision, m.up_revision) for m in MIGRATIONS))
@@ -385,7 +411,10 @@ def test_merge_storage_backends_downgrade_profile(empty_config, profile_factory,
 
     config_migrated = downgrade_config(config.dictionary, 6)
     assert list(config_migrated['profiles'].keys()) == ['profile_a', 'profile_b']
-    assert f'profile {profile_b.name!r} had no expected "storage._v6_backend" key' in caplog.records[0].message
+    assert any(
+        f'profile {profile_b.name!r} had no expected "storage._v6_backend" key' in record.message
+        for record in caplog.records
+    )
 
 
 def test_add_test_profile_key_downgrade_profile(empty_config, profile_factory, caplog):
@@ -401,8 +430,9 @@ def test_add_test_profile_key_downgrade_profile(empty_config, profile_factory, c
 
     config_migrated = downgrade_config(config.dictionary, 7)
     assert list(config_migrated['profiles'].keys()) == ['profile']
-    assert 'profile `test_profile` is not a test profile but starts with' in caplog.records[0].message
-    assert 'changing profile name from `test_profile` to `profile`.' in caplog.records[1].message
+    messages = [record.message for record in caplog.records]
+    assert any('profile `test_profile` is not a test profile but starts with' in message for message in messages)
+    assert any('changing profile name from `test_profile` to `profile`.' in message for message in messages)
 
     profile = profile_factory('profile')
     config.add_profile(profile)
@@ -424,8 +454,9 @@ def test_add_test_profile_key_downgrade_test_profile(empty_config, profile_facto
 
     config_migrated = downgrade_config(config.dictionary, 7)
     assert list(config_migrated['profiles'].keys()) == ['test_profile']
-    assert 'profile `profile` is a test profile but does not start with' in caplog.records[0].message
-    assert 'changing profile name from `profile` to `test_profile`.' in caplog.records[1].message
+    messages = [record.message for record in caplog.records]
+    assert any('profile `profile` is a test profile but does not start with' in message for message in messages)
+    assert any('changing profile name from `profile` to `test_profile`.' in message for message in messages)
 
     profile = profile_factory('test_profile', test_profile=True)
     config.add_profile(profile)

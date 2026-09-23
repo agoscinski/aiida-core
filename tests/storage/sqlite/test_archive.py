@@ -19,7 +19,7 @@ def test_basic(tmp_path):
     dict_data = {'key1': 'value1'}
     node = orm.Dict(dict_data, backend=backend1).store()
     # add a comment to the node
-    node.base.comments.add('test comment', backend1.default_user)
+    node.base.comments.add('test comment')
     # add node with repository data
     path = Path(tmp_path / 'test.txt')
     text_data = 'test'

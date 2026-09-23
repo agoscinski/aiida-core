@@ -24,14 +24,12 @@ from aiida.storage.psql_dos.orm import entities
 from aiida.storage.psql_dos.orm import utils as sqla_utils
 from aiida.storage.psql_dos.orm.computers import SqlaComputer
 from aiida.storage.psql_dos.orm.extras_mixin import ExtrasMixin
-from aiida.storage.psql_dos.orm.users import SqlaUser
 
 
 class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode):
     """SQLA Node backend entity"""
 
     MODEL_CLASS = models.DbNode
-    USER_CLASS = SqlaUser
     COMPUTER_CLASS = SqlaComputer
     LINK_CLASS = models.DbLink
 
@@ -39,7 +37,6 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
         self,
         backend,
         node_type,
-        user,
         computer=None,
         process_type=None,
         label='',
@@ -51,7 +48,6 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
 
         :param backend: the backend
         :param node_type: the node type string
-        :param user: associated `BackendUser`
         :param computer: associated `BackendComputer`
         :param label: string label
         :param description: string description
@@ -63,12 +59,10 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
         arguments = {
             'node_type': node_type,
             'process_type': process_type,
-            'user': user.bare_model,
+            'profile_uuid': backend.profile.uuid,
             'label': label,
             'description': description,
         }
-
-        type_check(user, self.USER_CLASS)
 
         if computer:
             type_check(computer, self.COMPUTER_CLASS, f'computer is of type {type(computer)}')
@@ -92,7 +86,7 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
         arguments = {
             'node_type': self.model.node_type,
             'process_type': self.model.process_type,
-            'user': self.model.user,
+            'profile_uuid': self.model.profile_uuid,
             'dbcomputer': self.model.dbcomputer,
             'label': self.model.label,
             'description': self.model.description,
@@ -101,7 +95,7 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
         }
 
         clone = self.__class__.__new__(self.__class__)
-        clone.__init__(self.backend, self.node_type, self.user)
+        clone.__init__(self.backend, self.node_type)
         clone._model = sqla_utils.ModelWrapper(self.MODEL_CLASS(**arguments), self.backend)
         return clone
 
@@ -170,13 +164,8 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
         self.model.dbcomputer = computer
 
     @property
-    def user(self):
-        return self.backend.users.ENTITY_CLASS.from_dbmodel(self.model.user, self.backend)
-
-    @user.setter
-    def user(self, user):
-        type_check(user, self.USER_CLASS)
-        self.model.user = user.bare_model
+    def profile_uuid(self):
+        return self.model.profile_uuid
 
     def add_incoming(self, source, link_type, link_label):
         session = self.backend.get_session()

@@ -5,7 +5,7 @@
 # The code is hosted on GitHub at https://github.com/aiidateam/aiida-core #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Test archive migration from ``main_0002`` to ``main_0003``, which drops the legacy ``Code`` plugin."""
+"""Test archive migration to head, which drops the legacy ``Code`` plugin."""
 
 import pytest
 
@@ -23,7 +23,7 @@ def test_migrate_legacy_code(tmp_path):
     filepath_archive = get_archive_file('export_main_0001_simple.aiida', filepath='export/migrate')
     filepath_migrated = tmp_path / 'archive.aiida'
 
-    migrate(filepath_archive, filepath_migrated, 'main_0003')
+    migrate(filepath_archive, filepath_migrated, 'main_0004')
 
     with ArchiveFormatSqlZip().open(filepath_migrated, 'r') as archive:
         query = orm.QueryBuilder(backend=archive.get_backend()).append(orm.InstalledCode, project=['attributes'])

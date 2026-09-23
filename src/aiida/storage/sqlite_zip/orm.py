@@ -22,7 +22,7 @@ from sqlalchemy.orm.util import AliasedClass
 from sqlalchemy.sql import ColumnElement, null
 
 from aiida.common.lang import type_check
-from aiida.storage.psql_dos.orm import authinfos, comments, computers, entities, groups, logs, nodes, users, utils
+from aiida.storage.psql_dos.orm import authinfos, comments, computers, entities, groups, logs, nodes, utils
 from aiida.storage.psql_dos.orm.querybuilder.main import (
     BinaryExpression,
     Cast,
@@ -75,14 +75,6 @@ class SqliteEntityOverride:
         return super().store(*args, **kwargs)  # type: ignore
 
 
-class SqliteUser(SqliteEntityOverride, users.SqlaUser):
-    MODEL_CLASS = models.DbUser
-
-
-class SqliteUserCollection(users.SqlaUserCollection):
-    ENTITY_CLASS = SqliteUser
-
-
 class SqliteComputer(SqliteEntityOverride, computers.SqlaComputer):
     MODEL_CLASS = models.DbComputer
 
@@ -93,7 +85,6 @@ class SqliteComputerCollection(computers.SqlaComputerCollection):
 
 class SqliteAuthInfo(SqliteEntityOverride, authinfos.SqlaAuthInfo):
     MODEL_CLASS = models.DbAuthInfo
-    USER_CLASS = SqliteUser
     COMPUTER_CLASS = SqliteComputer
 
 
@@ -103,7 +94,6 @@ class SqliteAuthInfoCollection(authinfos.SqlaAuthInfoCollection):
 
 class SqliteComment(SqliteEntityOverride, comments.SqlaComment):
     MODEL_CLASS = models.DbComment
-    USER_CLASS = SqliteUser
 
 
 class SqliteCommentCollection(comments.SqlaCommentCollection):
@@ -112,7 +102,6 @@ class SqliteCommentCollection(comments.SqlaCommentCollection):
 
 class SqliteGroup(SqliteEntityOverride, groups.SqlaGroup):
     MODEL_CLASS = models.DbGroup
-    USER_CLASS = SqliteUser
 
 
 class SqliteGroupCollection(groups.SqlaGroupCollection):
@@ -131,7 +120,6 @@ class SqliteNode(SqliteEntityOverride, nodes.SqlaNode):
     """SQLA Node backend entity"""
 
     MODEL_CLASS = models.DbNode
-    USER_CLASS = SqliteUser
     COMPUTER_CLASS = SqliteComputer
     LINK_CLASS = models.DbLink
 
@@ -154,10 +142,6 @@ class SqliteQueryBuilder(SqlaQueryBuilder):
     @property
     def Computer(self):
         return models.DbComputer
-
-    @property
-    def User(self):
-        return models.DbUser
 
     @property
     def Group(self):
@@ -384,11 +368,6 @@ class SqliteQueryBuilder(SqlaQueryBuilder):
 def get_backend_entity(dbmodel, backend):
     msg = f"No corresponding AiiDA backend class exists for the model class '{dbmodel.__class__.__name__}'"
     raise TypeError(msg)
-
-
-@get_backend_entity.register(models.DbUser)  # type: ignore[call-overload]
-def _(dbmodel, backend):
-    return SqliteUser.from_dbmodel(dbmodel, backend)
 
 
 @get_backend_entity.register(models.DbGroup)  # type: ignore[call-overload]

@@ -77,11 +77,9 @@ class TestNodeBasicSQLA:
         from aiida.common.utils import get_new_uuid
         from aiida.storage.psql_dos.models.node import DbNode
 
-        # Get the automatic user
-        dbuser = self.backend.users.create('user@aiida.net').store().bare_model
         # Create a new node but don't add it to the session
         node_uuid = get_new_uuid()
-        DbNode(user=dbuser, uuid=node_uuid, node_type=None)
+        DbNode(profile_uuid=self.backend.profile.uuid, uuid=node_uuid, node_type=None)
 
         session = self.backend.get_session()
 
@@ -96,11 +94,9 @@ class TestNodeBasicSQLA:
         res = session.query(DbNode.uuid).filter(DbNode.uuid == node_uuid).all()
         assert len(res) == 0, 'There should not be any nodes with this UUID in the session/DB.'
 
-        # Get the automatic user
-        dbuser = orm.User.collection.get_default().backend_entity.bare_model
         # Create a new node but now add it to the session
         node_uuid = get_new_uuid()
-        node = DbNode(user=dbuser, uuid=node_uuid, node_type=None)
+        node = DbNode(profile_uuid=self.backend.profile.uuid, uuid=node_uuid, node_type=None)
         session.add(node)
 
         # Query the session before commit

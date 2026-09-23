@@ -329,10 +329,6 @@ class SqliteZipBackend(StorageBackend):
     def nodes(self) -> orm.SqliteNodeCollection:
         return orm.SqliteNodeCollection(self)
 
-    @cached_property
-    def users(self) -> orm.SqliteUserCollection:
-        return orm.SqliteUserCollection(self)
-
     def _clear(self) -> None:
         raise ReadOnlyError()
 

@@ -52,10 +52,6 @@ class TestSessionSqla:
         self.set_connection(expire_on_commit=True)
         session = self.backend.get_session()
 
-        user = self.backend.users.create(email=uuid.uuid4().hex)
-        session.add(user.bare_model)
-        session.commit()
-
         defaults = dict(
             label=uuid.uuid4().hex, hostname='localhost', transport_type='core.local', scheduler_type='core.pbspro'
         )
@@ -63,7 +59,7 @@ class TestSessionSqla:
         session.add(computer.bare_model)
         session.commit()
 
-        node = self.backend.nodes.create(node_type='', user=user).store()
+        node = self.backend.nodes.create(node_type='').store()
         session.add(node.bare_model)
         session.commit()
 
@@ -74,18 +70,13 @@ class TestSessionSqla:
         their built-in store function.
         """
         self.set_connection(expire_on_commit=True)
-        session = self.backend.get_session()
-
-        user = self.backend.users.create(email=uuid.uuid4().hex)
-        session.add(user.bare_model)
-        session.commit()
 
         computer = self.backend.computers.create(
             label=uuid.uuid4().hex, hostname='localhost', transport_type='core.local', scheduler_type='core.pbspro'
         )
         computer.store()
 
-        self.backend.nodes.create(node_type='', user=user).store()
+        self.backend.nodes.create(node_type='').store()
         self.drop_connection()
 
     def test_session_update_and_expiration_3(self):
@@ -96,10 +87,6 @@ class TestSessionSqla:
 
         session = self.backend.get_session()
 
-        user = self.backend.users.create(email=uuid.uuid4().hex)
-        session.add(user.bare_model)
-        session.commit()
-
         defaults = dict(
             label=uuid.uuid4().hex, hostname='localhost', transport_type='core.local', scheduler_type='core.pbspro'
         )
@@ -107,7 +94,7 @@ class TestSessionSqla:
         session.add(computer.bare_model)
         session.commit()
 
-        node = self.backend.nodes.create(node_type='', user=user).store()
+        node = self.backend.nodes.create(node_type='').store()
         session.add(node.bare_model)
         session.commit()
 
@@ -119,19 +106,13 @@ class TestSessionSqla:
         """
         self.set_connection(expire_on_commit=False)
 
-        session = self.backend.get_session()
-
-        user = self.backend.users.create(email=uuid.uuid4().hex)
-        session.add(user.bare_model)
-        session.commit()
-
         defaults = dict(
             label=uuid.uuid4().hex, hostname='localhost', transport_type='core.local', scheduler_type='core.pbspro'
         )
         computer = self.backend.computers.create(**defaults)
         computer.store()
 
-        self.backend.nodes.create(node_type='', user=user).store()
+        self.backend.nodes.create(node_type='').store()
         self.drop_connection()
 
     def test_node_access_with_sessions(self):
@@ -148,8 +129,7 @@ class TestSessionSqla:
         custom_session = session()
 
         try:
-            user = self.backend.users.create(email=uuid.uuid4().hex).store()
-            node = self.backend.nodes.create(node_type='', user=user).store()
+            node = self.backend.nodes.create(node_type='').store()
             master_session = node.model.session
             assert master_session is not custom_session
 

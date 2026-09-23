@@ -43,7 +43,7 @@ class _EntityMapper(t.Protocol):
     def Link(self) -> type[Model]: ...
 
     @property
-    def User(self) -> type[Model]: ...
+    def Link(self) -> type[Model]: ...
 
     @property
     def Computer(self) -> type[Model]: ...
@@ -93,18 +93,15 @@ class SqlaJoiner:
         mapping = {
             'authinfo': {
                 'with_computer': self._join_computer_authinfo,
-                'with_user': self._join_user_authinfo,
             },
             'comment': {
                 'with_node': self._join_node_comment,
-                'with_user': self._join_user_comment,
             },
             'computer': {
                 'with_node': self._join_node_computer,
             },
             'group': {
                 'with_node': self._join_node_group,
-                'with_user': self._join_user_group,
             },
             'link': {},
             'log': {
@@ -118,14 +115,7 @@ class SqlaJoiner:
                 'with_descendants': self._join_node_ancestors_recursive,
                 'with_ancestors': self._join_node_descendants_recursive,
                 'with_computer': self._join_computer_node,
-                'with_user': self._join_user_node,
                 'with_group': self._join_group_node,
-            },
-            'user': {
-                'with_authinfo': self._join_authinfo_user,
-                'with_comment': self._join_comment_user,
-                'with_node': self._join_node_user,
-                'with_group': self._join_group_user,
             },
         }
 
@@ -141,17 +131,6 @@ class SqlaJoiner:
 
         def new_query(q):
             return q.join(entity_to_join, entity_to_join.dbcomputer_id == joined_entity.id, isouter=isouterjoin)
-
-        return JoinReturn(new_query)
-
-    def _join_user_authinfo(self, joined_entity, entity_to_join, isouterjoin: bool, **_kw):
-        """:param joined_entity: the aliased user you want to join to
-        :param entity_to_join: the (aliased) node or group in the DB to join with
-        """
-        _check_dbentities((joined_entity, self._entities.User), (entity_to_join, self._entities.AuthInfo), 'with_user')
-
-        def new_query(q):
-            return q.join(entity_to_join, entity_to_join.aiidauser_id == joined_entity.id, isouter=isouterjoin)
 
         return JoinReturn(new_query)
 
@@ -196,28 +175,6 @@ class SqlaJoiner:
 
         return JoinReturn(new_query, aliased_group_nodes)
 
-    def _join_node_user(self, joined_entity, entity_to_join, isouterjoin: bool, **_kw):
-        """:param joined_entity: the aliased node
-        :param entity_to_join: the aliased user to join to that node
-        """
-        _check_dbentities((joined_entity, self._entities.Node), (entity_to_join, self._entities.User), 'with_node')
-
-        def new_query(q):
-            return q.join(entity_to_join, entity_to_join.id == joined_entity.user_id, isouter=isouterjoin)
-
-        return JoinReturn(new_query)
-
-    def _join_user_node(self, joined_entity, entity_to_join, isouterjoin: bool, **_kw):
-        """:param joined_entity: the aliased user you want to join to
-        :param entity_to_join: the (aliased) node or group in the DB to join with
-        """
-        _check_dbentities((joined_entity, self._entities.User), (entity_to_join, self._entities.Node), 'with_user')
-
-        def new_query(q):
-            return q.join(entity_to_join, entity_to_join.user_id == joined_entity.id, isouter=isouterjoin)
-
-        return JoinReturn(new_query)
-
     def _join_computer_node(self, joined_entity, entity_to_join, isouterjoin: bool, **_kw):
         """:param joined_entity: the (aliased) computer entity
         :param entity_to_join: the (aliased) node entity
@@ -240,28 +197,6 @@ class SqlaJoiner:
 
         def new_query(q):
             return q.join(entity_to_join, joined_entity.dbcomputer_id == entity_to_join.id, isouter=isouterjoin)
-
-        return JoinReturn(new_query)
-
-    def _join_group_user(self, joined_entity, entity_to_join, isouterjoin: bool, **_kw):
-        """:param joined_entity: An aliased dbgroup
-        :param entity_to_join: aliased dbuser
-        """
-        _check_dbentities((joined_entity, self._entities.Group), (entity_to_join, self._entities.User), 'with_group')
-
-        def new_query(q):
-            return q.join(entity_to_join, joined_entity.user_id == entity_to_join.id, isouter=isouterjoin)
-
-        return JoinReturn(new_query)
-
-    def _join_user_group(self, joined_entity, entity_to_join, isouterjoin: bool, **_kw):
-        """:param joined_entity: An aliased user
-        :param entity_to_join: aliased group
-        """
-        _check_dbentities((joined_entity, self._entities.User), (entity_to_join, self._entities.Group), 'with_user')
-
-        def new_query(q):
-            return q.join(entity_to_join, joined_entity.id == entity_to_join.user_id, isouter=isouterjoin)
 
         return JoinReturn(new_query)
 
@@ -308,43 +243,6 @@ class SqlaJoiner:
 
         def new_query(q):
             return q.join(entity_to_join, joined_entity.dbnode_id == entity_to_join.id, isouter=isouterjoin)
-
-        return JoinReturn(new_query)
-
-    def _join_user_comment(self, joined_entity, entity_to_join, isouterjoin: bool, **_kw):
-        """:param joined_entity: An aliased user
-        :param entity_to_join: aliased comment
-        """
-        _check_dbentities((joined_entity, self._entities.User), (entity_to_join, self._entities.Comment), 'with_user')
-
-        def new_query(q):
-            return q.join(entity_to_join, joined_entity.id == entity_to_join.user_id, isouter=isouterjoin)
-
-        return JoinReturn(new_query)
-
-    def _join_authinfo_user(self, joined_entity, entity_to_join, isouterjoin: bool, **_kw):
-        """:param joined_entity: An aliased comment
-        :param entity_to_join: aliased user
-        """
-        _check_dbentities(
-            (joined_entity, self._entities.AuthInfo), (entity_to_join, self._entities.User), 'with_authinfo'
-        )
-
-        def new_query(q):
-            return q.join(entity_to_join, joined_entity.aiidauser_id == entity_to_join.id, isouter=isouterjoin)
-
-        return JoinReturn(new_query)
-
-    def _join_comment_user(self, joined_entity, entity_to_join, isouterjoin: bool, **_kw):
-        """:param joined_entity: An aliased comment
-        :param entity_to_join: aliased user
-        """
-        _check_dbentities(
-            (joined_entity, self._entities.Comment), (entity_to_join, self._entities.User), 'with_comment'
-        )
-
-        def new_query(q):
-            return q.join(entity_to_join, joined_entity.user_id == entity_to_join.id, isouter=isouterjoin)
 
         return JoinReturn(new_query)
 
