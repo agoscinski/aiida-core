@@ -23,13 +23,12 @@ COMMENTS = (
 
 def test_multiple_imports_for_single_node(tmp_path, aiida_profile):
     """Test multiple imports for single node with different comments are imported correctly"""
-    user = orm.User.collection.get_default()
 
     # Create Node and initial comments and save UUIDs prior to export
     node = orm.CalculationNode().store()
     node.seal()
-    comment_one = orm.Comment(node, user, COMMENTS[0]).store()
-    comment_two = orm.Comment(node, user, COMMENTS[1]).store()
+    comment_one = orm.Comment(node, COMMENTS[0]).store()
+    comment_two = orm.Comment(node, COMMENTS[1]).store()
     node_uuid = node.uuid
     comment_uuids = [c.uuid for c in [comment_one, comment_two]]
 
@@ -38,8 +37,8 @@ def test_multiple_imports_for_single_node(tmp_path, aiida_profile):
     create_archive([node], filename=export_file_existing)
 
     # Add 2 more Comments and save UUIDs prior to export
-    comment_three = orm.Comment(node, user, COMMENTS[2]).store()
-    comment_four = orm.Comment(node, user, COMMENTS[3]).store()
+    comment_three = orm.Comment(node, COMMENTS[2]).store()
+    comment_four = orm.Comment(node, COMMENTS[3]).store()
     comment_uuids += [c.uuid for c in [comment_three, comment_four]]
 
     # Export as "FULL" DB
@@ -90,24 +89,17 @@ def test_multiple_imports_for_single_node(tmp_path, aiida_profile):
 
 
 def test_exclude_comments_flag(tmp_path, aiida_profile):
-    """Test comments and associated commenting users are not exported when using `include_comments=False`."""
-    # Create users, node, and comments
-    user_one = orm.User.collection.get_default()
-    user_two = orm.User(email='commenting@user.s').store()
-
+    """Test comments are not exported when using `include_comments=False`."""
+    # Create node and comments
     node = orm.Data().store()
 
-    orm.Comment(node, user_one, COMMENTS[0]).store()
-    orm.Comment(node, user_one, COMMENTS[1]).store()
-    orm.Comment(node, user_two, COMMENTS[2]).store()
-    orm.Comment(node, user_two, COMMENTS[3]).store()
+    orm.Comment(node, COMMENTS[0]).store()
+    orm.Comment(node, COMMENTS[1]).store()
+    orm.Comment(node, COMMENTS[2]).store()
+    orm.Comment(node, COMMENTS[3]).store()
 
     # Get values prior to export
-    users_email = [u.email for u in [user_one, user_two]]
     node_uuid = node.uuid
-
-    # Check that node belongs to user_one
-    assert node.user.email == users_email[0]
 
     # Export nodes, excluding comments
     export_file = tmp_path / 'export.aiida'
@@ -117,35 +109,31 @@ def test_exclude_comments_flag(tmp_path, aiida_profile):
     aiida_profile.reset_storage()
     import_archive(export_file)
 
-    # Get node, users, and comments
+    # Get node and comments
     import_nodes = orm.QueryBuilder().append(orm.Node, project=['uuid']).all()
     import_comments = orm.QueryBuilder().append(orm.Comment, project=['uuid']).all()
-    import_users = orm.QueryBuilder().append(orm.User, project=['email']).all()
 
-    # There should be exactly: 1 Node, 0 Comments, 1 User
+    # There should be exactly: 1 Node, 0 Comments
     assert len(import_nodes) == 1
     assert len(import_comments) == 0
-    assert len(import_users) == 1
 
-    # Check it's the correct user (and node)
+    # Check it's the correct node
     assert str(import_nodes[0][0]) == node_uuid
-    assert str(import_users[0][0]) == users_email[0]
 
 
 def test_calc_and_data_nodes_with_comments(tmp_path, aiida_profile):
     """Test comments for CalculatioNode and Data node are correctly ex-/imported"""
-    # Create user, nodes, and comments
-    user = orm.User.collection.get_default()
+    # Create node and comments
 
     calc_node = orm.CalculationNode().store()
     calc_node.seal()
     data_node = orm.Data().store()
 
-    comment_one = orm.Comment(calc_node, user, COMMENTS[0]).store()
-    comment_two = orm.Comment(calc_node, user, COMMENTS[1]).store()
+    comment_one = orm.Comment(calc_node, COMMENTS[0]).store()
+    comment_two = orm.Comment(calc_node, COMMENTS[1]).store()
 
-    comment_three = orm.Comment(data_node, user, COMMENTS[2]).store()
-    comment_four = orm.Comment(data_node, user, COMMENTS[3]).store()
+    comment_three = orm.Comment(data_node, COMMENTS[2]).store()
+    comment_four = orm.Comment(data_node, COMMENTS[3]).store()
 
     # Get values prior to export
     calc_uuid = calc_node.uuid
@@ -183,28 +171,23 @@ def test_calc_and_data_nodes_with_comments(tmp_path, aiida_profile):
             assert import_comment_uuid in data_comments_uuid
 
 
-def test_multiple_user_comments_single_node(tmp_path, aiida_profile):
-    """Test multiple users commenting on a single orm.CalculationNode"""
-    # Create users, node, and comments
-    user_one = orm.User.collection.get_default()
-    user_two = orm.User(email='commenting@user.s').store()
-
+def test_multiple_comments_single_node(tmp_path, aiida_profile):
+    """Test multiple comments on a single orm.CalculationNode round-trip correctly."""
+    # Create node and comments
     node = orm.CalculationNode().store()
     node.seal()
 
-    comment_one = orm.Comment(node, user_one, COMMENTS[0]).store()
-    comment_two = orm.Comment(node, user_one, COMMENTS[1]).store()
+    comment_one = orm.Comment(node, COMMENTS[0]).store()
+    comment_two = orm.Comment(node, COMMENTS[1]).store()
 
-    comment_three = orm.Comment(node, user_two, COMMENTS[2]).store()
-    comment_four = orm.Comment(node, user_two, COMMENTS[3]).store()
+    comment_three = orm.Comment(node, COMMENTS[2]).store()
+    comment_four = orm.Comment(node, COMMENTS[3]).store()
 
     # Get values prior to export
-    users_email = [u.email for u in [user_one, user_two]]
     node_uuid = str(node.uuid)
-    user_one_comments_uuid = [str(c.uuid) for c in [comment_one, comment_two]]
-    user_two_comments_uuid = [str(c.uuid) for c in [comment_three, comment_four]]
+    comment_uuids = {str(c.uuid) for c in [comment_one, comment_two, comment_three, comment_four]}
 
-    # Export node, along with comments and users recursively
+    # Export node, along with comments recursively
     export_file = tmp_path / 'export.aiida'
     create_archive([node], filename=export_file)
 
@@ -212,65 +195,38 @@ def test_multiple_user_comments_single_node(tmp_path, aiida_profile):
     aiida_profile.reset_storage()
     import_archive(export_file)
 
-    # Get node, users, and comments
+    # Get node and comments
     builder = orm.QueryBuilder()
     builder.append(orm.Node, tag='node', project=['uuid'])
     builder.append(orm.Comment, tag='comment', with_node='node', project=['uuid'])
-    builder.append(orm.User, with_comment='comment', project=['email'])
     entries = builder.all()
 
-    # Check that all 4 comments are retrieved, along with their respective node and user
+    # Check that all 4 comments are retrieved, along with their node
     assert len(entries) == len(COMMENTS)
 
-    # Go through [Node.uuid, Comment.uuid, User.email]-entries
+    # Go through [Node.uuid, Comment.uuid]-entries
     imported_node_uuids = set()
-    imported_user_one_comment_uuids = set()
-    imported_user_two_comment_uuids = set()
-    imported_user_emails = set()
+    imported_comment_uuids = set()
     for entry in entries:
-        assert len(entry) == 3  # 1 Node + 1 Comment + 1 User
+        assert len(entry) == 2  # 1 Node + 1 Comment
 
         # Add node to set of imported nodes
         imported_node_uuids.add(str(entry[0]))
 
-        # Add user to set of imported users
-        import_user_email = entry[2]
-        imported_user_emails.add(str(import_user_email))
-
-        # Add comment to set of imported comments pertaining to correct user
-        if import_user_email == users_email[0]:
-            # User_one comments
-            imported_user_one_comment_uuids.add(str(entry[1]))
-        else:
-            # User_two comments
-            imported_user_two_comment_uuids.add(str(entry[1]))
-
-    # Check same number of nodes (1) and users (2) were ex- and imported
-    assert len(imported_node_uuids) == 1
-    assert len(imported_user_emails) == len(users_email)
+        # Add comment to set of imported comments
+        imported_comment_uuids.add(str(entry[1]))
 
     # Check imported node equals exported node
     assert imported_node_uuids == {node_uuid}
 
-    # Check imported user is part of exported users
-    assert imported_user_emails == set(users_email)
-
-    # Check same number of comments (2) pertaining to each user were ex- and imported
-    assert len(imported_user_one_comment_uuids) == len(user_one_comments_uuid)
-    assert len(imported_user_two_comment_uuids) == len(user_two_comments_uuid)
-
-    # Check imported comments equal exported comments pertaining to specific user
-    assert imported_user_one_comment_uuids == set(user_one_comments_uuid)
-    assert imported_user_two_comment_uuids == set(user_two_comments_uuid)
+    # Check imported comments equal exported comments
+    assert imported_comment_uuids == comment_uuids
 
 
 def test_mtime_of_imported_comments(tmp_path, aiida_profile_clean):
     """Test mtime does not change for imported comments
     This is related to correct usage of `merge_comments` when importing.
     """
-    # Get user
-    user = orm.User.collection.get_default()
-
     comment_content = 'You get what you give'
 
     # Create node
@@ -278,7 +234,7 @@ def test_mtime_of_imported_comments(tmp_path, aiida_profile_clean):
     calc.seal()
 
     # Create comment
-    orm.Comment(calc, user, comment_content).store()
+    orm.Comment(calc, comment_content).store()
     calc.store()
 
     # Save UUIDs and mtime
@@ -325,11 +281,10 @@ def test_import_arg_comment_mode(tmp_path):
     Test import of 'old' comment that has since been changed in DB.
     """
     # set up initial database
-    user = orm.User.collection.get_default()
     calc = orm.CalculationNode().store()
     calc.seal()
     calc_uuid = calc.uuid
-    cmt = orm.Comment(calc, user, COMMENTS[0]).store()
+    cmt = orm.Comment(calc, COMMENTS[0]).store()
     cmt_uuid = cmt.uuid
 
     # Export calc and comment
@@ -423,10 +378,6 @@ def test_reimport_of_comments_for_single_node(tmp_path, aiida_profile_clean):
         'NEW': 'export_NEW_db.tar.gz',
     }
 
-    # Get user
-    # Will have to do this again after resetting the DB
-    user = orm.User.collection.get_default()
-
     ## Part I
     # Create node and save UUID
     calc = orm.CalculationNode()
@@ -435,7 +386,7 @@ def test_reimport_of_comments_for_single_node(tmp_path, aiida_profile_clean):
     calc_uuid = calc.uuid
 
     # Create first comment
-    orm.Comment(calc, user, COMMENTS[0]).store()
+    orm.Comment(calc, COMMENTS[0]).store()
 
     # There should be exactly: 1 CalculationNode, 1 Comment
     export_calcs = orm.QueryBuilder().append(orm.CalculationNode, project=['uuid'])
@@ -452,7 +403,7 @@ def test_reimport_of_comments_for_single_node(tmp_path, aiida_profile_clean):
 
     # Add remaining Comments
     for comment in COMMENTS[1:]:
-        orm.Comment(calc, user, comment).store()
+        orm.Comment(calc, comment).store()
 
     # There should be exactly: 1 CalculationNode, 3 Comments (len(COMMENTS))
     export_calcs = orm.QueryBuilder().append(orm.CalculationNode, project=['uuid'])
@@ -489,9 +440,8 @@ def test_reimport_of_comments_for_single_node(tmp_path, aiida_profile_clean):
 
     # Add remaining Comments (again)
     calc = orm.load_node(import_calcs.all()[0][0])  # Reload CalculationNode
-    user = orm.User.collection.get_default()  # Get user - again
     for comment in COMMENTS[1:]:
-        orm.Comment(calc, user, comment).store()
+        orm.Comment(calc, comment).store()
 
     # There should be exactly: 1 CalculationNode, 4 Comments (len(COMMENTS))
     export_calcs = orm.QueryBuilder().append(orm.CalculationNode, project=['uuid'])
@@ -565,9 +515,8 @@ def test_reimport_of_comments_for_single_node(tmp_path, aiida_profile_clean):
 
 def test_import_newest(tmp_path, aiida_profile):
     """Test `merge_comments='newest'"""
-    user = orm.User.collection.get_default()
     node = orm.Data().store()
-    comment_1 = orm.Comment(node, user, 'Comment old').store()
+    comment_1 = orm.Comment(node, 'Comment old').store()
     comment_1_uuid = comment_1.uuid
 
     export_file_old = tmp_path / 'export_old.aiida'

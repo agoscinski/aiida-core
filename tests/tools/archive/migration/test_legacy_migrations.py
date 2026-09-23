@@ -123,13 +123,11 @@ def test_no_node_migration(tmp_path, core_archive):
     archive_format.migrate(filepath_archive, new_archive, archive_format.latest_version)
     assert archive_format.read_version(new_archive) == archive_format.latest_version
 
-    # Check known entities
+    # Check known entities (legacy user rows are ignored on import; only nodes/groups carry a profile label)
     with archive_format.open(new_archive, 'r') as reader:
         assert reader.querybuilder().append(orm.Node).count() == 0
         computer_query = reader.querybuilder().append(orm.Computer, project=['uuid'])
         assert computer_query.all(flat=True) == ['4f33c6fd-b624-47df-9ffb-a58f05d323af']
-        user_query = reader.querybuilder().append(orm.User, project=['email'])
-        assert set(user_query.all(flat=True)) == {'aiida@localhost'}
 
 
 @pytest.mark.parametrize('version', ['0.0', '0.1.0', '0.99'])

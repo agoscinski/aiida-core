@@ -11,6 +11,7 @@
 The tests highlight the features of the archive abstraction.
 """
 
+import datetime
 from io import BytesIO
 
 import pytest
@@ -28,25 +29,28 @@ def test_write_read(tmp_path):
 
     with archive_format.open(archive_path, 'x') as writer:
         # this should insert nothing
-        writer.bulk_insert(EntityTypes.USER, [])
+        writer.bulk_insert(EntityTypes.GROUP, [])
         # this should fail due to missing fields
         with pytest.raises(IntegrityError, match='Incorrect fields'):
-            writer.bulk_insert(EntityTypes.USER, [{}])
-        user_row1 = {
+            writer.bulk_insert(EntityTypes.GROUP, [{}])
+        group_row1 = {
             'id': 1,
-            'email': 'jon@doe.com',
-            'first_name': 'John',
-            'last_name': 'Doe',
-            'institution': 'Doe Inc.',
+            'uuid': 'a1b2c3d4e5f6477890abcdef12345678',
+            'label': 'test-group',
+            'type_string': '',
+            'time': datetime.datetime.now(tz=datetime.timezone.utc),
+            'description': 'Test group',
+            'extras': {},
+            'profile_uuid': 'profile-uuid-1',
         }
         # should fail due to unknown field
         with pytest.raises(IntegrityError, match='Incorrect fields'):
-            writer.bulk_insert(EntityTypes.USER, [{**user_row1, **{'unknown': 'field'}}])
-        # correctly add a user
-        writer.bulk_insert(EntityTypes.USER, [user_row1])
+            writer.bulk_insert(EntityTypes.GROUP, [{**group_row1, **{'unknown': 'field'}}])
+        # correctly add a group
+        writer.bulk_insert(EntityTypes.GROUP, [group_row1])
         # should fail unique constraint
         with pytest.raises(IntegrityError):
-            writer.bulk_insert(EntityTypes.USER, [user_row1])
+            writer.bulk_insert(EntityTypes.GROUP, [group_row1])
         # add an object to the repository
         object_key1 = writer.put_object(BytesIO(b'hallo'))
         # adding the same object again should be a no-op (due to de-duplication)
@@ -59,13 +63,14 @@ def test_write_read(tmp_path):
     with archive_format.open(archive_path, 'r') as reader:
         # get the metadata
         assert isinstance(reader.get_metadata(), dict)
-        # retrieve the user
-        query = reader.querybuilder().append(orm.User, tag='user', project=['**'])
+        # retrieve the group
+        query = reader.querybuilder().append(orm.Group, tag='group', project=['**'])
         assert query.count() == 1
-        user_data = query.dict()[0]['user']
-        assert user_data == user_row1
-        user = reader.get(orm.User, pk=user_data['id'])
-        assert user.email == user_data['email']
+        group_data = query.dict()[0]['group']
+        assert group_data['label'] == group_row1['label']
+        assert group_data['profile_uuid'] == group_row1['profile_uuid']
+        group = reader.get(orm.Group, pk=group_data['id'])
+        assert group.label == group_data['label']
         # retrieve the object
         repository = reader.get_backend().get_repository()
         assert set(repository.list_objects()) == {object_key1}
@@ -74,15 +79,18 @@ def test_write_read(tmp_path):
 
     # now append to the archive
     with archive_format.open(archive_path, 'a') as appender:
-        # add a second user
-        user_row2 = {
+        # add a second group
+        group_row2 = {
             'id': 2,
-            'email': 'jane@smith.com',
-            'first_name': 'Jane',
-            'last_name': 'Smith',
-            'institution': 'Doe Inc.',
+            'uuid': 'b1b2c3d4e5f6477890abcdef12345678',
+            'label': 'other-group',
+            'type_string': '',
+            'time': datetime.datetime.now(tz=datetime.timezone.utc),
+            'description': 'Other group',
+            'extras': {},
+            'profile_uuid': 'profile-uuid-1',
         }
-        appender.bulk_insert(EntityTypes.USER, [user_row2])
+        appender.bulk_insert(EntityTypes.GROUP, [group_row2])
         # delete the existing object
         appender.delete_object(object_key1)
         # add an object to the repository
@@ -90,7 +98,7 @@ def test_write_read(tmp_path):
 
     # read the amended archive and check the content
     with archive_format.open(archive_path, 'r') as reader:
-        query = reader.querybuilder().append(orm.User, tag='user', project=['**'])
+        query = reader.querybuilder().append(orm.Group, tag='group', project=['**'])
         assert query.count() == 2
         repository = reader.get_backend().get_repository()
         assert set(repository.list_objects()) == {object_key2}

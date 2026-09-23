@@ -84,7 +84,7 @@ def generate_archive_main_0001(dest_dir) -> str:
 
     This defines the fixture in code: one computer, one code, one sealed
     ``CalcJobNode`` with ``INPUT_CALC``/``CREATE`` links, seven bare data
-    nodes, four groups and one user.
+    nodes and four groups.
 
     :param dest_dir: directory to write ``export_main_0001_simple.aiida`` into
     :return: absolute filepath of the generated archive
@@ -194,10 +194,17 @@ def generate_archive_main_0003(dest_dir) -> str:
     return _generate_archive(Path(dest_dir) / 'export_main_0003_simple.aiida', _build_main_0001_dataset)
 
 
+def generate_archive_main_0004(dest_dir) -> str:
+    """Generate the reference simple archive for the ``main_0004`` head version."""
+    from pathlib import Path
+
+    return _generate_archive(Path(dest_dir) / 'export_main_0004_simple.aiida', _build_main_0001_dataset)
+
+
 def generate_archive_head(dest_dir) -> str:
     """Generate the reference simple archive for the head version.
 
-    Currently redirects to :func:`generate_archive_main_0003`. Dispatches
+    Currently redirects to :func:`generate_archive_main_0004`. Dispatches
     explicitly per revision so a future head without a registered builder
     fails loudly instead of silently reusing stale content.
 
@@ -212,6 +219,7 @@ def generate_archive_head(dest_dir) -> str:
     builders = {
         'main_0001': generate_archive_main_0001,
         'main_0003': generate_archive_main_0003,
+        'main_0004': generate_archive_main_0004,
     }
     try:
         builder = builders[head]
@@ -244,7 +252,6 @@ def _generate_archive(dest, build_dataset) -> str:
         assert reader.querybuilder().append(orm.Node).count() == 10
         assert reader.querybuilder().append(orm.Group).count() == 4
         assert reader.querybuilder().append(orm.Computer).count() == 1
-        assert reader.querybuilder().append(orm.User).count() == 1
     return str(dest)
 
 

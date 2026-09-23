@@ -204,16 +204,10 @@ def test_complex_export_filter_size(tmp_path, aiida_profile_clean):
     # Create multiple entity types to test different code paths
     nb_entities = 10
 
-    # Create users (will need nodes attached to be exported)
-    users = []
-    for i in range(nb_entities):
-        user = orm.User(email=f'user{i}@example.com').store()
-        users.append(user)
-
-    # Create nodes with different users
+    # Create nodes
     nodes = []
-    for i, user in enumerate(users):
-        node = orm.Int(i, user=user)
+    for i in range(nb_entities):
+        node = orm.Int(i)
         node.label = f'node_{i}'
         node.store()
         nodes.append(node)
@@ -238,7 +232,6 @@ def test_complex_export_filter_size(tmp_path, aiida_profile_clean):
 
     # Check all entities were properly exported/imported
     assert orm.QueryBuilder().append(orm.Node).count() == len(nodes)
-    assert orm.QueryBuilder().append(orm.User).count() == nb_entities + 1  # +1 for default user
 
     # Assert for calculation nodes specifically
     calc_node_count = orm.QueryBuilder().append(orm.CalculationNode).count()

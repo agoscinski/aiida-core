@@ -14,6 +14,7 @@ import pytest
 
 from aiida import orm
 from aiida.common.links import LinkType
+from aiida.manage import get_manager
 from aiida.orm import load_group
 from aiida.tools.archive import create_archive, import_archive
 
@@ -22,21 +23,14 @@ def test_nodes_in_group(aiida_profile_clean, tmp_path, aiida_localhost):
     """This test checks that nodes that belong to a specific group are
     correctly imported and exported.
     """
-    # Create another user
-    new_email = uuid.uuid4().hex
-    user = orm.User(email=new_email)
-    user.store()
-
     # Create a structure data node that has a calculation as output
     sd1 = orm.StructureData(pbc=False)
-    sd1.user = user
     sd1.label = 'sd1'
     sd1.store()
 
     jc1 = orm.CalcJobNode()
     jc1.computer = aiida_localhost
     jc1.set_option('resources', {'num_machines': 1, 'num_mpiprocs_per_machine': 1})
-    jc1.user = user
     jc1.label = 'jc1'
     jc1.base.links.add_incoming(sd1, link_type=LinkType.INPUT_CALC, link_label='link')
     jc1.store()
@@ -55,10 +49,10 @@ def test_nodes_in_group(aiida_profile_clean, tmp_path, aiida_localhost):
     aiida_profile_clean.reset_storage()
     import_archive(filename1)
 
-    # Check that the imported nodes are correctly imported and that
-    # the user assigned to the nodes is the right one
+    # Check that the imported nodes are correctly imported and keep their profile association
+    profile_uuid = get_manager().get_profile().uuid
     for node_uuid in n_uuids:
-        assert orm.load_node(node_uuid).user.email == new_email
+        assert orm.load_node(node_uuid).profile_uuid == profile_uuid
 
     # Check that the exported group is imported correctly
     builder = orm.QueryBuilder()
@@ -68,14 +62,8 @@ def test_nodes_in_group(aiida_profile_clean, tmp_path, aiida_localhost):
 
 def test_group_export(tmp_path, aiida_profile_clean):
     """Exporting a group includes its extras and nodes."""
-    # Create a new user
-    new_email = uuid.uuid4().hex
-    user = orm.User(email=new_email)
-    user.store()
-
     # Create a structure data node
     sd1 = orm.StructureData(pbc=False)
-    sd1.user = user
     sd1.label = 'sd1'
     sd1.store()
 
@@ -93,10 +81,10 @@ def test_group_export(tmp_path, aiida_profile_clean):
     aiida_profile_clean.reset_storage()
     import_archive(filename)
 
-    # Check that the imported nodes are correctly imported and that
-    # the user assigned to the nodes is the right one
+    # Check that the imported nodes are correctly imported and keep their profile association
+    profile_uuid = get_manager().get_profile().uuid
     for node_uuid in n_uuids:
-        assert orm.load_node(node_uuid).user.email == new_email
+        assert orm.load_node(node_uuid).profile_uuid == profile_uuid
 
     # Check that the exported group is imported correctly
     builder = orm.QueryBuilder()
@@ -112,14 +100,8 @@ def test_group_import_existing(tmp_path, aiida_profile_clean):
     """
     grouplabel = 'node_group_existing'
 
-    # Create another user
-    new_email = 'newuser@new.n'
-    user = orm.User(email=new_email)
-    user.store()
-
     # Create a structure data node
     sd1 = orm.StructureData(pbc=False)
-    sd1.user = user
     sd1.label = 'sd'
     sd1.store()
 
