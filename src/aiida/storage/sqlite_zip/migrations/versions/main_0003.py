@@ -19,8 +19,7 @@ the legacy ``core.ssh`` conversion. See ``aiida.storage.psql_dos.migrations.vers
 for the rationale.
 
 The rename has no inverse: once both kinds of computers share the ``core.ssh`` transport type, they
-can no longer be told apart. The downgrade therefore only restores the schema revision and leaves
-the transport types as they are.
+can no longer be told apart. Downgrading is therefore not supported.
 
 Revision ID: main_0003
 Revises: main_0002
@@ -45,4 +44,4 @@ def upgrade():
 
 def downgrade():
     """Migrations for the downgrade."""
-    pass
+    raise NotImplementedError('Downgrade of main_0003.')

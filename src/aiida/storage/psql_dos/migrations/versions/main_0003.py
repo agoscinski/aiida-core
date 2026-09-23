@@ -25,7 +25,7 @@ The legacy paramiko-based ``core.ssh`` transport plugin was removed in v3.0, and
 
 Note that neither step has an inverse: once both kinds of computers share the ``core.ssh`` transport
 type they can no longer be told apart, and the parameters that were converted are gone from the
-database. The downgrade therefore only restores the schema revision.
+database. Downgrading is therefore not supported.
 
 Revision ID: main_0003
 Revises: main_0002
@@ -49,3 +49,4 @@ def upgrade():
 
 def downgrade():
     """Migrations for the downgrade."""
+    raise NotImplementedError('Downgrade of main_0003.')

@@ -14,7 +14,7 @@ Migration steps:
    asynchronous ``core.ssh`` transport plugin.
 
 See the ``main_0003`` revision of the ``psql_dos`` backend for the rationale of the transport
-rename, which likewise has no inverse: the downgrade only restores the schema revision.
+migration, which likewise has no inverse: downgrading is not supported.
 
 Revision ID: main_0003
 Revises: main_0002
@@ -63,4 +63,4 @@ def upgrade():
 
 def downgrade():
     """Migrations for the downgrade."""
-    pass
+    raise NotImplementedError('Downgrade of main_0003.')
