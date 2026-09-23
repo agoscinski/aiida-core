@@ -19,7 +19,6 @@ from aiida.orm.implementation import (
     BackendGroup,
     BackendLog,
     BackendNode,
-    BackendUser,
 )
 
 
@@ -82,13 +81,6 @@ def _(backend_entity):
     from aiida.orm import computers
 
     return from_backend_entity(computers.Computer, backend_entity)
-
-
-@get_orm_entity.register(BackendUser)
-def _(backend_entity):
-    from aiida.orm import users
-
-    return from_backend_entity(users.User, backend_entity)
 
 
 @get_orm_entity.register(BackendAuthInfo)

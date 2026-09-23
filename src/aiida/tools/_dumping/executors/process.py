@@ -431,16 +431,10 @@ class NodeMetadataWriter:
             'process_type',
             'is_finished_ok',
         )
-        user_properties = ('first_name', 'last_name', 'email', 'institution')
         computer_properties = ('label', 'hostname', 'scheduler_type', 'transport_type')
 
         metadata_dict = {prop: getattr(process_node, prop, None) for prop in node_properties}
         node_dict = {'Node data': metadata_dict}
-
-        with contextlib.suppress(AttributeError):
-            node_dbuser = process_node.user
-            user_dict = {prop: getattr(node_dbuser, prop, None) for prop in user_properties}
-            node_dict['User data'] = user_dict
 
         with contextlib.suppress(AttributeError):
             node_dbcomputer = process_node.computer

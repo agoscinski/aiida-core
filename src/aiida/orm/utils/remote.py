@@ -56,21 +56,13 @@ def clean_mapping_remote_paths(path_mapping, silent=False):
     :param silent: if True, the success message output will be suppressed
     """
 
-    user = orm.User.collection.get_default()
-
-    if not user:
-        raise ValueError('No default user found')
-
     for computer_uuid, paths in path_mapping.items():
         counter = 0
         computer = orm.load_computer(uuid=computer_uuid)
         try:
-            authinfo = orm.AuthInfo.collection.get(dbcomputer_id=computer.pk, aiidauser_id=user.pk)
+            authinfo = orm.AuthInfo.collection.get(dbcomputer_id=computer.pk)
         except NotExistent:
-            echo.echo_warning(
-                f'Skipping {len(paths)} remote folders on `{computer.label}`: '
-                f'computer is not configured for user `{user.email}`'
-            )
+            echo.echo_warning(f'Skipping {len(paths)} remote folders on `{computer.label}`: computer is not configured')
             continue
 
         transport = authinfo.get_transport()
@@ -89,20 +81,18 @@ def get_calcjob_remote_paths(
     past_days: int | None = None,
     older_than: int | None = None,
     computers: Sequence[orm.Computer] | None = None,
-    user: orm.User | None = None,
     backend: StorageBackend | None = None,
     exit_status: int | None = None,
     only_not_cleaned: bool = False,
 ) -> dict[str, list[RemoteData]] | None:
     """Return a mapping of computer uuids to a list of remote paths, for a given set of calcjobs. The set of
     calcjobs will be determined by a query with filters based on the pks, past_days, older_than,
-    computers and user arguments.
+    computers arguments.
 
     :param pks: only include calcjobs with a pk in this list
     :param past_days: only include calcjobs created since past_days
     :param older_than: only include calcjobs older than
     :param computers: only include calcjobs that were ran on these computers
-    :param user: only include calcjobs of this user
     :param exit_status: only select calcjob with this exit_status
     :param only_not_cleaned: only include calcjobs whose workdir have not been cleaned
     :return: mapping of computer uuid and list of remote folder
@@ -115,12 +105,6 @@ def get_calcjob_remote_paths(
     filters_calc: dict[str, t.Any] = {}
     filters_computer = {}
     filters_remote = {}
-
-    if user is None:
-        if backend:
-            user = orm.User.get_collection(backend).get_default()
-        else:
-            user = orm.User.collection.get_default()
 
     if computers is not None:
         filters_computer['id'] = {'in': [computer.pk for computer in computers]}
@@ -155,7 +139,6 @@ def get_calcjob_remote_paths(
         RemoteData, tag='remote', project=['*'], edge_filters={'label': 'remote_folder'}, filters=filters_remote
     )
     query.append(orm.Computer, with_node='calc', tag='computer', project=['uuid'], filters=filters_computer)
-    query.append(orm.User, with_node='calc', filters={'email': user.email})  # type: ignore[union-attr]
 
     if query.count() == 0:
         return None

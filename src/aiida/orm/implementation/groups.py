@@ -16,9 +16,6 @@ from collections.abc import Sequence
 from aiida.orm.implementation.entities import BackendCollection, BackendEntity, BackendEntityExtrasMixin
 from aiida.orm.implementation.nodes import BackendNode
 
-if t.TYPE_CHECKING:
-    from aiida.orm.implementation.users import BackendUser
-
 __all__ = ('BackendGroup', 'BackendGroupCollection')
 
 
@@ -77,13 +74,8 @@ class BackendGroup(BackendEntity, BackendEntityExtrasMixin):
 
     @property
     @abc.abstractmethod
-    def user(self) -> 'BackendUser':
-        """Return a backend user object, representing the user associated to this group."""
-
-    @user.setter
-    @abc.abstractmethod
-    def user(self, user: 'BackendUser') -> None:
-        """Set the user of this group."""
+    def profile_uuid(self) -> str:
+        """Return the UUID of the profile that owns this group."""
 
     @property
     @abc.abstractmethod
@@ -153,9 +145,9 @@ class BackendGroup(BackendEntity, BackendEntityExtrasMixin):
 
     def __str__(self) -> str:
         if self.type_string:
-            return f'"{self.label}" [type {self.type_string}], of user {self.user.email}'
+            return f'"{self.label}" [type {self.type_string}]'
 
-        return f'"{self.label}" [user-defined], of user {self.user.email}'
+        return f'"{self.label}" [user-defined]'
 
 
 class BackendGroupCollection(BackendCollection[BackendGroup]):

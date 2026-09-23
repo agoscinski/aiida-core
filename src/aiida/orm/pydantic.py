@@ -130,9 +130,9 @@ def OrmMetadataField(  # noqa: N802
     :param orm_class: The class, or entry point name thereof, to which the field should be converted. If this field is
         defined, the value of this field should accept an integer which will automatically be converted to an instance
         of said ORM class using ``orm_class.collection.get(id={field_value})``. This is useful, for example, where a
-        field represents an instance of a different entity, such as an instance of ``User``. The serialized data would
-        store the ``pk`` of the user, but the ORM entity instance would receive the actual ``User`` instance with that
-        primary key.
+        field represents an instance of a different entity, such as an instance of ``Computer``. The serialized data
+        would store the ``pk`` of the computer, but the ORM entity instance would receive the actual ``Computer``
+        instance with that primary key.
     :param orm_to_model: Optional callable to convert the value of a field from an ORM instance to a model instance.
         It optionally accepts a second argument, which is a dictionary of context values that may be used during the
         conversion.

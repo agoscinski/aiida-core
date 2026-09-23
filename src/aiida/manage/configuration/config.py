@@ -278,16 +278,6 @@ class ProfileOptionsSchema(BaseModel, defer_build=True):
 class GlobalOptionsSchema(ProfileOptionsSchema, defer_build=True):
     """Schema for the global options of an AiiDA instance."""
 
-    autofill__user__email: str | None = Field(None, description='Default user email to use when creating new profiles.')
-    autofill__user__first_name: str | None = Field(
-        None, description='Default user first name to use when creating new profiles.'
-    )
-    autofill__user__last_name: str | None = Field(
-        None, description='Default user last name to use when creating new profiles.'
-    )
-    autofill__user__institution: str | None = Field(
-        None, description='Default user institution to use when creating new profiles.'
-    )
     rest_api__profile_switching: bool = Field(
         False, description='Toggle whether the profile can be specified in requests submitted to the REST API.'
     )
@@ -324,7 +314,6 @@ class ProfileSchema(BaseModel, defer_build=True):
     uuid: str = Field(description='A UUID that uniquely identifies the profile.', default_factory=uuid.uuid4)
     storage: ProfileStorageConfig
     process_control: ProcessControlConfig
-    default_user_email: str | None = None
     test_profile: bool = False
     options: ProfileOptionsSchema | None = None
 
@@ -831,21 +820,6 @@ class Config:
         self.validate_profile(name)
         self._default_profile = name
         return self
-
-    def set_default_user_email(self, profile: Profile, user_email: str) -> None:
-        """Set the default user for the given profile.
-
-        .. warning::
-
-            This does not update the cached default user on the storage backend associated with the profile. To do so,
-            use :meth:`aiida.manage.manager.Manager.set_default_user_email` instead.
-
-        :param profile: The profile to update.
-        :param user_email: The email of the user to set as the default user.
-        """
-        profile.default_user_email = user_email
-        self.update_profile(profile)
-        self.store()
 
     @property
     def options(self):

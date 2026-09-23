@@ -39,7 +39,6 @@ from aiida.orm.nodes.links import NodeLinks
 from aiida.orm.pydantic import OrmMetadataField, OrmModel
 from aiida.orm.qb_fields import QbAttributesField, QbFields, add_field
 from aiida.orm.querybuilder import QueryBuilder
-from aiida.orm.users import User
 from aiida.orm.utils.node import (
     AbstractNodeMeta,
     get_query_type_from_type_string,
@@ -275,12 +274,10 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
             read_only=True,
             examples=[42],
         )
-        user: int = OrmMetadataField(
-            description='The PK of the user who owns the node',
-            orm_to_model=lambda node: t.cast(Node, node).user.pk,
-            orm_class=User,
+        profile_uuid: str = OrmMetadataField(
+            description='The UUID of the profile that owns the node',
+            orm_to_model=lambda node: t.cast(Node, node).profile_uuid,
             read_only=True,
-            examples=[7],
         )
 
     class WriteModel(WritableFields, BaseNodeModel, Entity.WriteModel):
@@ -339,12 +336,11 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
     def __init__(
         self,
         backend: StorageBackend | None = None,
-        user: User | None = None,
         computer: Computer | None = None,
         extras: dict[str, t.Any] | None = None,
         **kwargs: t.Any,
     ) -> None:
-        backend_entity = create_backend_node(self.class_node_type, backend, user, computer, **kwargs)
+        backend_entity = create_backend_node(self.class_node_type, backend, computer, **kwargs)
         super().__init__(backend_entity)
         if extras:
             self.base.extras.set_many(extras)
@@ -785,21 +781,9 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
         self.backend_entity.computer = None if computer is None else computer.backend_entity
 
     @property
-    def user(self) -> User:
-        """Return the user of this node."""
-        return from_backend_entity(User, self._backend_entity.user)
-
-    @user.setter
-    def user(self, user: User) -> None:
-        """Set the user of this node.
-
-        :param user: a `User`
-        """
-        if self.is_stored:
-            raise exceptions.ModificationNotAllowed('cannot set the user on a stored node')
-
-        type_check(user, User)
-        self.backend_entity.user = user.backend_entity
+    def profile_uuid(self) -> str:
+        """Return the UUID of the profile that owns this node."""
+        return self._backend_entity.profile_uuid
 
     @property
     def ctime(self) -> datetime.datetime:
@@ -1378,7 +1362,6 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
 def create_backend_node(
     node_type: str,
     backend: StorageBackend | None = None,
-    user: User | None = None,
     computer: Computer | None = None,
     **kwargs: t.Any,
 ) -> BackendNode:
@@ -1388,14 +1371,9 @@ def create_backend_node(
         raise ValueError('the computer is not stored')
 
     backend_computer = computer.backend_entity if computer else None
-    user = user if user else backend.default_user
-
-    if user is None:
-        raise ValueError('the user cannot be None')
 
     backend_entity = backend.nodes.create(
         node_type=node_type,
-        user=user.backend_entity,
         computer=backend_computer,
         **kwargs,
     )

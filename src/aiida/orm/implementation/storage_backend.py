@@ -31,9 +31,7 @@ if t.TYPE_CHECKING:
         BackendLogCollection,
         BackendNodeCollection,
         BackendQueryBuilder,
-        BackendUserCollection,
     )
-    from aiida.orm.users import User
     from aiida.repository.backend.abstract import AbstractRepositoryBackend
 
 __all__ = ('StorageBackend',)
@@ -113,7 +111,6 @@ class StorageBackend(abc.ABC):
         from aiida.orm.autogroup import AutogroupManager
 
         self._profile = profile
-        self._default_user: User | None = None
         self._autogroup = AutogroupManager(self)
 
     @abc.abstractmethod
@@ -153,16 +150,7 @@ class StorageBackend(abc.ABC):
         """
         from aiida.orm.autogroup import AutogroupManager
 
-        self.reset_default_user()
         self._autogroup = AutogroupManager(self)
-
-    def reset_default_user(self) -> None:
-        """Reset the default user.
-
-        This should be done when the default user of the storage backend is changed on the corresponding profile because
-        the old default user is cached on this instance.
-        """
-        self._default_user = None
 
     @property
     @abc.abstractmethod
@@ -193,24 +181,6 @@ class StorageBackend(abc.ABC):
     @abc.abstractmethod
     def nodes(self) -> BackendNodeCollection:
         """Return the collection of nodes"""
-
-    @property
-    @abc.abstractmethod
-    def users(self) -> BackendUserCollection:
-        """Return the collection of users"""
-
-    @property
-    def default_user(self) -> User | None:
-        """Return the default user for the profile, if it has been created.
-
-        This is cached, since it is a frequently used operation, for creating other entities.
-        """
-        from aiida.orm import QueryBuilder, User
-
-        if self._default_user is None and self.profile.default_user_email:
-            query = QueryBuilder(self).append(User, filters={'email': self.profile.default_user_email})
-            self._default_user = query.first(flat=True)
-        return self._default_user
 
     @abc.abstractmethod
     def query(self) -> BackendQueryBuilder:
@@ -467,14 +437,9 @@ class StorageBackend(abc.ABC):
         :param detailed: flag to request more detailed information about the content of the storage.
         :returns: a nested dict with the relevant information.
         """
-        from aiida.orm import Comment, Computer, Group, Log, Node, QueryBuilder, User
+        from aiida.orm import Comment, Computer, Group, Log, Node, QueryBuilder
 
         data: dict[str, t.Any] = {}
-
-        query_user = QueryBuilder(self).append(User, project=['email'])
-        data['Users'] = {'count': query_user.count()}
-        if detailed:
-            data['Users']['emails'] = sorted({email for (email,) in query_user.iterall() if email is not None})
 
         query_comp = QueryBuilder(self).append(Computer, project=['label'])
         data['Computers'] = {'count': query_comp.count()}

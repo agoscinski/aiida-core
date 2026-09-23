@@ -1791,21 +1791,10 @@ def get_bands_and_parents_structure(args, backend=None):
     from aiida import orm
     from aiida.common import timezone
 
-    if backend:
-        user = orm.User.get_collection(backend).get_default()
-    else:
-        user = orm.User.collection.get_default()
-
-    assert user is not None
-
     q_build = orm.QueryBuilder(backend=backend)
-    if args.all_users is False:
-        q_build.append(orm.User, tag='creator', filters={'email': user.email})
-    else:
-        q_build.append(orm.User, tag='creator')
+    with_args = {}
 
     group_filters = {}
-    with_args = {}
 
     if args.group_name is not None:
         group_filters.update({'label': {'in': args.group_name}})
@@ -1813,13 +1802,8 @@ def get_bands_and_parents_structure(args, backend=None):
         group_filters.update({'id': {'in': args.group_pk}})
 
     if group_filters:
-        q_build.append(orm.Group, tag='group', filters=group_filters, with_user='creator')
+        q_build.append(orm.Group, tag='group', filters=group_filters)
         with_args = {'with_group': 'group'}
-    else:
-        # Note: This is a workaround for the QB constraint of not allowing multiple ``with_*`` criteria. Correctly we
-        # would like to specify with_user always on the ``BandsData`` directly and optionally add with_group. Until this
-        # is resolved, add the ``with_user`` on the group if specified and on the ``BandsData`` if not.
-        with_args = {'with_user': 'creator'}
 
     bdata_filters = {}
     if args.past_days is not None:

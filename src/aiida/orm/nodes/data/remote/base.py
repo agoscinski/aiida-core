@@ -171,7 +171,7 @@ class RemoteData(Data):
         When the cleaning operation is successful, the extra with the key ``RemoteData.KEY_EXTRA_CLEANED`` is set.
 
         :param transport: Provide an optional transport that is already open. If not provided, a transport will be
-            automatically opened, based on the current default user and the computer of this data node. Passing in the
+            automatically opened, based on the computer of this data node. Passing in the
             transport can be used for efficiency if a great number of nodes need to be cleaned for the same computer.
             Note that the user should take care that the correct transport is passed.
         :raises ValueError: If the hostname of the provided transport does not match that of the node's computer.
@@ -206,7 +206,7 @@ class RemoteData(Data):
             raise ValidationError('Remote computer not set.')
 
     def get_authinfo(self):
-        return AuthInfo.get_collection(self.backend).get(dbcomputer=self.computer, aiidauser=self.user)
+        return AuthInfo.get_collection(self.backend).get(dbcomputer=self.computer)
 
     def get_size_on_disk(
         self,

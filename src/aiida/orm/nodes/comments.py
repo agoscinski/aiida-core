@@ -5,7 +5,6 @@ from __future__ import annotations
 import typing as t
 
 from aiida.orm.comments import Comment
-from aiida.orm.users import User
 
 if t.TYPE_CHECKING:
     from aiida.orm.nodes.node import Node
@@ -18,16 +17,13 @@ class NodeComments:
         """Initialize the comments interface."""
         self._node = node
 
-    def add(self, content: str, user: User | None = None) -> Comment:
+    def add(self, content: str) -> Comment:
         """Add a new comment.
 
         :param content: string with comment
-        :param user: the user to associate with the comment, will use default if not supplied
         :return: the newly created comment
         """
-        user = user or User.get_collection(self._node.backend).get_default()
-        assert user is not None
-        return Comment(backend=self._node.backend, node=self._node, user=user, content=content).store()
+        return Comment(backend=self._node.backend, node=self._node, content=content).store()
 
     def get(self, identifier: int) -> Comment:
         """Return a comment corresponding to the given identifier.

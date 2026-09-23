@@ -1249,7 +1249,7 @@ def _get_ormclass_from_cls(cls: EntityClsType) -> tuple[EntityTypes, Classifier]
     """
     # Note: Unable to move this import to the top of the module for some reason
     from aiida.engine import Process
-    from aiida.orm import authinfos, comments, computers, groups, logs, nodes, users
+    from aiida.orm import authinfos, comments, computers, groups, logs, nodes
     from aiida.orm.utils.node import is_valid_node_type_string
 
     classifiers: Classifier
@@ -1265,9 +1265,6 @@ def _get_ormclass_from_cls(cls: EntityClsType) -> tuple[EntityTypes, Classifier]
     elif issubclass(cls, computers.Computer):
         classifiers = Classifier('computer')
         ormclass = EntityTypes.COMPUTER
-    elif issubclass(cls, users.User):
-        classifiers = Classifier('user')
-        ormclass = EntityTypes.USER
     elif issubclass(cls, authinfos.AuthInfo):
         classifiers = Classifier('authinfo')
         ormclass = EntityTypes.AUTHINFO
@@ -1313,9 +1310,6 @@ def _get_ormclass_from_str(type_string: str) -> tuple[EntityTypes, Classifier]:
     elif type_string_lower == EntityTypes.COMPUTER.value:
         classifiers = Classifier('computer')
         ormclass = EntityTypes.COMPUTER
-    elif type_string_lower == EntityTypes.USER.value:
-        classifiers = Classifier('user')
-        ormclass = EntityTypes.USER
     elif type_string_lower == EntityTypes.LINK.value:
         classifiers = Classifier('link')
         ormclass = EntityTypes.LINK

@@ -47,14 +47,6 @@ def _load_code_validator(value: int | str | orm.AbstractCode) -> orm.AbstractCod
         return orm.load_code(identifier=value)
 
 
-def _validate_user_input(value: orm.User | str | None) -> orm.User | None:
-    """Load User object from email string."""
-    if value is None or isinstance(value, orm.User):
-        return value
-    elif isinstance(value, str):
-        return orm.User.collection.get(email=value)
-
-
 def _validate_computers_input(value: list[orm.Computer] | list[str] | None) -> list[orm.Computer] | None:
     """Load Computer objects from identifiers."""
     if not value:
@@ -173,18 +165,12 @@ class EntityFilterMixin(BaseModel):
         arbitrary_types_allowed=True,
         validate_assignment=True,
     )
-    user: orm.User | None = Field(default=None, description='User object or email to filter by')
     computers: list[orm.Computer] | None = Field(
         default=None, description='List of Computer objects or UUIDs/labels to filter by'
     )
     codes: list[orm.AbstractCode] | None = Field(
         default=None, description='List of code objects or UUIDs/labels to filter by'
     )
-
-    @field_validator('user', mode='before')
-    @classmethod
-    def validate_user(cls, v):
-        return _validate_user_input(v)
 
     @field_validator('computers', mode='before')
     @classmethod
@@ -242,15 +228,7 @@ class GroupDumpConfig(BaseDumpConfig, ProcessHandlingMixin, TimeFilterMixin, Ent
     @property
     def filters_set(self) -> bool:
         """Check if any filters are configured."""
-        return bool(
-            self.codes
-            or self.computers
-            or self.groups
-            or self.past_days
-            or self.start_date
-            or self.end_date
-            or self.user
-        )
+        return bool(self.codes or self.computers or self.groups or self.past_days or self.start_date or self.end_date)
 
 
 class ProfileDumpConfig(BaseDumpConfig, ProcessHandlingMixin, TimeFilterMixin, EntityFilterMixin, GroupManagementMixin):
@@ -277,15 +255,7 @@ class ProfileDumpConfig(BaseDumpConfig, ProcessHandlingMixin, TimeFilterMixin, E
     @property
     def filters_set(self) -> bool:
         """Check if any filters are configured."""
-        return bool(
-            self.codes
-            or self.computers
-            or self.groups
-            or self.past_days
-            or self.start_date
-            or self.end_date
-            or self.user
-        )
+        return bool(self.codes or self.computers or self.groups or self.past_days or self.start_date or self.end_date)
 
 
 # Rebuild all models to resolve forward references

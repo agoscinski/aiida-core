@@ -157,14 +157,12 @@ def import_archive(
         # To ensure we do not corrupt the backend database on a faulty import,
         # Every addition/update is made in a single transaction, which is commited on exit
         with backend.transaction():
-            user_ids_archive_backend = _import_users(backend_from, backend, batch_size, filter_size)
             computer_ids_archive_backend = _import_computers(backend_from, backend, batch_size, filter_size)
             if include_authinfos:
                 _import_authinfos(
                     backend_from,
                     backend,
                     batch_size,
-                    user_ids_archive_backend,
                     computer_ids_archive_backend,
                 )
             node_ids_archive_backend = _import_nodes(
@@ -172,7 +170,6 @@ def import_archive(
                 backend,
                 batch_size,
                 filter_size,
-                user_ids_archive_backend,
                 computer_ids_archive_backend,
                 import_new_extras,
                 merge_extras,
@@ -183,14 +180,11 @@ def import_archive(
                 backend,
                 batch_size,
                 filter_size,
-                user_ids_archive_backend,
                 node_ids_archive_backend,
                 merge_comments,
             )
             _import_links(backend_from, backend, batch_size, node_ids_archive_backend)
-            group_labels = _import_groups(
-                backend_from, backend, batch_size, filter_size, user_ids_archive_backend, node_ids_archive_backend
-            )
+            group_labels = _import_groups(backend_from, backend, batch_size, filter_size, node_ids_archive_backend)
             import_group_id = None
             if create_group:
                 import_group_id = _make_import_group(group, group_labels, node_ids_archive_backend, backend, batch_size)
@@ -254,52 +248,6 @@ def _add_new_entities(
                 new_ids = backend_to.bulk_insert(etype, rows_batch)
                 backend_unique_id.update({row[unique_field]: pk for pk, row in zip(new_ids, rows_batch)})
                 progress.update(nrows)
-
-
-def _import_users(
-    backend_from: StorageBackend, backend_to: StorageBackend, batch_size: int, filter_size: int
-) -> dict[int, int]:
-    """Import users from one backend to another.
-
-    :returns: mapping of input backend id to output backend id
-    """
-    # get the records from the input backend
-    qbuilder = QueryBuilder(backend=backend_from)
-    input_id_email = dict(qbuilder.append(orm.User, project=['id', 'email']).all(batch_size=batch_size))
-
-    # get matching emails from the backend
-    output_email_id: dict[str, int] = {}
-    if input_id_email:
-        output_email_id = dict(
-            orm.QueryBuilder(backend=backend_to)
-            .append(orm.User, filters={'email': {'in': list(set(input_id_email.values()))}}, project=['email', 'id'])
-            .all(batch_size=batch_size)
-        )
-
-    new_users = len(input_id_email) - len(output_email_id)
-    existing_users = len(output_email_id)
-
-    if existing_users:
-        IMPORT_LOGGER.report(f'Skipping {existing_users} existing User(s)')
-    if new_users:
-        # add new users and update output_email_id with their email -> id mapping
-        def transform(row):
-            return {k: v for k, v in row['entity'].items() if k != 'id'}
-
-        _add_new_entities(
-            EntityTypes.USER,
-            new_users,
-            'email',
-            output_email_id,
-            backend_from,
-            backend_to,
-            batch_size,
-            filter_size,
-            transform,
-        )
-
-    # generate mapping of input backend id to output backend id
-    return {int(i): output_email_id[email] for i, email in input_id_email.items()}
 
 
 def _import_computers(
@@ -380,50 +328,41 @@ def _import_authinfos(
     backend_from: StorageBackend,
     backend_to: StorageBackend,
     batch_size: int,
-    user_ids_archive_backend: dict[int, int],
     computer_ids_archive_backend: dict[int, int],
 ) -> None:
-    """Import logs from one backend to another.
+    """Import authinfos from one backend to another.
 
-    :returns: mapping of input backend id to output backend id
+    AuthInfos are matched by computer: at most one row per computer exists.
     """
     # get the records from the input backend
     qbuilder = QueryBuilder(backend=backend_from)
-    input_id_user_comp = qbuilder.append(
+    input_id_comp = qbuilder.append(
         orm.AuthInfo,
-        project=['id', 'aiidauser_id', 'dbcomputer_id'],
+        project=['id', 'dbcomputer_id'],
     ).all(batch_size=batch_size)
 
-    # translate user_id / computer_id, from -> to
+    # translate computer_id, from -> to
     try:
-        to_user_id_comp_id = [
-            (user_ids_archive_backend[_user_id], computer_ids_archive_backend[_comp_id])
-            for _, _user_id, _comp_id in input_id_user_comp
-        ]
+        to_comp_id = [computer_ids_archive_backend[_comp_id] for _, _comp_id in input_id_comp]
     except KeyError as exception:
-        msg = f'Archive AuthInfo has unknown User/Computer: {exception}'
+        msg = f'Archive AuthInfo has unknown Computer: {exception}'
         raise ImportValidationError(msg)
 
-    # retrieve existing user_id / computer_id
-    backend_id_user_comp = []
-    if to_user_id_comp_id:
+    # retrieve existing computer_ids
+    backend_comp_ids = []
+    if to_comp_id:
         qbuilder = orm.QueryBuilder(backend=backend_to)
         qbuilder.append(
             orm.AuthInfo,
             filters={
-                'aiidauser_id': {'in': [_user_id for _user_id, _ in to_user_id_comp_id]},
-                'dbcomputer_id': {'in': [_comp_id for _, _comp_id in to_user_id_comp_id]},
+                'dbcomputer_id': {'in': to_comp_id},
             },
-            project=['id', 'aiidauser_id', 'dbcomputer_id'],
+            project=['id', 'dbcomputer_id'],
         )
-        backend_id_user_comp = [
-            (user_id, comp_id)
-            for _, user_id, comp_id in qbuilder.all(batch_size=batch_size)
-            if (user_id, comp_id) in to_user_id_comp_id
-        ]
+        backend_comp_ids = [comp_id for _, comp_id in qbuilder.all(batch_size=batch_size) if comp_id in to_comp_id]
 
-    new_authinfos = len(input_id_user_comp) - len(backend_id_user_comp)
-    existing_authinfos = len(backend_id_user_comp)
+    new_authinfos = len(input_id_comp) - len(backend_comp_ids)
+    existing_authinfos = len(backend_comp_ids)
 
     if existing_authinfos:
         IMPORT_LOGGER.report(f'Skipping {existing_authinfos} existing AuthInfo(s)')
@@ -432,11 +371,7 @@ def _import_authinfos(
 
     # import new authinfos
     IMPORT_LOGGER.report(f'Adding {new_authinfos} new {EntityTypes.AUTHINFO.value}(s)')
-    new_ids = [
-        _id
-        for _id, _user_id, _comp_id in input_id_user_comp
-        if (user_ids_archive_backend[_user_id], computer_ids_archive_backend[_comp_id]) not in backend_id_user_comp
-    ]
+    new_ids = [_id for _id, _comp_id in input_id_comp if computer_ids_archive_backend[_comp_id] not in backend_comp_ids]
     qbuilder = QueryBuilder(backend=backend_from).append(
         orm.AuthInfo, filters={'id': {'in': new_ids}}, project=['**'], tag='entity'
     )
@@ -445,7 +380,6 @@ def _import_authinfos(
     def transform(row: dict) -> dict:
         data = row['entity']
         data.pop('id')
-        data['aiidauser_id'] = user_ids_archive_backend[data['aiidauser_id']]
         data['dbcomputer_id'] = computer_ids_archive_backend[data['dbcomputer_id']]
         return data
 
@@ -462,7 +396,6 @@ def _import_nodes(
     backend_to: StorageBackend,
     batch_size: int,
     filter_size: int,
-    user_ids_archive_backend: dict[int, int],
     computer_ids_archive_backend: dict[int, int],
     import_new_extras: bool,
     merge_extras: MergeExtrasType,
@@ -493,7 +426,7 @@ def _import_nodes(
 
     if new_nodes:
         # add new nodes and update backend_uuid_id with their uuid -> id mapping
-        transform = NodeTransform(user_ids_archive_backend, computer_ids_archive_backend, import_new_extras)
+        transform = NodeTransform(computer_ids_archive_backend, import_new_extras)
         _add_new_entities(
             EntityTypes.NODE,
             new_nodes,
@@ -511,16 +444,17 @@ def _import_nodes(
 
 
 class NodeTransform:
-    """Callable to transform a Node DB row, between the source archive and target backend."""
+    """Callable to transform a Node DB row, between the source archive and target backend.
+
+    The stored ``profile_uuid`` is kept as-is, preserving origin across merged databases.
+    """
 
     def __init__(
         self,
-        user_ids_archive_backend: dict[int, int],
         computer_ids_archive_backend: dict[int, int],
         import_new_extras: bool,
     ):
         """Construct a new instance."""
-        self.user_ids_archive_backend = user_ids_archive_backend
         self.computer_ids_archive_backend = computer_ids_archive_backend
         self.import_new_extras = import_new_extras
 
@@ -528,11 +462,6 @@ class NodeTransform:
         """Perform the transform."""
         data = row['entity']
         pk = data.pop('id')
-        try:
-            data['user_id'] = self.user_ids_archive_backend[data['user_id']]
-        except KeyError as exc:
-            msg = f'Archive Node {pk} has unknown User: {exc}'
-            raise ImportValidationError(msg)
         if data['dbcomputer_id'] is not None:
             try:
                 data['dbcomputer_id'] = self.computer_ids_archive_backend[data['dbcomputer_id']]
@@ -735,22 +664,15 @@ class CommentTransform:
 
     def __init__(
         self,
-        user_ids_archive_backend: dict[int, int],
         node_ids_archive_backend: dict[int, int],
     ):
         """Construct a new instance."""
-        self.user_ids_archive_backend = user_ids_archive_backend
         self.node_ids_archive_backend = node_ids_archive_backend
 
     def __call__(self, row: dict) -> dict:
         """Perform the transform."""
         data = row['entity']
         pk = data.pop('id')
-        try:
-            data['user_id'] = self.user_ids_archive_backend[data['user_id']]
-        except KeyError as exc:
-            msg = f'Archive Comment {pk} has unknown User: {exc}'
-            raise ImportValidationError(msg)
         try:
             data['dbnode_id'] = self.node_ids_archive_backend[data['dbnode_id']]
         except KeyError as exc:
@@ -764,7 +686,6 @@ def _import_comments(
     backend: StorageBackend,
     batch_size: int,
     filter_size: int,
-    user_ids_archive_backend: dict[int, int],
     node_ids_archive_backend: dict[int, int],
     merge_comments: MergeCommentsType,
 ) -> dict[int, int]:
@@ -836,7 +757,7 @@ def _import_comments(
             backend,
             batch_size,
             filter_size,
-            CommentTransform(user_ids_archive_backend, node_ids_archive_backend),
+            CommentTransform(node_ids_archive_backend),
         )
 
     # generate mapping of input backend id to output backend id
@@ -994,8 +915,7 @@ def _import_links(
 class GroupTransform:
     """Callable to transform a Group DB row, between the source archive and target backend."""
 
-    def __init__(self, user_ids_archive_backend: dict[int, int], labels: set[str]):
-        self.user_ids_archive_backend = user_ids_archive_backend
+    def __init__(self, labels: set[str]):
         self.labels = labels
         self.relabelled = 0
 
@@ -1003,11 +923,6 @@ class GroupTransform:
         """Perform the transform."""
         data = row['entity']
         pk = data.pop('id')
-        try:
-            data['user_id'] = self.user_ids_archive_backend[data['user_id']]
-        except KeyError as exc:
-            msg = f'Archive Group {pk} has unknown User: {exc}'
-            raise ImportValidationError(msg)
         # Labels should be unique, so we create new labels on clashes
         if data['label'] in self.labels:
             for i in range(DUPLICATE_LABEL_MAX):
@@ -1028,7 +943,6 @@ def _import_groups(
     backend_to: StorageBackend,
     batch_size: int,
     filter_size: int,
-    user_ids_archive_backend: dict[int, int],
     node_ids_archive_backend: dict[int, int],
 ) -> set[str]:
     """Import groups from the input backend, and add group -> node records.
@@ -1065,7 +979,7 @@ def _import_groups(
     if new_groups:
         # add new groups and update backend_uuid_id with their uuid -> id mapping
 
-        transform = GroupTransform(user_ids_archive_backend, labels)
+        transform = GroupTransform(labels)
 
         _add_new_entities(
             EntityTypes.GROUP,
@@ -1152,7 +1066,7 @@ def _make_import_group(
             'label': label,
             'description': 'Group generated by archive import',
             'type_string': dummy_orm.type_string,
-            'user_id': dummy_orm.user.pk,
+            'profile_uuid': backend_to.profile.uuid,
         }
         (group_id,) = backend_to.bulk_insert(EntityTypes.GROUP, [row], allow_defaults=True)
         IMPORT_LOGGER.report(f'Created new import Group: PK={group_id}, label={label}')

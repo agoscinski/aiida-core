@@ -23,7 +23,6 @@ from aiida.orm.nodes import *
 from aiida.orm.pydantic import *
 from aiida.orm.qb_fields import *
 from aiida.orm.querybuilder import *
-from aiida.orm.users import *
 from aiida.orm.utils import *
 
 __all__ = (
@@ -103,7 +102,6 @@ __all__ = (
     'TrajectoryData',
     'UpfData',
     'UpfFamily',
-    'User',
     'WorkChainNode',
     'WorkFunctionNode',
     'WorkflowNode',

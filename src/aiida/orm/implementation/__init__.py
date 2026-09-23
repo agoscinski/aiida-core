@@ -21,7 +21,6 @@ from aiida.orm.implementation.logs import *
 from aiida.orm.implementation.nodes import *
 from aiida.orm.implementation.querybuilder import *
 from aiida.orm.implementation.storage_backend import *
-from aiida.orm.implementation.users import *
 from aiida.orm.implementation.utils import *
 
 __all__ = (
@@ -41,8 +40,6 @@ __all__ = (
     'BackendNode',
     'BackendNodeCollection',
     'BackendQueryBuilder',
-    'BackendUser',
-    'BackendUserCollection',
     'EntityType',
     'StorageBackend',
     'clean_value',

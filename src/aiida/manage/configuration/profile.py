@@ -23,7 +23,7 @@ from aiida.common import exceptions
 from aiida.manage.configuration.options import parse_option
 
 if t.TYPE_CHECKING:
-    from aiida.orm import AbstractCode, Computer, Group, User
+    from aiida.orm import AbstractCode, Computer, Group
     from aiida.orm.implementation import StorageBackend
 
 __all__ = ('Profile',)
@@ -33,7 +33,6 @@ class Profile:
     """Class that models a profile as it is stored in the configuration file of an AiiDA instance."""
 
     KEY_UUID = 'PROFILE_UUID'
-    KEY_DEFAULT_USER_EMAIL = 'default_user_email'
     KEY_STORAGE = 'storage'
     KEY_PROCESS = 'process_control'
     KEY_STORAGE_BACKEND = 'backend'
@@ -85,16 +84,6 @@ class Profile:
     @uuid.setter
     def uuid(self, value: str) -> None:
         self._attributes[self.KEY_UUID] = value
-
-    @property
-    def default_user_email(self) -> str | None:
-        """Return the default user email."""
-        return self._attributes.get(self.KEY_DEFAULT_USER_EMAIL, None)
-
-    @default_user_email.setter
-    def default_user_email(self, value: str | None) -> None:
-        """Set the default user email."""
-        self._attributes[self.KEY_DEFAULT_USER_EMAIL] = value
 
     @property
     def storage_backend(self) -> str:
@@ -274,7 +263,6 @@ class Profile:
         # Scope options
         all_entries: bool = False,
         groups: list[str] | list[Group] | None = None,
-        user: list[str] | list[User] | None = None,
         computers: list[str] | list[Computer] | None = None,
         codes: list[str] | list[AbstractCode] | None = None,
         # Time filtering options
@@ -306,7 +294,6 @@ class Profile:
         :param overwrite: Overwrite existing dump directories, defaults to False
         :param all_entries: Dump all entries in the profile, defaults to False
         :param groups: List of groups to dump (UUIDs, labels, or Group objects), defaults to None
-        :param user: User to filter by (User object or email), defaults to None
         :param computers: List of computers to filter by, defaults to None
         :param codes: List of codes to filter by, defaults to None
         :param past_days: Only include nodes modified in the past N days, defaults to None
@@ -341,7 +328,6 @@ class Profile:
             'dry_run': dry_run,
             'overwrite': overwrite,
             'groups': groups or [],
-            'user': user,
             'computers': computers or [],
             'codes': codes or [],
             'past_days': past_days,
@@ -374,7 +360,7 @@ class Profile:
         if not (config.all_entries or config.filters_set) and not dry_run:
             msg = (
                 'No profile data explicitly selected. No dump will be performed. '
-                'Either select everything via `all_entries=True`, or filter via `groups`, `user`, etc.'
+                'Either select everything via `all_entries=True`, or filter via `groups`, `computers`, etc.'
             )
             logger.warning(msg)
             return target_path

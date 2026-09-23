@@ -17,7 +17,6 @@ from aiida.orm.implementation.entities import BackendCollection, BackendEntity, 
 
 if t.TYPE_CHECKING:
     from aiida.orm.implementation.computers import BackendComputer
-    from aiida.orm.implementation.users import BackendUser
     from aiida.orm.utils import LinkTriple
 
 __all__ = ('BackendNode', 'BackendNodeCollection')
@@ -136,18 +135,10 @@ class BackendNode(BackendEntity, BackendEntityExtrasMixin, metaclass=abc.ABCMeta
 
     @property
     @abc.abstractmethod
-    def user(self) -> 'BackendUser':
-        """Return the user of this node.
+    def profile_uuid(self) -> str:
+        """Return the UUID of the profile that owns this node.
 
-        :return: the user
-        """
-
-    @user.setter
-    @abc.abstractmethod
-    def user(self, user: 'BackendUser') -> None:
-        """Set the user of this node.
-
-        :param user: a `BackendUser`
+        :return: the profile UUID
         """
 
     @property

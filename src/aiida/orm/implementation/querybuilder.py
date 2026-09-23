@@ -24,10 +24,10 @@ __all__ = ('BackendQueryBuilder',)
 QUERYBUILD_LOGGER = AIIDA_LOGGER.getChild('orm.querybuilder')
 
 EntityRelationships: dict[str, set[str]] = {
-    EntityTypes.AUTHINFO.value: {'with_computer', 'with_user'},
-    EntityTypes.COMMENT.value: {'with_node', 'with_user'},
+    EntityTypes.AUTHINFO.value: {'with_computer'},
+    EntityTypes.COMMENT.value: {'with_node'},
     EntityTypes.COMPUTER.value: {'with_node'},
-    EntityTypes.GROUP.value: {'with_node', 'with_user'},
+    EntityTypes.GROUP.value: {'with_node'},
     EntityTypes.LOG.value: {'with_node'},
     EntityTypes.NODE.value: {
         'with_comment',
@@ -37,10 +37,8 @@ EntityRelationships: dict[str, set[str]] = {
         'with_descendants',
         'with_ancestors',
         'with_computer',
-        'with_user',
         'with_group',
     },
-    EntityTypes.USER.value: {'with_authinfo', 'with_comment', 'with_group', 'with_node'},
     EntityTypes.LINK.value: set(),
 }
 
@@ -50,7 +48,7 @@ class PathItemType(t.TypedDict):
 
     entity_type: str | list[str]
     # this can be derived from the entity_type, but it is more efficient to store
-    orm_base: t.Literal['node', 'group', 'authinfo', 'comment', 'computer', 'log', 'user']
+    orm_base: t.Literal['node', 'group', 'authinfo', 'comment', 'computer', 'log']
     tag: str
     joining_keyword: str
     joining_value: str
@@ -139,13 +137,10 @@ class BackendQueryBuilder(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def get_creation_statistics(self, user_pk: int | None = None) -> dict[str, t.Any]:
+    def get_creation_statistics(self) -> dict[str, t.Any]:
         """Return a dictionary with the statistics of node creation, summarized by day.
 
         :note: Days when no nodes were created are not present in the returned `ctime_by_day` dictionary.
-
-        :param user_pk: If None (default), return statistics for all users.
-            If user pk is specified, return only the statistics for the given user.
 
         :return: a dictionary as follows::
 

@@ -84,7 +84,7 @@ def aiida_profile_factory():
     profile was already loaded, that is automatically restored at the end of the context manager. This way, any changes
     made to the profile during the context are fully temporary and automatically undone after the test. The created
     ``Profile`` instance dynamically has the method ``reset_storage`` added which, when called, deletes all content of
-    the storage, recreating the default user. The daemon is also stopped if it was running.
+    the storage. The daemon is also stopped if it was running.
 
     Usage::
 
@@ -99,7 +99,6 @@ def aiida_profile_factory():
     :param broker_backend: The broker plugin to use. Defaults to defining no broker.
     :param broker_config: The configuration to use for the selected broker plugin.
     :param name: The name of the profile. Defaults to a random string.
-    :param name: The email to use for the default user. Defaults to ``test@localhost``.
     :returns `~aiida.manage.configuration.profile.Profile`: The loaded temporary profile.
     """
 
@@ -112,7 +111,6 @@ def aiida_profile_factory():
         broker_backend: str | None = None,
         broker_config: dict[str, t.Any] | None = None,
         name: str | None = None,
-        email: str = 'test@localhost',
     ):
         from aiida.manage.configuration import create_profile, profile_context
         from aiida.manage.manager import get_manager
@@ -144,7 +142,6 @@ def aiida_profile_factory():
             broker_backend=broker_backend,
             broker_config=broker_config,
             name=name,
-            email=email,
             is_test_profile=True,
         )
         profile.set_option('warnings.development_version', False)
@@ -158,7 +155,6 @@ def aiida_profile_factory():
             references to data that will be destroyed. The daemon will also be stopped if it was running.
             """
             from aiida.engine.daemon.client import DaemonException, DaemonTimeoutException, get_daemon_client
-            from aiida.orm import User
 
             active_profile = manager.get_profile()
             target_profile = (
@@ -180,7 +176,7 @@ def aiida_profile_factory():
                         # ``stop_daemon(wait=True)`` returns once the stop is requested, but the
                         # daemon process may still be shutting down and briefly report as running.
                         # Wait until it is confirmed stopped so reset does not clear storage
-                        # underneath a live worker that retains the old default user.
+                        # underneath a live worker.
                         start_time = time.monotonic()
                         while daemon_client.is_daemon_running:
                             if time.monotonic() - start_time > 5:
@@ -188,11 +184,8 @@ def aiida_profile_factory():
                                 raise DaemonTimeoutException(msg)
                             time.sleep(0.1)
 
-                default_user_email = target_profile.default_user_email or email
                 manager.get_profile_storage()._clear()
                 manager.reset_profile()
-
-                User(email=default_user_email).store()
 
         # Add the ``reset_storage`` method, such that users can empty the storage through the ``Profile`` instance that
         # is returned by this fixture.

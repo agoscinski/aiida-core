@@ -16,7 +16,6 @@ from aiida.orm.implementation.entities import BackendCollection, BackendEntity
 
 if t.TYPE_CHECKING:
     from aiida.orm.implementation.nodes import BackendNode
-    from aiida.orm.implementation.users import BackendUser
 
 __all__ = ('BackendComment', 'BackendCommentCollection')
 
@@ -53,12 +52,8 @@ class BackendComment(BackendEntity):
 
     @property
     @abc.abstractmethod
-    def user(self) -> 'BackendUser':
-        """Return the comment owner."""
-
-    @abc.abstractmethod
-    def set_user(self, value: 'BackendUser') -> None:
-        """Set the comment owner."""
+    def profile_uuid(self) -> str:
+        """Return the UUID of the profile that owns this comment."""
 
     @property
     @abc.abstractmethod
@@ -77,14 +72,13 @@ class BackendCommentCollection(BackendCollection[BackendComment]):
 
     @abc.abstractmethod
     def create(  # type: ignore[override]
-        self, node: 'BackendNode', user: 'BackendUser', content: str | None = None, **kwargs: t.Any
+        self, node: 'BackendNode', content: str | None = None, **kwargs: t.Any
     ) -> BackendComment:
-        """Create a Comment for a given node and user
+        """Create a Comment for a given node
 
         :param node: a Node instance
-        :param user: a User instance
         :param content: the comment content
-        :return: a Comment object associated to the given node and user
+        :return: a Comment object associated to the given node
         """
 
     @abc.abstractmethod

@@ -14,10 +14,9 @@ import typing as t
 
 from aiida.common import exceptions
 from aiida.manage import get_manager
-from aiida.orm import entities, users
+from aiida.orm import entities
 from aiida.orm.computers import Computer
 from aiida.orm.pydantic import OrmMetadataField
-from aiida.orm.users import User
 from aiida.plugins import TransportFactory
 
 if t.TYPE_CHECKING:
@@ -46,7 +45,7 @@ class AuthInfoCollection(entities.Collection['AuthInfo']):
 
 
 class AuthInfo(entities.Entity['BackendAuthInfo', AuthInfoCollection]):
-    """ORM class that models the authorization information that allows a `User` to connect to a `Computer`."""
+    """ORM class that models the authorization information to connect to a `Computer`."""
 
     _CLS_COLLECTION = AuthInfoCollection
     PROPERTY_WORKDIR = 'workdir'
@@ -56,11 +55,6 @@ class AuthInfo(entities.Entity['BackendAuthInfo', AuthInfoCollection]):
             description='The PK of the computer',
             orm_class=Computer,
             orm_to_model=lambda auth_info: t.cast(AuthInfo, auth_info).computer.pk,
-        )
-        user: int = OrmMetadataField(
-            description='The PK of the user',
-            orm_class=User,
-            orm_to_model=lambda auth_info: t.cast(AuthInfo, auth_info).user.pk,
         )
         enabled: bool = OrmMetadataField(
             True,
@@ -78,22 +72,19 @@ class AuthInfo(entities.Entity['BackendAuthInfo', AuthInfoCollection]):
     def __init__(
         self,
         computer: Computer,
-        user: User,
         enabled: bool = True,
         auth_params: dict[str, t.Any] | None = None,
         metadata: dict[str, t.Any] | None = None,
         backend: StorageBackend | None = None,
     ) -> None:
-        """Create an `AuthInfo` instance for the given computer and user.
+        """Create an `AuthInfo` instance for the given computer.
 
         :param computer: a `Computer` instance
-        :param user: a `User` instance
         :param backend: the backend to use for the instance, or use the default backend if None
         """
         backend = backend or get_manager().get_profile_storage()
         model = backend.authinfos.create(
             computer=computer.backend_entity,
-            user=user.backend_entity,
             enabled=enabled,
             auth_params=auth_params or {},
             metadata=metadata or {},
@@ -102,17 +93,16 @@ class AuthInfo(entities.Entity['BackendAuthInfo', AuthInfoCollection]):
 
     def __str__(self) -> str:
         if self.enabled:
-            return f'AuthInfo for {self.user.email} on {self.computer.label}'
+            return f'AuthInfo on {self.computer.label}'
 
-        return f'AuthInfo for {self.user.email} on {self.computer.label} [DISABLED]'
+        return f'AuthInfo on {self.computer.label} [DISABLED]'
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, AuthInfo):
             return False
 
         return (
-            self.user.pk == other.user.pk
-            and self.computer.pk == other.computer.pk
+            self.computer.pk == other.computer.pk
             and self.enabled == other.enabled
             and self.auth_params == other.auth_params
             and self.metadata == other.metadata
@@ -140,11 +130,6 @@ class AuthInfo(entities.Entity['BackendAuthInfo', AuthInfoCollection]):
         from aiida.orm import computers
 
         return entities.from_backend_entity(computers.Computer, self._backend_entity.computer)
-
-    @property
-    def user(self) -> User:
-        """Return the user associated with this instance."""
-        return entities.from_backend_entity(users.User, self._backend_entity.user)
 
     @property
     def auth_params(self) -> dict[str, t.Any]:

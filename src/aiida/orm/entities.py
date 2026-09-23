@@ -49,7 +49,6 @@ class EntityTypes(Enum):
     GROUP = 'group'
     LOG = 'log'
     NODE = 'node'
-    USER = 'user'
     LINK = 'link'
     GROUP_NODE = 'group_node'
 
@@ -79,7 +78,7 @@ class Collection(abc.ABC, t.Generic[EntityType]):
     def __init__(self, entity_class: type[EntityType], backend: StorageBackend | None = None) -> None:
         """Construct a new entity collection.
 
-        :param entity_class: the entity type e.g. User, Computer, etc
+        :param entity_class: the entity type e.g. Group, Computer, etc
         :param backend: the backend instance to get the collection for, or use the default
         """
         from aiida.orm.implementation import StorageBackend

@@ -264,9 +264,7 @@ def prepare_computer(computer: Computer | None = None) -> Computer:
                     'Setting it to 1 since otherwise the `ShellJob` would fail during input validation.'
                 )
 
-    default_user = computer.backend.default_user
-
-    if default_user and not computer.is_user_configured(default_user):
-        computer.configure(default_user)
+    if not computer.is_configured:
+        computer.configure()
 
     return computer

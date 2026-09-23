@@ -15,7 +15,6 @@ from aiida.orm.implementation.entities import BackendCollection, BackendEntity
 
 if t.TYPE_CHECKING:
     from aiida.orm.implementation.computers import BackendComputer
-    from aiida.orm.implementation.users import BackendUser
 
 __all__ = ('BackendAuthInfo', 'BackendAuthInfoCollection')
 
@@ -48,11 +47,6 @@ class BackendAuthInfo(BackendEntity):
     @abc.abstractmethod
     def computer(self) -> 'BackendComputer':
         """Return the computer associated with this instance."""
-
-    @property
-    @abc.abstractmethod
-    def user(self) -> 'BackendUser':
-        """Return the user associated with this instance."""
 
     @abc.abstractmethod
     def get_auth_params(self) -> dict[str, t.Any]:

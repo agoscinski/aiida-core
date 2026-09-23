@@ -46,7 +46,6 @@ class DumpChangeDetector:
 
     NODE_TAG = 'node'
     GROUP_TAG = 'group_filter'
-    USER_TAG = 'user_filter'
     COMPUTER_TAG = 'computer_filter'
     CODE_TAG = 'code_filter'
 
@@ -165,7 +164,7 @@ class DumpChangeDetector:
             qb.append(orm.Group, filters={'uuid': group.uuid}, tag=self.GROUP_TAG)
             relationships['with_group'] = self.GROUP_TAG
 
-        # Add entity filters (User, Computer, Code)
+        # Add entity filters (Computer, Code)
         if isinstance(self.config, (GroupDumpConfig, ProfileDumpConfig)):
             qb, entity_relationships = self._resolve_qb_appends(qb)
             relationships.update(entity_relationships)
@@ -480,21 +479,13 @@ class DumpChangeDetector:
         return time_filters
 
     def _resolve_qb_appends(self, qb: orm.QueryBuilder) -> tuple[orm.QueryBuilder, dict]:
-        """Appends related entity filters (User, Computer, Code) based on config.
+        """Appends related entity filters (Computer, Code) based on config.
 
         :param qb: QueryBuilder instance
         :return: Tuple of QueryBuilder instance with additional filters and dictionary holding the ``relationships``
         """
         relationships_to_add = {}
         assert isinstance(self.config, (GroupDumpConfig, ProfileDumpConfig))
-
-        # User filter
-        if self.config.user:
-            if self.config.user.pk is not None:
-                qb.append(orm.User, filters={'id': self.config.user.pk}, tag=self.USER_TAG)
-                relationships_to_add['with_user'] = self.USER_TAG
-            else:
-                logger.warning(f'Invalid user provided: {self.config.user}. Skipping filter.')
 
         if self.config.codes and self.config.computers:
             msg = (

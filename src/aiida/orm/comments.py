@@ -21,7 +21,6 @@ from aiida.orm.pydantic import OrmMetadataField
 if t.TYPE_CHECKING:
     from aiida.orm.implementation import BackendComment, BackendNode, StorageBackend
     from aiida.orm.nodes.node import Node
-    from aiida.orm.users import User
 
 __all__ = ('Comment',)
 
@@ -94,34 +93,32 @@ class Comment(entities.Entity['BackendComment', CommentCollection]):
             orm_to_model=lambda comment: t.cast(Comment, comment).node.pk,
             examples=[42],
         )
-        user: int = OrmMetadataField(
-            description='User PK that created the comment',
-            orm_class='core.user',
-            orm_to_model=lambda comment: t.cast(Comment, comment).user.pk,
-            examples=[7],
+        profile_uuid: str = OrmMetadataField(
+            description='UUID of the profile that owns the comment',
+            orm_to_model=lambda comment: t.cast(Comment, comment).profile_uuid,
+            read_only=True,
         )
         content: str = OrmMetadataField(
             description='Content of the comment',
             examples=['This is a comment.'],
         )
 
-    def __init__(self, node: Node, user: User, content: str | None = None, backend: StorageBackend | None = None):
-        """Create a Comment for a given node and user
+    def __init__(self, node: Node, content: str | None = None, backend: StorageBackend | None = None):
+        """Create a Comment for a given node
 
         :param node: a Node instance
-        :param user: a User instance
         :param content: the comment content
         :param backend: the backend to use for the instance, or use the default backend if None
 
-        :return: a Comment object associated to the given node and user
+        :return: a Comment object associated to the given node
         """
         backend = backend or get_manager().get_profile_storage()
-        model = backend.comments.create(node=node.backend_entity, user=user.backend_entity, content=content)
+        model = backend.comments.create(node=node.backend_entity, content=content)
         super().__init__(model)
 
     def __str__(self) -> str:
-        arguments = [self.uuid, self.node.pk, self.user.email, self.content]
-        return 'Comment<{}> for node<{}> and user<{}>: {}'.format(*arguments)
+        arguments = [self.uuid, self.node.pk, self.content]
+        return 'Comment<{}> for node<{}>: {}'.format(*arguments)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Comment):
@@ -155,14 +152,8 @@ class Comment(entities.Entity['BackendComment', CommentCollection]):
         return self._backend_entity.node
 
     @property
-    def user(self) -> User:
-        from aiida.orm.users import User
-
-        return entities.from_backend_entity(User, self._backend_entity.user)
-
-    def set_user(self, value: User) -> None:
-        # mypy error: Property "user" defined in "BackendComment" is read-only
-        self._backend_entity.user = value.backend_entity  # type: ignore[misc]
+    def profile_uuid(self) -> str:
+        return self._backend_entity.profile_uuid
 
     @property
     def content(self) -> str:

@@ -37,18 +37,11 @@ def match_comp_transport(ctx, param, computer, transport_type):
 
 
 @with_dbenv()
-def configure_computer_main(computer, user, **kwargs):
+def configure_computer_main(computer, **kwargs):
     """Configure a computer via the CLI."""
-    from aiida import orm
-
-    user = user or orm.User.collection.get_default()
-
-    echo.echo_report(f'Configuring computer {computer.label} for user {user.email}.')
-    if not user.is_default:
-        echo.echo_report('Configuring different user, defaults may not be appropriate.')
-
-    computer.configure(user=user, **kwargs)
-    echo.echo_success(f'{computer.label} successfully configured for {user.email}')
+    echo.echo_report(f'Configuring computer {computer.label}.')
+    computer.configure(**kwargs)
+    echo.echo_success(f'{computer.label} successfully configured')
 
 
 def common_params(command_func):
@@ -91,18 +84,17 @@ def interactive_default(key, also_non_interactive=False):
         if not also_non_interactive and ctx.params['non_interactive']:
             raise click.MissingParameter()
 
-        user = ctx.params.get('user', None) or orm.User.collection.get_default()
         computer = ctx.params.get('computer', None)
 
         if computer is None:
             return None
 
         try:
-            authinfo = orm.AuthInfo.collection.get(dbcomputer_id=computer.pk, aiidauser_id=user.pk)
+            authinfo = orm.AuthInfo.collection.get(dbcomputer_id=computer.pk)
         except NotExistent:
-            authinfo = orm.AuthInfo(computer=computer, user=user)
+            authinfo = None
 
-        auth_params = authinfo.get_auth_params()
+        auth_params = authinfo.get_auth_params() if authinfo else {}
         suggestion = auth_params.get(key)
         suggestion = suggestion or transport_option_default(key, computer)
         return suggestion
@@ -153,7 +145,6 @@ def transport_options(transport_type):
         func = options.NON_INTERACTIVE()(func)
         for option in options_list:
             func = option(func)
-        func = options.USER()(func)
         func = options.CONFIG_FILE()(func)
         return func
 
@@ -164,9 +155,9 @@ def create_configure_cmd(transport_type):
     """Create verdi computer configure subcommand for a transport type."""
     help_text = f"""Configure COMPUTER for {transport_type} transport."""
 
-    def transport_configure_command(computer, user, non_interactive, **kwargs):
+    def transport_configure_command(computer, non_interactive, **kwargs):
         """Configure COMPUTER for a type of transport."""
-        configure_computer_main(computer, user, **kwargs)
+        configure_computer_main(computer, **kwargs)
 
     transport_configure_command.__doc__ = help_text
 

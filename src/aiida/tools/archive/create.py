@@ -44,7 +44,7 @@ QbType = Callable[[], orm.QueryBuilder]
 
 
 def create_archive(
-    entities: Iterable[orm.Computer | orm.Node | orm.Group | orm.User] | None,
+    entities: Iterable[orm.Computer | orm.Node | orm.Group] | None,
     filename: str | Path | None = None,
     *,
     archive_format: ArchiveFormatAbstract | None = None,
@@ -76,12 +76,10 @@ def create_archive(
     - authinfos: from authinfos of computers
     - comments: from comments of nodes
     - logs: from logs of nodes
-    - users: from users of nodes, groups, comments & authinfos
 
     Now stream the full entities (per type) to the archive writer,
     in the order of relationships:
 
-    - users
     - computers
     - authinfos
     - groups
@@ -124,7 +122,7 @@ def create_archive(
         otherwise.
 
     :param include_comments: In-/exclude export of comments for given node(s) in ``entities``.
-        Default: True, *include* comments in export (as well as relevant users).
+        Default: True, *include* comments in export.
 
     :param include_logs: In-/exclude export of logs for given node(s) in ``entities``.
         Default: True, *include* logs in export.
@@ -199,7 +197,6 @@ def create_archive(
 
     # Store starting UUIDs, to write to metadata
     starting_uuids: dict[EntityTypes, set[str]] = {
-        EntityTypes.USER: set(),
         EntityTypes.COMPUTER: set(),
         EntityTypes.GROUP: set(),
         EntityTypes.NODE: set(),
@@ -210,7 +207,6 @@ def create_archive(
     entity_ids: dict[EntityTypes, set[int]] = {
         ent: set()
         for ent in [
-            EntityTypes.USER,
             EntityTypes.COMPUTER,
             EntityTypes.AUTHINFO,
             EntityTypes.GROUP,
@@ -240,11 +236,8 @@ def create_archive(
             elif isinstance(entry, orm.Computer):
                 starting_uuids[EntityTypes.COMPUTER].add(entry.uuid)
                 entity_ids[EntityTypes.COMPUTER].add(entry.pk)
-            elif isinstance(entry, orm.User):  # type: ignore[unreachable]
-                starting_uuids[EntityTypes.USER].add(entry.email)
-                entity_ids[EntityTypes.USER].add(entry.pk)
             else:
-                msg = f'I was given {entry} ({type(entry)}), which is not a User, Node, Computer, or Group instance'
+                msg = f'I was given {entry} ({type(entry)}), which is not a Node, Computer, or Group instance'  # type: ignore[unreachable]
                 raise ArchiveExportError(msg)
         group_nodes, link_data = _collect_required_entities(
             querybuilder,
@@ -398,7 +391,7 @@ def _collect_all_entities(
     def progress_str(name):
         return f'Collecting entities: {name}'
 
-    with get_progress_reporter()(desc=progress_str(''), total=9) as progress:
+    with get_progress_reporter()(desc=progress_str(''), total=8) as progress:
         progress.set_description_str(progress_str('Nodes'))
         entity_ids[EntityTypes.NODE].update(
             querybuilder().append(orm.Node, project='id').all(batch_size=batch_size, flat=True)
@@ -482,17 +475,6 @@ def _collect_all_entities(
                 .all(batch_size=batch_size, flat=True)
             )
 
-        progress.set_description_str(progress_str('Users'))
-        progress.update()
-        entity_ids[EntityTypes.USER].update(
-            querybuilder()
-            .append(
-                orm.User,
-                project='id',
-            )
-            .all(batch_size=batch_size, flat=True)
-        )
-
     return group_nodes, link_data
 
 
@@ -515,7 +497,7 @@ def _collect_required_entities(
     def progress_str(name):
         return f'Collecting entities: {name}'
 
-    with get_progress_reporter()(desc=progress_str(''), total=7) as progress:
+    with get_progress_reporter()(desc=progress_str(''), total=6) as progress:
         # get all nodes from groups
         progress.set_description_str(progress_str('Nodes (groups)'))
         group_nodes: list[list[int]] = []
@@ -585,46 +567,6 @@ def _collect_required_entities(
                 for (pk,) in querybuilder()
                 .append(orm.Node, filters={'id': {'in': list(ids)}}, tag='node')
                 .append(orm.Comment, with_node='node', project='id')
-                .distinct()
-                .iterall(batch_size=batch_size)
-            )
-
-        # get full set of users
-        progress.set_description_str(progress_str('Users'))
-        progress.update()
-        if ids := entity_ids[EntityTypes.NODE]:
-            entity_ids[EntityTypes.USER].update(
-                pk
-                for (pk,) in querybuilder()
-                .append(orm.Node, filters={'id': {'in': list(ids)}}, tag='node')
-                .append(orm.User, with_node='node', project='id')
-                .distinct()
-                .iterall(batch_size=batch_size)
-            )
-        if ids := entity_ids[EntityTypes.GROUP]:
-            entity_ids[EntityTypes.USER].update(
-                pk
-                for (pk,) in querybuilder()
-                .append(orm.Group, filters={'id': {'in': list(ids)}}, tag='group')
-                .append(orm.User, with_group='group', project='id')
-                .distinct()
-                .iterall(batch_size=batch_size)
-            )
-        if ids := entity_ids[EntityTypes.COMMENT]:
-            entity_ids[EntityTypes.USER].update(
-                pk
-                for (pk,) in querybuilder()
-                .append(orm.Comment, filters={'id': {'in': list(ids)}}, tag='comment')
-                .append(orm.User, with_comment='comment', project='id')
-                .distinct()
-                .iterall(batch_size=batch_size)
-            )
-        if ids := entity_ids[EntityTypes.AUTHINFO]:
-            entity_ids[EntityTypes.USER].update(
-                pk
-                for (pk,) in querybuilder()
-                .append(orm.AuthInfo, filters={'id': {'in': list(ids)}}, tag='auth')
-                .append(orm.User, with_authinfo='auth', project='id')
                 .distinct()
                 .iterall(batch_size=batch_size)
             )
@@ -776,7 +718,7 @@ def get_init_summary(
     result = f'\n{tabulate(parameters, headers=["Archive Parameters", ""])}'
 
     inclusions: list[list[t.Any]] = [
-        ['Computers/Nodes/Groups/Users', 'All' if collect_all else 'Selected'],
+        ['Computers/Nodes/Groups', 'All' if collect_all else 'Selected'],
         ['Computer Authinfos', include_authinfos],
         ['Node Comments', include_comments],
         ['Node Logs', include_logs],

@@ -122,19 +122,9 @@ def upload_upf_family(folder, group_label, group_description, stop_if_existing=T
     nfiles = len(filenames)
 
     if backend:
-        default_user = orm.User.get_collection(backend).get_default()
-        group, group_created = orm.UpfFamily.get_collection(backend).get_or_create(label=group_label, user=default_user)
+        group, group_created = orm.UpfFamily.get_collection(backend).get_or_create(label=group_label)
     else:
-        default_user = orm.User.collection.get_default()
-        group, group_created = orm.UpfFamily.collection.get_or_create(label=group_label, user=default_user)
-
-    if group.user.email != default_user.email:
-        msg = (
-            f'There is already a UpfFamily group with label {group_label}'
-            f', but it belongs to user {group.user.email}, therefore you '
-            'cannot modify it'
-        )
-        raise UniquenessError(msg)
+        group, group_created = orm.UpfFamily.collection.get_or_create(label=group_label)
 
     # Always update description, even if the group already existed
     group.description = group_description
@@ -485,23 +475,18 @@ class UpfData(SinglefileData):
         return UpfFamily.get(label=group_label)
 
     @classmethod
-    def get_upf_groups(cls, filter_elements=None, user=None, backend=None):
+    def get_upf_groups(cls, filter_elements=None, backend=None):
         """Return all names of groups of type UpfFamily, possibly with some filters.
 
         :param filter_elements: A string or a list of strings.
             If present, returns only the groups that contains one UPF for every element present in the list. The default
             is `None`, meaning that all families are returned.
-        :param user: if None (default), return the groups for all users.
-            If defined, it should be either a `User` instance or the user email.
         :return: list of `Group` entities of type UPF.
         """
-        from aiida.orm import QueryBuilder, UpfFamily, User
+        from aiida.orm import QueryBuilder, UpfFamily
 
         builder = QueryBuilder(backend=backend)
         builder.append(UpfFamily, tag='group', project='*')
-
-        if user:
-            builder.append(User, filters={'email': {'==': user}}, with_group='group')
 
         if isinstance(filter_elements, str):
             filter_elements = [filter_elements]

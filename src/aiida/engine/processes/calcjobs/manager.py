@@ -256,7 +256,7 @@ class JobManager:
     """A manager for :py:class:`~aiida.engine.processes.calcjobs.calcjob.CalcJob` submitted to ``Computer`` instances.
 
     When a calculation job is submitted to a :py:class:`~aiida.orm.computers.Computer`, it actually uses a specific
-    :py:class:`~aiida.orm.authinfos.AuthInfo`, which is a computer configured for a :py:class:`~aiida.orm.users.User`.
+    :py:class:`~aiida.orm.authinfos.AuthInfo`, which is a configured computer.
     The ``JobManager`` maintains a mapping of :py:class:`~aiida.engine.processes.calcjobs.manager.JobsList` instances
     for each authinfo that has active calculation jobs. These jobslist instances are then responsible for bundling
     scheduler updates for all the jobs they maintain (i.e. that all share the same authinfo) and update their status.

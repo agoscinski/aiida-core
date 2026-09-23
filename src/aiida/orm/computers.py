@@ -17,12 +17,12 @@ from uuid import UUID
 from aiida.common import exceptions
 from aiida.common.log import AIIDA_LOGGER, AiidaLoggerType
 from aiida.manage import get_manager
-from aiida.orm import entities, users
+from aiida.orm import entities
 from aiida.orm.pydantic import OrmMetadataField
 from aiida.plugins import SchedulerFactory, TransportFactory
 
 if t.TYPE_CHECKING:
-    from aiida.orm import AuthInfo, User
+    from aiida.orm import AuthInfo
     from aiida.orm.implementation import BackendComputer, StorageBackend
     from aiida.schedulers import Scheduler
     from aiida.transports import Transport
@@ -570,65 +570,46 @@ class Computer(entities.Entity['BackendComputer', ComputerCollection]):
         metadata['shebang'] = val
         self.metadata = metadata
 
-    def get_authinfo(self, user: User) -> AuthInfo:
-        """Return the aiida.orm.authinfo.AuthInfo instance for the
-        given user on this computer, if the computer
-        is configured for the given user.
+    def get_authinfo(self) -> AuthInfo:
+        """Return the aiida.orm.authinfo.AuthInfo instance for this computer.
 
-        :param user: a User instance.
         :return: a AuthInfo instance
-        :raise aiida.common.NotExistent: if the computer is not configured for the given
-            user.
+        :raise aiida.common.NotExistent: if the computer is not configured.
         """
         from aiida.orm import authinfos
 
         try:
-            authinfo = authinfos.AuthInfo.get_collection(self.backend).get(dbcomputer_id=self.pk, aiidauser_id=user.pk)
+            authinfo = authinfos.AuthInfo.get_collection(self.backend).get(dbcomputer_id=self.pk)
         except exceptions.NotExistent as exc:
-            msg = (
-                f'Computer `{self.label}` (ID={self.pk}) not configured for user `{user.get_short_name()}` '
-                f'(ID={user.pk}) - use `verdi computer configure` first'
-            )
+            msg = f'Computer `{self.label}` (ID={self.pk}) is not configured - use `verdi computer setup` first'
             raise exceptions.NotExistent(msg) from exc
 
         return authinfo
 
     @property
     def is_configured(self) -> bool:
-        """Return whether the computer is configured for the current default user.
+        """Return whether the computer is configured.
 
-        :return: Boolean, ``True`` if the computer is configured for the current default user, ``False`` otherwise.
-        """
-        user = users.User.get_collection(self.backend).get_default()
-        assert user is not None
-        return self.is_user_configured(user)
-
-    def is_user_configured(self, user: User) -> bool:
-        """Is the user configured on this computer?
-
-        :param user: the user to check
-        :return: True if configured, False otherwise
+        :return: Boolean, ``True`` if the computer is configured, ``False`` otherwise.
         """
         try:
-            self.get_authinfo(user)
+            self.get_authinfo()
             return True
         except exceptions.NotExistent:
             return False
 
-    def is_user_enabled(self, user: User) -> bool:
-        """Is the given user enabled to run on this computer?
+    def is_enabled(self) -> bool:
+        """Return whether the computer is enabled.
 
-        :param user: the user to check
         :return: True if enabled, False otherwise
         """
         try:
-            authinfo = self.get_authinfo(user)
+            authinfo = self.get_authinfo()
             return authinfo.enabled
         except exceptions.NotExistent:
-            # Return False if the user is not configured (in a sense, it is disabled for that user)
             return False
 
-    def get_transport(self, user: User | None = None) -> Transport:
+    def get_transport(self) -> Transport:
         """Return a Transport class, configured with all correct parameters.
         The Transport is closed (meaning that if you want to run any operation with
         it, you have to open it first (i.e., e.g. for a SSH transport, you have
@@ -639,18 +620,12 @@ class Computer(entities.Entity['BackendComputer', ComputerCollection]):
            with transport:
                print(transport.whoami())
 
-        :param user: if None, try to obtain a transport for the default user.
-            Otherwise, pass a valid User.
-
         :return: a (closed) Transport, already configured with the connection
-            parameters to the supercomputer, as configured with ``verdi computer configure``
-            for the user specified as a parameter ``user``.
+            parameters to the supercomputer, as configured with ``verdi computer setup``.
         """
         from aiida.orm import authinfos
 
-        user = user or users.User.get_collection(self.backend).get_default()
-        assert user is not None
-        authinfo = authinfos.AuthInfo.get_collection(self.backend).get(dbcomputer=self, aiidauser=user)
+        authinfo = authinfos.AuthInfo.get_collection(self.backend).get(dbcomputer=self)
         return authinfo.get_transport()
 
     def get_transport_class(self) -> type[Transport]:
@@ -671,18 +646,15 @@ class Computer(entities.Entity['BackendComputer', ComputerCollection]):
             msg = f'No scheduler found for {self.label} [type {self.scheduler_type}], message: {exception}'
             raise exceptions.ConfigurationError(msg)
 
-    def configure(self, user: User | None = None, **kwargs: t.Any) -> AuthInfo:
-        """Configure a computer for a user with valid auth params passed via kwargs
+    def configure(self, **kwargs: t.Any) -> AuthInfo:
+        """Configure a computer with valid auth params passed via kwargs
 
-        :param user: the user to configure the computer for
         :kwargs: the configuration keywords with corresponding values
-        :return: the authinfo object for the configured user
+        :return: the authinfo object for the computer
         """
         from aiida.orm import authinfos
 
         transport_cls = self.get_transport_class()
-        user = user or users.User.get_collection(self.backend).get_default()
-        assert user is not None
         valid_keys = set(transport_cls.get_valid_auth_params())
 
         if not set(kwargs.keys()).issubset(valid_keys):
@@ -691,9 +663,9 @@ class Computer(entities.Entity['BackendComputer', ComputerCollection]):
             raise ValueError(msg)
 
         try:
-            authinfo = self.get_authinfo(user)
+            authinfo = self.get_authinfo()
         except exceptions.NotExistent:
-            authinfo = authinfos.AuthInfo(self, user, backend=self.backend)
+            authinfo = authinfos.AuthInfo(self, backend=self.backend)
 
         auth_params = authinfo.get_auth_params()
 
@@ -704,16 +676,10 @@ class Computer(entities.Entity['BackendComputer', ComputerCollection]):
 
         return authinfo
 
-    def get_configuration(self, user: User | None = None) -> dict[str, t.Any]:
-        """Get the configuration of computer for the given user as a dictionary
-
-        :param user: the user to to get the configuration for, otherwise default user
-        """
-        user = user or users.User.get_collection(self.backend).get_default()
-        assert user is not None
-
+    def get_configuration(self) -> dict[str, t.Any]:
+        """Get the configuration of the computer as a dictionary."""
         try:
-            authinfo = self.get_authinfo(user)
+            authinfo = self.get_authinfo()
         except exceptions.NotExistent:
             return {}
 

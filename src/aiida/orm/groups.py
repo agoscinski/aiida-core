@@ -24,13 +24,13 @@ from aiida.common import exceptions
 from aiida.common.lang import classproperty, type_check
 from aiida.common.warnings import warn_deprecation
 from aiida.manage import get_manager
-from aiida.orm import convert, entities, extras, users
+from aiida.orm import convert, entities, extras
 from aiida.orm.pydantic import OrmMetadataField
 
 if t.TYPE_CHECKING:
     from importlib_metadata import EntryPoint
 
-    from aiida.orm import Node, User
+    from aiida.orm import Node
     from aiida.orm.implementation import StorageBackend
     from aiida.orm.implementation.groups import BackendGroup
 
@@ -128,12 +128,10 @@ class Group(entities.Entity['BackendGroup', GroupCollection]):
             read_only=True,
             examples=['my_custom_group_type'],
         )
-        user: int = OrmMetadataField(
-            description='The PK of the group owner',
-            orm_class='core.user',
-            orm_to_model=lambda group: t.cast(Group, group).user.pk,
+        profile_uuid: str = OrmMetadataField(
+            description='The UUID of the profile that owns the group',
+            orm_to_model=lambda group: t.cast(Group, group).profile_uuid,
             read_only=True,
-            examples=[1],
         )
         time: datetime.datetime = OrmMetadataField(
             description='The creation time of the node, defaults to now (timezone-aware)',
@@ -162,7 +160,6 @@ class Group(entities.Entity['BackendGroup', GroupCollection]):
     def __init__(
         self,
         label: str | None = None,
-        user: User | None = None,
         description: str = '',
         type_string: str | None = None,
         time: datetime.datetime | None = None,
@@ -175,7 +172,6 @@ class Group(entities.Entity['BackendGroup', GroupCollection]):
 
         :param label: The group label, required on creation
         :param description: The group description (by default, an empty string)
-        :param user: The owner of the group (by default, the automatic user)
         :param type_string: a string identifying the type of group (by default,
             an empty string, indicating an user-defined group.
         """
@@ -186,12 +182,8 @@ class Group(entities.Entity['BackendGroup', GroupCollection]):
             warn_deprecation('Passing the `type_string` is deprecated, it is determined automatically', version=3)
 
         backend = backend or get_manager().get_profile_storage()
-        user = t.cast(users.User, user or backend.default_user)
-        type_check(user, users.User)
 
-        model = backend.groups.create(
-            label=label, user=user.backend_entity, description=description, type_string=self._type_string, time=time
-        )
+        model = backend.groups.create(label=label, description=description, type_string=self._type_string, time=time)
         super().__init__(model)
         if extras is not None:
             self.base.extras.set_many(extras)
@@ -223,7 +215,7 @@ class Group(entities.Entity['BackendGroup', GroupCollection]):
     def __repr__(self) -> str:
         return (
             f'<{self.__class__.__name__}: {self.label!r} '
-            f'[{"type " + self.type_string if self.type_string else "user-defined"}], of user {self.user.email}>'
+            f'[{"type " + self.type_string if self.type_string else "user-defined"}]>'
         )
 
     def __str__(self) -> str:
@@ -295,18 +287,9 @@ class Group(entities.Entity['BackendGroup', GroupCollection]):
         return self._backend_entity.time
 
     @property
-    def user(self) -> User:
-        """:return: the user associated with this group"""
-        return entities.from_backend_entity(users.User, self._backend_entity.user)
-
-    @user.setter
-    def user(self, user: User) -> None:
-        """Set the user.
-
-        :param user: the user
-        """
-        type_check(user, users.User)
-        self._backend_entity.user = user.backend_entity
+    def profile_uuid(self) -> str:
+        """:return: the UUID of the profile that owns this group"""
+        return self._backend_entity.profile_uuid
 
     def count(self) -> int:
         """Return the number of entities in this group.
