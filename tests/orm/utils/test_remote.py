@@ -20,8 +20,6 @@ from aiida.orm.utils import remote
 @pytest.mark.usefixtures('aiida_profile_clean')
 def test_clean_mapping_remote_paths_skips_unconfigured_computer(tmp_path, monkeypatch):
     """Unconfigured computers are skipped with a warning; configured ones in the same call are still cleaned."""
-    user = orm.User.collection.get_default()
-
     unconfigured = orm.Computer(
         label='unconfigured-computer',
         hostname='localhost',
@@ -37,7 +35,7 @@ def test_clean_mapping_remote_paths_skips_unconfigured_computer(tmp_path, monkey
         scheduler_type='core.direct',
         workdir=str(tmp_path / 'configured'),
     ).store()
-    configured.configure(user=user)
+    configured.configure()
 
     folder_unconfigured = RemoteData(remote_path=str(tmp_path / 'unconfigured-folder'), computer=unconfigured)
     folder_configured = RemoteData(remote_path=str(tmp_path / 'configured-folder'), computer=configured)
@@ -58,6 +56,4 @@ def test_clean_mapping_remote_paths_skips_unconfigured_computer(tmp_path, monkey
     mock_clean.assert_called_once()
     assert mock_clean.call_args.args[0] is folder_configured
 
-    assert warnings == [
-        f'Skipping 1 remote folders on `{unconfigured.label}`: computer is not configured for user `{user.email}`'
-    ]
+    assert warnings == [f'Skipping 1 remote folders on `{unconfigured.label}`: computer is not configured']

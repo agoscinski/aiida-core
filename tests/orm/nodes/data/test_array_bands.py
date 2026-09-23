@@ -13,19 +13,8 @@ from argparse import Namespace
 
 import pytest
 
-from aiida.common.exceptions import NotExistent
-from aiida.orm import BandsData, Group, User
+from aiida.orm import BandsData, Group
 from aiida.orm.nodes.data.array.bands import get_bands_and_parents_structure
-
-
-@pytest.fixture
-def alternate_user():
-    """Return an alternate ``User`` instance that is not the current default user."""
-    email = 'alternate@localhost'
-    try:
-        return User.collection.get(email=email)
-    except NotExistent:
-        return User(email='alternate@localhost').store()
 
 
 class TestGetBandsAndParentsStructure:
@@ -41,22 +30,7 @@ class TestGetBandsAndParentsStructure:
         args.past_days = None
         args.group_name = None
         args.group_pk = None
-        args.all_users = False
         return args
-
-    @pytest.mark.parametrize('all_users, expected', ((True, [True, True]), (False, [True, False])))
-    def test_all_users(self, alternate_user, all_users, expected):
-        """Test the behavior for the ``all_users`` argument."""
-        bands_default_user = BandsData().store()
-        bands_alternate_user = BandsData(user=alternate_user).store()
-        bands = [bands_default_user, bands_alternate_user]
-
-        args = self._get_default_ns()
-        args.all_users = all_users
-
-        entries = get_bands_and_parents_structure(args)
-        node_pks = [int(e[0]) for e in entries]
-        assert [node.pk in node_pks for node in bands] == expected
 
     @pytest.mark.parametrize('argument, attribute', (('group_name', 'label'), ('group_pk', 'pk')))
     def test_identifier(self, argument, attribute):

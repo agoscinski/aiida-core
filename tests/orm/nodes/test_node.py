@@ -17,7 +17,7 @@ import pytest
 
 from aiida.common import LinkType, exceptions, timezone
 from aiida.manage import get_manager
-from aiida.orm import CalculationNode, Data, Int, Log, Node, User, WorkflowNode, load_node
+from aiida.orm import CalculationNode, Data, Int, Log, Node, WorkflowNode, load_node
 from aiida.orm.utils.links import LinkTriple
 
 
@@ -27,14 +27,14 @@ class TestNode:
     @pytest.fixture(autouse=True)
     def _setup(self, aiida_localhost):
         """Class setup, autouse so it runs before each test method."""
-        self.user = User.collection.get_default()
         self.computer = aiida_localhost
 
-    def test_instantiate_with_user(self):
-        """Test a Node can be instantiated with a specific user."""
-        new_user = User(email='a@b.com').store()
-        node = Data(user=new_user).store()
-        assert node.user.pk == new_user.pk
+    def test_instantiate_with_profile_uuid(self):
+        """Test a Node is stamped with the owning profile UUID."""
+        from aiida.manage import get_manager
+
+        node = Data().store()
+        assert node.profile_uuid == get_manager().get_profile().uuid
 
     def test_instantiate_with_computer(self):
         """Test a Node can be instantiated with a specific computer."""
@@ -51,15 +51,12 @@ class TestNode:
         del node
         assert not os.path.isdir(dirpath)
 
-    def test_computer_user_immutability(self):
-        """Test that computer and user of a node are immutable after storing."""
+    def test_computer_immutability(self):
+        """Test that computer of a node is immutable after storing."""
         node = Data().store()
 
         with pytest.raises(exceptions.ModificationNotAllowed):
             node.computer = self.computer
-
-        with pytest.raises(exceptions.ModificationNotAllowed):
-            node.user = self.user
 
     @staticmethod
     def test_repository_metadata():

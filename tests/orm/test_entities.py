@@ -21,28 +21,29 @@ class TestBackendEntitiesAndCollections:
 
     def test_get_collection(self, backend):
         """Test :meth:`aiida.orm.entities.Entity.get_collection`."""
-        user_collection = orm.User.get_collection(backend)
-        assert user_collection is orm.User.collection
-        assert user_collection.backend is backend
+        group_collection = orm.Group.get_collection(backend)
+        assert group_collection is orm.Group.collection
+        assert group_collection.backend is backend
 
     def test_collections_cache(self):
         """Make sure that we're not recreating collections each time .collection is called"""
         # Check directly
-        user_collection = orm.User.collection
-        assert user_collection is orm.User.collection
+        group_collection = orm.Group.collection
+        assert group_collection is orm.Group.collection
 
         # Now check passing an explicit backend
-        backend = user_collection.backend
-        assert user_collection is user_collection(backend)
+        backend = group_collection.backend
+        assert group_collection is group_collection(backend)
 
     def test_collections_count(self):
         """Make sure count() works for collections"""
-        user_collection_count = orm.User.collection.count()
-        number_of_users = orm.QueryBuilder().append(orm.User).count()
-        assert number_of_users > 0, 'There should be more than 0 Users in the DB'
-        assert user_collection_count == number_of_users, (
-            f"{user_collection_count} User(s) was/were found using Collections' count() method, "
-            f'but {number_of_users} User(s) was/were found using QueryBuilder directly'
+        orm.Group(label='test-collection-count').store()
+        group_collection_count = orm.Group.collection.count()
+        number_of_groups = orm.QueryBuilder().append(orm.Group).count()
+        assert number_of_groups > 0, 'There should be more than 0 Groups in the DB'
+        assert group_collection_count == number_of_groups, (
+            f"{group_collection_count} Group(s) was/were found using Collections' count() method, "
+            f'but {number_of_groups} Group(s) was/were found using QueryBuilder directly'
         )
 
     def test_pickle(self):

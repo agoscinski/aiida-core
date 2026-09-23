@@ -34,6 +34,8 @@ process_status: QbStrField('attributes.process_status', dtype=str | None, doc='T
   process status is a generic status message')
 process_type: QbStrField('process_type', dtype=str | None, doc='The process type of
   the node')
+profile_uuid: QbStrField('profile_uuid', dtype=<class 'str'>, doc='The UUID of the
+  profile that owns the node')
 remote_workdir: QbStrField('attributes.remote_workdir', dtype=str | None, doc='The
   path to the remote (on cluster) scratch folder')
 repository_metadata: QbDictField('repository_metadata', dtype=dict[str, typing.Any],
@@ -52,6 +54,4 @@ sealed: QbBoolField('attributes.sealed', dtype=<class 'bool'>, doc='Whether the 
   is sealed')
 state: QbStrField('attributes.state', dtype=str | None, doc='The active state of the
   calculation job')
-user: QbNumericField('user', dtype=<class 'int'>, doc='The PK of the user who owns
-  the node')
 uuid: QbStrField('uuid', dtype=<class 'uuid.UUID'>, doc='The UUID of the node')

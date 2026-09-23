@@ -18,10 +18,9 @@ from aiida.common.warnings import AiidaDeprecationWarning
 @pytest.mark.parametrize(
     ('orm_class', 'payload'),
     (
-        (orm.User, {'email': 'legacy@aiida.net'}),
         (orm.Int, {'value': 5}),
         (orm.Dict, {'value': {'answer': 42}}),
-        (orm.Int, {'user': 2, 'computer': 3, 'value': 5}),
+        (orm.Int, {'computer': 3, 'value': 5}),
     ),
 )
 def test_legacy_model_is_available_for_validation(orm_class, payload):
@@ -37,10 +36,7 @@ def test_legacy_model_is_available_for_validation(orm_class, payload):
 @pytest.mark.presto
 @pytest.mark.parametrize(
     ('orm_class', 'payload', 'expected_model_name'),
-    (
-        (orm.User, {'email': 'legacy@aiida.net'}, 'WriteModel'),
-        (orm.Int, {'user': 2, 'computer': 3, 'value': 5}, 'WriteModel'),
-    ),
+    ((orm.Int, {'computer': 3, 'value': 5}, 'WriteModel'),),
 )
 def test_legacy_model_cannot_be_used_with_from_model(orm_class, payload, expected_model_name):
     """The deprecated ``Model`` wrapper should fail loudly when passed to ``from_model``."""
@@ -56,10 +52,7 @@ def test_legacy_model_cannot_be_used_with_from_model(orm_class, payload, expecte
 @pytest.mark.presto
 @pytest.mark.parametrize(
     ('orm_class', 'payload', 'expected_keys'),
-    (
-        (orm.User, {'email': 'write@aiida.net'}, {'email'}),
-        (orm.Int, {'node_type': orm.Int.class_node_type, 'attributes': {'value': 5}}, {'node_type', 'attributes'}),
-    ),
+    ((orm.Int, {'node_type': orm.Int.class_node_type, 'attributes': {'value': 5}}, {'node_type', 'attributes'}),),
 )
 def test_model_to_orm_compatibility_helpers(orm_class, payload, expected_keys):
     """The restored compatibility helpers should reflect the active write schema."""
@@ -75,10 +68,7 @@ def test_model_to_orm_compatibility_helpers(orm_class, payload, expected_keys):
 @pytest.mark.presto
 @pytest.mark.parametrize(
     ('orm_class', 'payload', 'expected_model_name'),
-    (
-        (orm.User, {'email': 'legacy@aiida.net'}, 'WriteModel'),
-        (orm.Int, {'user': 2, 'computer': 3, 'value': 5}, 'WriteModel'),
-    ),
+    ((orm.Int, {'computer': 3, 'value': 5}, 'WriteModel'),),
 )
 def test_legacy_model_cannot_be_used_with_model_to_orm_field_values(orm_class, payload, expected_model_name):
     """The restored compatibility helper should reject the deprecated ``Model`` wrapper."""

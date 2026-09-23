@@ -25,26 +25,22 @@ class TestBackendComment:
         """Initialize the profile."""
         self.backend = backend
         self.computer = aiida_localhost.backend_entity  # Unwrap the `Computer` instance to `BackendComputer`
-        self.user = backend.users.create(email=uuid4().hex).store()
         self.node = self.backend.nodes.create(
-            node_type='', user=self.user, computer=self.computer, label=uuid4().hex, description='description'
+            node_type='', computer=self.computer, label=uuid4().hex, description='description'
         ).store()
         self.comment_content = 'comment content'
 
     def create_comment(self, **kwargs):
         """Create BackendComment"""
         node = kwargs['node'] if 'node' in kwargs else self.node
-        user = kwargs['user'] if 'user' in kwargs else self.user
         ctime = kwargs['ctime'] if 'ctime' in kwargs else None
         mtime = kwargs['mtime'] if 'mtime' in kwargs else None
 
-        return self.backend.comments.create(
-            node=node, user=user, content=self.comment_content, ctime=ctime, mtime=mtime
-        )
+        return self.backend.comments.create(node=node, content=self.comment_content, ctime=ctime, mtime=mtime)
 
     def test_creation(self):
         """Test creation of a BackendComment and all its properties."""
-        comment = self.backend.comments.create(node=self.node, user=self.user, content=self.comment_content)
+        comment = self.backend.comments.create(node=self.node, content=self.comment_content)
 
         # Before storing
         assert comment.id is None
@@ -53,7 +49,7 @@ class TestBackendComment:
         assert comment.node, self.node
         assert isinstance(comment.ctime, datetime)
         assert comment.mtime is None
-        assert comment.user, self.user
+        assert comment.profile_uuid == self.backend.profile.uuid
         assert comment.content == self.comment_content
 
         # Store the comment.ctime before the store as a reference
@@ -77,7 +73,7 @@ class TestBackendComment:
         assert comment.node, self.node
         assert isinstance(comment.ctime, datetime)
         assert isinstance(comment.mtime, datetime)
-        assert comment.user, self.user
+        assert comment.profile_uuid == self.backend.profile.uuid
         assert comment.content == self.comment_content
 
         # Try to construct a UUID from the UUID value to prove that it has a valid UUID
@@ -95,9 +91,7 @@ class TestBackendComment:
         ctime = datetime(2019, 2, 27, 16, 20, 12, 245738, timezone.utc)
         mtime = datetime(2019, 2, 27, 16, 27, 14, 798838, timezone.utc)
 
-        comment = self.backend.comments.create(
-            node=self.node, user=self.user, content=self.comment_content, mtime=mtime, ctime=ctime
-        )
+        comment = self.backend.comments.create(node=self.node, content=self.comment_content, mtime=mtime, ctime=ctime)
 
         # Check that the ctime and mtime are the given ones
         assert comment.ctime == ctime
@@ -180,7 +174,7 @@ class TestBackendComment:
         """Test `delete_many` method filtering on `dbnode_id`"""
         # Create comments and separate node
         calc = self.backend.nodes.create(
-            node_type='', user=self.user, computer=self.computer, label='label', description='description'
+            node_type='', computer=self.computer, label='label', description='description'
         ).store()
         comment1 = self.create_comment(node=calc)
         comment2 = self.create_comment()
@@ -258,11 +252,9 @@ class TestBackendComment:
         for comment_uuid in comment_uuids[:-1]:
             assert comment_uuid in found_comments_uuid
 
-    def test_delete_many_user_id(self):
-        """Test `delete_many` method filtering on `user_id`"""
-        # Create comments and separate user
-        user_two = self.backend.users.create(email='tester_two@localhost').store()
-        comment1 = self.create_comment(user=user_two)
+    def test_delete_many_profile_uuid(self):
+        """Test `delete_many` method filtering on `profile_uuid`"""
+        comment1 = self.create_comment()
         comment2 = self.create_comment()
         comment3 = self.create_comment()
         comment_uuids = []
@@ -277,19 +269,17 @@ class TestBackendComment:
         for comment_uuid in comment_uuids:
             assert comment_uuid in found_comments_uuid
 
-        # Delete last comments for `self.user`
-        filters = {'user_id': self.user.id}
-        self.backend.comments.delete_many(filters=filters)
+        # Delete comments for a different profile: nothing should be deleted
+        self.backend.comments.delete_many(filters={'profile_uuid': 'other-profile-uuid'})
+        builder = orm.QueryBuilder().append(orm.Comment, project='uuid')
+        assert builder.count() > 0
 
-        # Check they were deleted
+        # Delete comments for the current profile: all should be deleted
+        self.backend.comments.delete_many(filters={'profile_uuid': self.backend.profile.uuid})
         builder = orm.QueryBuilder().append(orm.Comment, project='uuid')
         found_comments_uuid = [_[0] for _ in builder.all()]
-        assert builder.count() > 0
-        for comment_uuid in comment_uuids[1:]:
+        for comment_uuid in comment_uuids:
             assert comment_uuid not in found_comments_uuid
-
-        # Make sure the first comment (comment1) was not deleted
-        assert comment_uuids[0] in found_comments_uuid
 
     def test_deleting_non_existent_entities(self):
         """Test deleting non-existent Comments for different cases"""

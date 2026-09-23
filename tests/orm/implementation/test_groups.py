@@ -15,8 +15,7 @@ def test_creation_from_dbgroup(backend):
     """Test creation of a group from another group."""
     node = orm.Data().store()
 
-    default_user = backend.users.create('test@aiida.net').store()
-    group = backend.groups.create(label='testgroup_from_dbgroup', user=default_user).store()
+    group = backend.groups.create(label='testgroup_from_dbgroup').store()
 
     group.store()
     group.add_nodes([node.backend_entity])

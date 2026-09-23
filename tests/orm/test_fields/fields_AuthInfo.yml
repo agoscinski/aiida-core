@@ -6,4 +6,3 @@ enabled: QbBoolField('enabled', dtype=<class 'bool'>, doc='Whether the instance 
 metadata: QbDictField('metadata', dtype=dict[str, typing.Any], doc='Dictionary of
   metadata')
 pk: QbNumericField('pk', dtype=<class 'int'>, doc='The primary key of the entity')
-user: QbNumericField('user', dtype=<class 'int'>, doc='The PK of the user')

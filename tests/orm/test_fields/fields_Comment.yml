@@ -6,5 +6,6 @@ mtime: QbNumericField('mtime', dtype=<class 'datetime.datetime'>, doc='Modified 
 node: QbNumericField('node', dtype=<class 'int'>, doc='Node PK that the comment is
   attached to')
 pk: QbNumericField('pk', dtype=<class 'int'>, doc='The primary key of the entity')
-user: QbNumericField('user', dtype=<class 'int'>, doc='User PK that created the comment')
+profile_uuid: QbStrField('profile_uuid', dtype=<class 'str'>, doc='UUID of the profile
+  that owns the comment')
 uuid: QbStrField('uuid', dtype=<class 'uuid.UUID'>, doc='The UUID of the comment')

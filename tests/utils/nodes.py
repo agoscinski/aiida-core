@@ -25,7 +25,7 @@ def create_int_nodes(num_nodes, backend=None):
     if backend is None:
         backend = get_manager().get_profile_storage()
 
-    assert backend.default_user is not None
+    profile_uuid = get_manager().get_profile().uuid
 
     current_time = timezone.now()
 
@@ -37,7 +37,7 @@ def create_int_nodes(num_nodes, backend=None):
             'process_type': None,
             'label': f'test_node_{i}',
             'description': 'Test node for integration testing',
-            'user_id': backend.default_user.pk,
+            'profile_uuid': profile_uuid,
             'dbcomputer_id': None,
             'ctime': current_time,
             'mtime': current_time,

@@ -21,7 +21,6 @@ orm_to_test = (
     orm.Computer,
     orm.Group,
     orm.Log,
-    orm.User,
     orm.ArrayData,
     orm.Bool,
     orm.CifData,
@@ -92,22 +91,27 @@ class RequiredNodeArguments(t.TypedDict):
 
 
 @pytest.fixture
-def required_arguments(request, default_user, aiida_localhost, tmp_path):
+def required_arguments(request, aiida_localhost, tmp_path):
     test_name = f'{request.node.module.__name__}.{request.node.originalname}'
 
     if request.param is orm.AuthInfo:
+        # AuthInfo is unique per computer, so use a dedicated computer instead of the shared localhost fixture.
+        computer = orm.Computer(
+            label=f'{test_name}-authinfo-comp',
+            hostname='localhost',
+            transport_type='core.local',
+            scheduler_type='core.direct',
+        ).store()
         return {
             'cls': orm.AuthInfo,
             'kwargs': {
-                'user': orm.User(email=f'{test_name}-authinfo@aiida').store(),
-                'computer': aiida_localhost,
+                'computer': computer,
             },
         }
     if request.param is orm.Comment:
         return {
             'cls': orm.Comment,
             'kwargs': {
-                'user': default_user,
                 'node': orm.Data().store(),
                 'content': '',
             },
@@ -139,11 +143,6 @@ def required_arguments(request, default_user, aiida_localhost, tmp_path):
                 'message': 'message',
                 'node': orm.Data().store(),
             },
-        }
-    if request.param is orm.User:
-        return {
-            'cls': orm.User,
-            'kwargs': {'email': f'{test_name}-user@aiida'},
         }
     if request.param is orm.ArrayData:
         buffered_array = io.BytesIO()
@@ -587,7 +586,7 @@ def _check_all(serialized: dict, entity: orm.Entity):
         field = getattr(entity, key)
         if isinstance(field, datetime.datetime):
             field = field.isoformat()
-        elif field is not None and key in {'user', 'computer', 'node'}:
+        elif field is not None and key in {'computer', 'node'}:
             field = field.pk
         _check(value, field)
 

@@ -11,7 +11,6 @@
 
 import json
 import os
-import uuid
 
 import numpy
 import pytest
@@ -113,38 +112,29 @@ class TestUpfParser:
         label_01 = 'family_01'
         label_02 = 'family_02'
 
-        user = orm.User(email=uuid.uuid4().hex).store()
-
         assert orm.UpfFamily.collection.all() == []
 
-        # Create group with default user and add `Ba` pseudo
+        # Create group and add `Ba` pseudo
         family_01, _ = orm.UpfFamily.collection.get_or_create(label=label_01)
         family_01.add_nodes([self.pseudo_barium])
         family_01.store()
 
         assert {group.label for group in orm.UpfData.get_upf_groups()} == {label_01}
 
-        # Create group with different user and add `O` pseudo
-        family_02, _ = orm.UpfFamily.collection.get_or_create(label=label_02, user=user)
+        # Create a second group and add `O` pseudo
+        family_02, _ = orm.UpfFamily.collection.get_or_create(label=label_02)
         family_02.add_nodes([self.pseudo_oxygen])
         family_02.store()
 
         assert {group.label for group in orm.UpfData.get_upf_groups()} == {label_01, label_02}
 
-        # Filter on a given user
-        assert {group.label for group in orm.UpfData.get_upf_groups(user=user.email)} == {label_02}
-
         # Filter on a given element
         groups = {group.label for group in orm.UpfData.get_upf_groups(filter_elements='O')}
         assert groups == {label_02}
 
-        # Filter on a given element and user
-        groups = {group.label for group in orm.UpfData.get_upf_groups(filter_elements='O', user=user.email)}
-        assert groups == {label_02}
-
-        # Filter on element and user that should not match anything
-        groups = {group.label for group in orm.UpfData.get_upf_groups(filter_elements='Ba', user=user.email)}
-        assert groups == set([])
+        # Filter on an element that matches nothing
+        groups = {group.label for group in orm.UpfData.get_upf_groups(filter_elements='Ba')}
+        assert groups == {label_01}
 
     def test_upf_version_one(self):
         """Check if parsing for regular UPF file (version 1) succeeds."""

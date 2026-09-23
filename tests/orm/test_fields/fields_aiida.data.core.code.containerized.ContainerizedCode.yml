@@ -29,14 +29,14 @@ prepend_text: QbStrField('attributes.prepend_text', dtype=<class 'str'>, doc='Ba
   code')
 process_type: QbStrField('process_type', dtype=str | None, doc='The process type of
   the node')
+profile_uuid: QbStrField('profile_uuid', dtype=<class 'str'>, doc='The UUID of the
+  profile that owns the node')
 repository_metadata: QbDictField('repository_metadata', dtype=dict[str, typing.Any],
   doc='Virtual hierarchy of the file repository')
 source: QbDictField('attributes.source', dtype=dict | None, doc='Source of the data')
 use_double_quotes: QbBoolField('attributes.use_double_quotes', dtype=<class 'bool'>,
   doc='Whether the executable and arguments of the code in the submission script should
   be escaped with single or double quotes')
-user: QbNumericField('user', dtype=<class 'int'>, doc='The PK of the user who owns
-  the node')
 uuid: QbStrField('uuid', dtype=<class 'uuid.UUID'>, doc='The UUID of the node')
 with_mpi: QbBoolField('attributes.with_mpi', dtype=bool | None, doc='Whether the executable
   should be run as an MPI program. This option can be left unspecified in which case

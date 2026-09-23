@@ -930,19 +930,17 @@ class TestNodeBasic:
 
         from aiida.common import timezone
 
-        user = orm.User.collection.get_default()
-
         a = orm.Data()
         with pytest.raises(ModificationNotAllowed):
-            a.base.comments.add('text', user=user)
+            a.base.comments.add('text')
 
         a.store()
         assert a.base.comments.all() == []
 
         before = timezone.now() - timedelta(seconds=1)
-        a.base.comments.add('text', user=user)
+        a.base.comments.add('text')
         sleep(0.1)
-        a.base.comments.add('text2', user=user)
+        a.base.comments.add('text2')
         after = timezone.now() + timedelta(seconds=1)
 
         # Make sure comments are sorted to avoid
@@ -955,11 +953,11 @@ class TestNodeBasic:
             assert time > before
             assert time < after
 
-        default_user_email = get_profile().default_user_email
+        profile_uuid = get_profile().uuid
 
-        assert [(i.user.email, i.content) for i in comments] == [
-            (default_user_email, 'text'),
-            (default_user_email, 'text2'),
+        assert [(i.profile_uuid, i.content) for i in comments] == [
+            (profile_uuid, 'text'),
+            (profile_uuid, 'text2'),
         ]
 
     def test_load_node(self):

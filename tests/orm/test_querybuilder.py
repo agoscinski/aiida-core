@@ -76,13 +76,6 @@ class TestBasic:
             assert classifiers[0].ormclass_type_string.startswith('group')
 
         for _cls, classifiers in (
-            _get_ormclass(orm.User, None),
-            _get_ormclass(None, 'user'),
-            _get_ormclass(None, 'User'),
-        ):
-            assert classifiers[0].ormclass_type_string == 'user'
-
-        for _cls, classifiers in (
             _get_ormclass(orm.Computer, None),
             _get_ormclass(None, 'computer'),
             _get_ormclass(None, 'Computer'),
@@ -716,9 +709,13 @@ class TestMultipleProjections:
         orm.Data().store()
         orm.Data().store()
 
+        group = orm.Group(label='test-group').store()
+        node = orm.Data().store()
+        group.add_nodes([node])
+
         query = orm.QueryBuilder()
-        query.append(orm.User, tag='user', project=['email'])
-        query.append(orm.Data, with_user='user', project=['*'])
+        query.append(orm.Group, tag='group', project=['label'])
+        query.append(orm.Data, with_group='group', project=['*'])
 
         result = query.first()
 
@@ -1133,55 +1130,29 @@ class TestQueryBuilderJoins:
                 == number_students
             )
 
-    def test_joins_user_group(self):
-        # Create another user
-        new_email = 'newuser@new.n'
-        user = orm.User(email=new_email).store()
+    def test_joins_group_profile(self):
+        """Test querying for groups filtered by owning profile."""
+        from aiida.manage import get_manager
 
-        # Create a group that belongs to that user
-        group = orm.Group(label='node_group')
-        group.user = user
-        group.store()
+        group = orm.Group(label='node_group').store()
 
-        # Search for the group of the user
         qb = orm.QueryBuilder()
-        qb.append(orm.User, tag='user', filters={'id': {'==': user.pk}})
-        qb.append(orm.Group, with_user='user', filters={'id': {'==': group.pk}})
-        assert qb.count() == 1, 'The expected group that belongs to the selected user was not found.'
+        qb.append(
+            orm.Group,
+            filters={'id': {'==': group.pk}, 'profile_uuid': get_manager().get_profile().uuid},
+        )
+        assert qb.count() == 1, 'The expected group owned by the profile was not found.'
 
-        # Search for the user that owns a group
         qb = orm.QueryBuilder()
-        qb.append(orm.Group, tag='group', filters={'id': {'==': group.pk}})
-        qb.append(orm.User, with_group='group', filters={'id': {'==': user.pk}})
-
-        assert qb.count() == 1, 'The expected user that owns the selected group was not found.'
-
-    def test_joins_user_authinfo(self):
-        """Test querying for user with particular authinfo"""
-        user = orm.User(email='email@new.com').store()
-        computer = orm.Computer(
-            label='new', hostname='localhost', transport_type='core.local', scheduler_type='core.direct'
-        ).store()
-        authinfo = computer.configure(user)
-        qb = orm.QueryBuilder()
-        qb.append(orm.AuthInfo, tag='auth', filters={'id': {'==': authinfo.pk}})
-        qb.append(orm.User, with_authinfo='auth')
-        assert qb.count() == 1, 'The expected user that owns the selected authinfo was not found.'
-        assert qb.one()[0].pk == user.pk
+        qb.append(orm.Group, filters={'id': {'==': group.pk}, 'profile_uuid': 'other-profile-uuid'})
+        assert qb.count() == 0, 'No group should match a different profile UUID.'
 
     def test_joins_authinfo(self):
-        """Test querying for AuthInfo with specific computer/user."""
-        user = orm.User(email=str(uuid.uuid4())).store()
+        """Test querying for AuthInfo with specific computer."""
         computer = orm.Computer(
             label=str(uuid.uuid4()), hostname='localhost', transport_type='core.local', scheduler_type='core.direct'
         ).store()
-        authinfo = computer.configure(user)
-
-        # Search for the user of the authinfo
-        qb = orm.QueryBuilder()
-        qb.append(orm.User, tag='user', filters={'id': {'==': user.pk}})
-        qb.append(orm.AuthInfo, with_user='user', filters={'id': {'==': authinfo.pk}})
-        assert qb.count() == 1, 'The expected user that owns the selected authinfo was not found.'
+        authinfo = computer.configure()
 
         # Search for the computer of the authinfo
         qb = orm.QueryBuilder()
@@ -1195,12 +1166,8 @@ class TestQueryBuilderJoins:
         Since this is not backend specific test (even if it is mainly used to test the querying of Django backend
         with QueryBuilder), we keep it at the general tests (ran by both backends).
         """
-        new_email = 'newuser@new.n2'
-        user = orm.User(email=new_email).store()
-
-        # Create a group that belongs to that user
+        # Create a group
         group = orm.Group(label='node_group_2')
-        group.user = user
         group.store()
 
         # Create nodes and add them to the created group
@@ -1722,8 +1689,7 @@ class TestDoubleStar:
     """
 
     def test_authinfo(self, aiida_localhost):
-        user = orm.User(email=str(uuid.uuid4())).store()
-        authinfo = aiida_localhost.configure(user)
+        authinfo = aiida_localhost.get_authinfo()
         result = (
             orm.QueryBuilder()
             .append(orm.AuthInfo, tag='auth', filters={'id': {'==': authinfo.pk}}, project=['**'])

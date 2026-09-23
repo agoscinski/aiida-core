@@ -13,7 +13,7 @@ import uuid
 import pytest
 
 from aiida.common import exceptions
-from aiida.orm import AuthInfo, Computer, User
+from aiida.orm import AuthInfo, Computer
 from aiida.plugins import TransportFactory
 
 
@@ -33,7 +33,7 @@ class TestComputer:
         ).store()
 
         # Configure the computer - no parameters for local transport
-        authinfo = AuthInfo(computer=new_comp, user=User.collection.get_default())
+        authinfo = AuthInfo(computer=new_comp)
         authinfo.store()
 
         transport = new_comp.get_transport()
@@ -97,7 +97,6 @@ class TestComputerConfigure:
         self.comp_builder.default_memory_per_machine = 1000000
         self.comp_builder.mpirun_command = 'mpirun'
         self.comp_builder.shebang = '#!xonsh'
-        self.user = User.collection.get_default()
 
     def test_is_configured(self):
         """Test the :meth:`aiida.orm.computers.Computer.is_configured`."""
@@ -116,7 +115,7 @@ class TestComputerConfigure:
         comp.store()
 
         comp.configure()
-        assert comp.is_user_configured(self.user)
+        assert comp.is_configured
 
     def test_configure_ssh(self):
         """Configure a computer for ssh transport and check it is configured."""
@@ -126,7 +125,7 @@ class TestComputerConfigure:
         comp.store()
 
         comp.configure(username='radames', port='22')
-        assert comp.is_user_configured(self.user)
+        assert comp.is_configured
 
     def test_configure_ssh_invalid(self):
         """Try to configure computer with invalid auth params and check it fails."""
@@ -146,10 +145,8 @@ class TestComputerConfigure:
         comp.store()
 
         with pytest.raises(exceptions.NotExistent) as exc:
-            comp.get_authinfo(self.user)
+            comp.get_authinfo()
 
         assert str(comp.pk) in str(exc)
         assert comp.label in str(exc)
-        assert self.user.get_short_name() in str(exc)
-        assert str(self.user.pk) in str(exc)
-        assert 'verdi computer configure' in str(exc)
+        assert 'verdi computer setup' in str(exc)

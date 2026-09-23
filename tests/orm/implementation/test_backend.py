@@ -40,111 +40,120 @@ class TestBackend:
 
     def test_transaction_nesting(self):
         """Test that transaction nesting works."""
-        user = orm.User('initial@email.com').store()
+        group = orm.Group(label='initial').store()
         with self.backend.transaction():
-            user.email = 'pre-failure@email.com'
+            group.label = 'pre-failure'
             try:
                 with self.backend.transaction():
-                    user.email = 'failure@email.com'
-                    assert user.email == 'failure@email.com'
+                    group.label = 'failure'
+                    assert group.label == 'failure'
                     raise RuntimeError
             except RuntimeError:
                 pass
-            assert user.email == 'pre-failure@email.com'
-        assert user.email == 'pre-failure@email.com'
+            assert group.label == 'pre-failure'
+        assert group.label == 'pre-failure'
 
     def test_transaction(self):
         """Test that transaction nesting works."""
-        user1 = orm.User('user1@email.com').store()
-        user2 = orm.User('user2@email.com').store()
+        group1 = orm.Group(label='group1').store()
+        group2 = orm.Group(label='group2').store()
 
         try:
             with self.backend.transaction():
                 assert self.backend.in_transaction
-                user1.email = 'broken1@email.com'
-                user2.email = 'broken2@email.com'
+                group1.label = 'broken1'
+                group2.label = 'broken2'
                 raise RuntimeError
         except RuntimeError:
             pass
-        assert user1.email == 'user1@email.com'
-        assert user2.email == 'user2@email.com'
+        assert group1.label == 'group1'
+        assert group2.label == 'group2'
 
     def test_store_in_transaction(self):
         """Test that storing inside a transaction is correctly dealt with."""
-        user1 = orm.User('user_store@email.com')
+        group1 = orm.Group(label='group_store')
         with self.backend.transaction():
-            user1.store()
+            group1.store()
         # the following shouldn't raise
-        orm.User.collection.get(email='user_store@email.com')
+        orm.Group.collection.get(label='group_store')
 
-        user2 = orm.User('user_store_fail@email.com')
+        group2 = orm.Group(label='group_store_fail')
         try:
             with self.backend.transaction():
-                user2.store()
+                group2.store()
                 raise RuntimeError
         except RuntimeError:
             pass
 
         with pytest.raises(exceptions.NotExistent):
-            orm.User.collection.get(email='user_store_fail@email.com')
+            orm.Group.collection.get(label='group_store_fail')
 
     def test_bulk_insert(self):
         """Test that bulk insert works."""
-        rows = [{'email': uuid.uuid4().hex}, {'email': uuid.uuid4().hex}]
+        profile_uuid = self.backend.profile.uuid
+        rows = [
+            {'label': uuid.uuid4().hex, 'profile_uuid': profile_uuid},
+            {'label': uuid.uuid4().hex, 'profile_uuid': profile_uuid},
+        ]
         # should fail if all fields are not given and allow_defaults=False
         with pytest.raises(exceptions.IntegrityError, match='Incorrect fields'):
-            self.backend.bulk_insert(EntityTypes.USER, rows)
-        pks = self.backend.bulk_insert(EntityTypes.USER, rows, allow_defaults=True)
+            self.backend.bulk_insert(EntityTypes.GROUP, rows)
+        pks = self.backend.bulk_insert(EntityTypes.GROUP, rows, allow_defaults=True)
         assert len(pks) == len(rows)
         for pk, row in zip(pks, rows):
             assert isinstance(pk, int)
-            user = orm.User.collection.get(id=pk)
-            assert user.email == row['email']
+            group = orm.Group.collection.get(id=pk)
+            assert group.label == row['label']
 
     def test_bulk_insert_in_transaction(self):
         """Test that bulk insert in a cancelled transaction is not committed."""
-        rows = [{'email': uuid.uuid4().hex}, {'email': uuid.uuid4().hex}]
+        profile_uuid = self.backend.profile.uuid
+        rows = [
+            {'label': uuid.uuid4().hex, 'profile_uuid': profile_uuid},
+            {'label': uuid.uuid4().hex, 'profile_uuid': profile_uuid},
+        ]
         try:
             with self.backend.transaction():
-                self.backend.bulk_insert(EntityTypes.USER, rows, allow_defaults=True)
+                self.backend.bulk_insert(EntityTypes.GROUP, rows, allow_defaults=True)
                 raise RuntimeError
         except RuntimeError:
             pass
         for row in rows:
             with pytest.raises(exceptions.NotExistent):
-                orm.User.collection.get(email=row['email'])
+                orm.Group.collection.get(label=row['label'])
 
     def test_bulk_update(self):
         """Test that bulk update works."""
         prefix = uuid.uuid4().hex
-        users = [orm.User(f'{prefix}-{i}').store() for i in range(3)]
+        groups = [orm.Group(label=f'{prefix}-{i}').store() for i in range(3)]
         # should raise if the 'id' field is not present
         with pytest.raises(exceptions.IntegrityError, match="'id' field not given"):
-            self.backend.bulk_update(EntityTypes.USER, [{'email': 'other'}])
+            self.backend.bulk_update(EntityTypes.GROUP, [{'label': 'other'}])
         # should raise if a non-existent field is present
         with pytest.raises(exceptions.IntegrityError, match='Incorrect fields'):
-            self.backend.bulk_update(EntityTypes.USER, [{'id': users[0].pk, 'x': 'other'}])
+            self.backend.bulk_update(EntityTypes.GROUP, [{'id': groups[0].pk, 'x': 'other'}])
         self.backend.bulk_update(
-            EntityTypes.USER, [{'id': users[0].pk, 'email': 'other0'}, {'id': users[1].pk, 'email': 'other1'}]
+            EntityTypes.GROUP, [{'id': groups[0].pk, 'label': 'other0'}, {'id': groups[1].pk, 'label': 'other1'}]
         )
-        assert users[0].email == 'other0'
-        assert users[1].email == 'other1'
-        assert users[2].email == f'{prefix}-2'
+        assert groups[0].label == 'other0'
+        assert groups[1].label == 'other1'
+        assert groups[2].label == f'{prefix}-2'
 
     def test_bulk_update_in_transaction(self):
         """Test that bulk update in a cancelled transaction is not committed."""
         prefix = uuid.uuid4().hex
-        users = [orm.User(f'{prefix}-{i}').store() for i in range(3)]
+        groups = [orm.Group(label=f'{prefix}-{i}').store() for i in range(3)]
         try:
             with self.backend.transaction():
                 self.backend.bulk_update(
-                    EntityTypes.USER, [{'id': users[0].pk, 'email': 'random0'}, {'id': users[1].pk, 'email': 'random1'}]
+                    EntityTypes.GROUP,
+                    [{'id': groups[0].pk, 'label': 'random0'}, {'id': groups[1].pk, 'label': 'random1'}],
                 )
                 raise RuntimeError
         except RuntimeError:
             pass
-        for i, user in enumerate(users):
-            assert user.email == f'{prefix}-{i}'
+        for i, group in enumerate(groups):
+            assert group.label == f'{prefix}-{i}'
 
     def test_delete_nodes_and_connections(self):
         """Delete all nodes and connections."""

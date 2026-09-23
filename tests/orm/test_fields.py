@@ -24,7 +24,7 @@ EPS = entry_points()
 
 @pytest.mark.parametrize(
     'entity_cls',
-    (orm.AuthInfo, orm.Comment, orm.Computer, orm.Group, orm.Log, orm.User),
+    (orm.AuthInfo, orm.Comment, orm.Computer, orm.Group, orm.Log),
 )
 def test_all_entity_fields(entity_cls, data_regression):
     data_regression.check(

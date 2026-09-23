@@ -26,25 +26,23 @@ class TestBackendNode:
         """Initialize the profile."""
         self.backend = backend
         self.computer = aiida_localhost.backend_entity  # Unwrap the `Computer` instance to `BackendComputer`
-        self.user = backend.users.create(email=uuid4().hex).store()
         self.node_type = ''
         self.node_label = uuid4().hex
         self.node_description = 'description'
         self.node = backend.nodes.create(
             node_type=self.node_type,
-            user=self.user,
             computer=self.computer,
             label=self.node_label,
             description=self.node_description,
         )
 
     def create_node(self) -> BackendNode:
-        return self.backend.nodes.create(node_type=self.node_type, user=self.user)
+        return self.backend.nodes.create(node_type=self.node_type)
 
     def test_creation(self):
         """Test creation of a BackendNode and all its properties."""
         node = self.backend.nodes.create(
-            node_type=self.node_type, user=self.user, label=self.node_label, description=self.node_description
+            node_type=self.node_type, label=self.node_label, description=self.node_description
         )
 
         # Before storing
@@ -106,7 +104,6 @@ class TestBackendNode:
 
         node = self.backend.nodes.create(
             node_type=self.node_type,
-            user=self.user,
             label=self.node_label,
             description=self.node_description,
             mtime=mtime,
@@ -141,7 +138,7 @@ class TestBackendNode:
         assert clone.uuid != node.uuid
         assert clone.label == node.label
         assert clone.description == node.description
-        assert clone.user.id == node.user.id
+        assert clone.profile_uuid == node.profile_uuid
         assert clone.computer.id == node.computer.id
         assert clone.attributes == node.attributes
         assert clone.extras == node.extras
@@ -164,12 +161,9 @@ class TestBackendNode:
         self.node.computer = new_computer
         assert self.node.computer.id == new_computer.id
 
-    def test_user_methods(self):
-        """Test the user methods of a BackendNode."""
-        new_user = self.backend.users.create(email='newuser@localhost').store()
-        assert self.node.user.id == self.user.id
-        self.node.user = new_user
-        assert self.node.user.id == new_user.id
+    def test_profile_uuid(self):
+        """Test the profile UUID of a BackendNode."""
+        assert self.node.profile_uuid == self.backend.profile.uuid
 
     def test_get_set_attribute(self):
         """Test the `get_attribute` and `set_attribute` method of a BackendNode."""
