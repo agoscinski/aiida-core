@@ -18,7 +18,7 @@ import logging
 import types
 import typing as t
 
-from aiida.common.typing import FilePath
+from aiida._core.common.typing import FilePath
 
 __all__ = ('AIIDA_LOGGER', 'override_log_level')
 

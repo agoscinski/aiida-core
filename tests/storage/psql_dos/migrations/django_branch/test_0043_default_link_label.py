@@ -10,7 +10,7 @@
 
 from uuid import uuid4
 
-from aiida.common import timezone
+from aiida._core.common import timezone
 from aiida.storage.psql_dos.migrator import PsqlDosMigrator
 
 

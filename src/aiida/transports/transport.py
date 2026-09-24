@@ -18,8 +18,8 @@ from collections import OrderedDict
 from pathlib import Path, PurePosixPath
 
 from aiida.common.exceptions import InternalError
-from aiida.common.lang import classproperty
-from aiida.common.warnings import warn_deprecation
+from aiida._core.common.lang import classproperty
+from aiida._core.common.warnings import warn_deprecation
 
 __all__ = ('AsyncTransport', 'BlockingTransport', 'Transport', 'TransportPath')
 
@@ -451,7 +451,7 @@ class Transport(abc.ABC):
         .. note:: the supported keys in kwargs are callback, dereference,
            overwrite and ignore_nonexisting.
         """
-        from aiida.common.folders import SandboxFolder
+        from aiida._core.common.folders import SandboxFolder
 
         kwargs_get = {
             'callback': None,

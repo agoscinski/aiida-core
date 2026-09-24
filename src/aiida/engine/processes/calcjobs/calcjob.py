@@ -24,10 +24,10 @@ import plumpy.process_states
 from aiida import orm
 from aiida.common import AttributeDict, exceptions
 from aiida.common.datastructures import CalcInfo, FileCopyOperation
-from aiida.common.folders import Folder
-from aiida.common.lang import classproperty, override
+from aiida._core.common.folders import Folder
+from aiida._core.common.lang import classproperty, override
 from aiida.common.links import LinkType
-from aiida.common.typing import FilePath
+from aiida._core.common.typing import FilePath
 
 from ..exit_code import ExitCode
 from ..ports import PortNamespace
@@ -731,7 +731,7 @@ class CalcJob(Process):
         input script and the absolute path to the sandbox folder are stored in the `dry_run_info` attribute of the node
         of this process.
         """
-        from aiida.common.folders import SubmitTestFolder
+        from aiida._core.common.folders import SubmitTestFolder
         from aiida.engine.daemon.execmanager import upload_calculation
         from aiida.transports.plugins.local import LocalTransport
 
@@ -752,7 +752,7 @@ class CalcJob(Process):
         imported.
         """
         from aiida.common.datastructures import CalcJobState
-        from aiida.common.folders import SandboxFolder
+        from aiida._core.common.folders import SandboxFolder
         from aiida.engine.daemon.execmanager import retrieve_calculation
         from aiida.manage import get_config_option
         from aiida.transports.plugins.local import LocalTransport

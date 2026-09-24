@@ -22,7 +22,7 @@ from typing import Any
 from tabulate import tabulate
 
 from aiida import orm
-from aiida.common.lang import type_check
+from aiida._core.common.lang import type_check
 from aiida.common.links import GraphTraversalRules
 from aiida.common.log import AIIDA_LOGGER
 from aiida.common.progress_reporter import get_progress_reporter

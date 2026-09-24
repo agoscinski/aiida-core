@@ -15,7 +15,8 @@ from uuid import UUID, uuid4
 import pytest
 
 from aiida import orm
-from aiida.common import exceptions, timezone
+from aiida.common import exceptions
+from aiida._core.common import timezone
 from aiida.common.log import LOG_LEVEL_REPORT
 
 

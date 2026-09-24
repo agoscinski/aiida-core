@@ -11,7 +11,7 @@
 import pytest
 
 from aiida import orm
-from aiida.common.warnings import AiidaDeprecationWarning
+from aiida._core.common.warnings import AiidaDeprecationWarning
 
 
 @pytest.mark.presto

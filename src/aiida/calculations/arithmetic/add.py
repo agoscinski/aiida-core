@@ -10,7 +10,7 @@
 
 from aiida import orm
 from aiida.common.datastructures import CalcInfo, CodeInfo
-from aiida.common.folders import Folder
+from aiida._core.common.folders import Folder
 from aiida.engine import CalcJob, CalcJobProcessSpec
 
 

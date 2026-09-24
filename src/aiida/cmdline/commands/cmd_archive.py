@@ -26,7 +26,7 @@ from aiida.cmdline.utils import decorators, echo
 from aiida.common.exceptions import CorruptStorage, IncompatibleStorageSchema, UnreachableStorage
 from aiida.common.links import GraphTraversalRules
 from aiida.common.log import AIIDA_LOGGER
-from aiida.common.typing import FilePath
+from aiida._core.common.typing import FilePath
 from aiida.common.utils import DEFAULT_BATCH_SIZE
 
 EXTRAS_MODE_EXISTING = ['keep_existing', 'update_existing', 'mirror', 'none']
@@ -478,7 +478,7 @@ def _import_archive_and_migrate(
     """
     import urllib.request
 
-    from aiida.common.folders import SandboxFolder
+    from aiida._core.common.folders import SandboxFolder
     from aiida.tools.archive.abstract import get_format
     from aiida.tools.archive.exceptions import ImportTestRun
     from aiida.tools.archive.imports import import_archive as _import_archive

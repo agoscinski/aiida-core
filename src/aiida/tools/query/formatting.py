@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from aiida.common import timezone
+from aiida._core.common import timezone
 from aiida.common.utils import str_timedelta
 
 

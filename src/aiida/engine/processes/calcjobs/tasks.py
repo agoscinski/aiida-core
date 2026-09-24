@@ -24,7 +24,7 @@ import plumpy.process_states
 
 from aiida.common.datastructures import CalcJobState
 from aiida.common.exceptions import FeatureNotAvailable, StashingError, TransportTaskException
-from aiida.common.folders import SandboxFolder
+from aiida._core.common.folders import SandboxFolder
 from aiida.engine import utils
 from aiida.engine.daemon import execmanager
 from aiida.engine.processes.exit_code import ExitCode

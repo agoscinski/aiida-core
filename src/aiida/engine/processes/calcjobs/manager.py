@@ -18,7 +18,7 @@ import time
 from collections.abc import Hashable, Iterator
 from typing import TYPE_CHECKING, cast
 
-from aiida.common import lang
+from aiida._core.common import lang
 from aiida.orm import AuthInfo
 
 if TYPE_CHECKING:

@@ -27,9 +27,9 @@ from typing_extensions import assert_never
 
 from aiida.common import AIIDA_LOGGER, exceptions
 from aiida.common.datastructures import CalcInfo, FileCopyOperation
-from aiida.common.folders import Folder, SandboxFolder
+from aiida._core.common.folders import Folder, SandboxFolder
 from aiida.common.links import LinkType
-from aiida.common.typing import FilePath
+from aiida._core.common.typing import FilePath
 from aiida.engine.processes.exit_code import ExitCode
 from aiida.manage.configuration import get_config_option
 from aiida.orm import CalcJobNode, Code, FolderData, Node, PortableCode, RemoteData, load_node

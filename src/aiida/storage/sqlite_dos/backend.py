@@ -25,7 +25,7 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 
 from aiida.common import exceptions
 from aiida.common.log import AIIDA_LOGGER
-from aiida.common.pydantic import AiiDABaseModel, MetadataField
+from aiida._core.common.pydantic import AiiDABaseModel, MetadataField
 from aiida.manage.configuration.profile import Profile
 from aiida.manage.configuration.settings import AiiDAConfigDir
 from aiida.orm.implementation import BackendEntity

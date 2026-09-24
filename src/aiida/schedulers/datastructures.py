@@ -27,7 +27,7 @@ from typing_extensions import Self
 
 from aiida.common import AIIDA_LOGGER, CodeRunMode
 from aiida.common.extendeddicts import AttributeDict, DefaultFieldsAttributeDict
-from aiida.common.timezone import make_aware, timezone_from_name
+from aiida._core.common.timezone import make_aware, timezone_from_name
 
 SCHEDULER_LOGGER = AIIDA_LOGGER.getChild('scheduler')
 

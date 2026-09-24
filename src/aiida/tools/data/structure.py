@@ -17,7 +17,7 @@ import re
 
 import numpy as np
 
-from aiida.common.constants import elements
+from aiida._core.common.constants import elements
 from aiida.engine import calcfunction
 from aiida.orm.nodes.data.structure import Kind, Site, StructureData
 

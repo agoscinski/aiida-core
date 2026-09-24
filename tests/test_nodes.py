@@ -928,7 +928,7 @@ class TestNodeBasic:
         from datetime import timedelta
         from time import sleep
 
-        from aiida.common import timezone
+        from aiida._core.common import timezone
 
         user = orm.User.collection.get_default()
 

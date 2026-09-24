@@ -24,7 +24,7 @@ from plumpy.workchains import WorkChainSpec as PlumpyWorkChainSpec
 
 from aiida.common import exceptions
 from aiida.common.extendeddicts import AttributeDict
-from aiida.common.lang import override
+from aiida._core.common.lang import override
 from aiida.orm import Node, ProcessNode, WorkChainNode
 from aiida.orm.utils import load_node
 

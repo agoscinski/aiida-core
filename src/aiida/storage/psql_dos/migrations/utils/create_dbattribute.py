@@ -17,7 +17,7 @@ import datetime
 import json
 
 from aiida.common.exceptions import ValidationError
-from aiida.common.timezone import make_aware
+from aiida._core.common.timezone import make_aware
 
 
 def create_rows(key: str, value, node_id: int) -> list[dict]:

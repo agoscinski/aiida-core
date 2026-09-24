@@ -15,7 +15,7 @@ import pytest
 
 from aiida.common.datastructures import CalcInfo, CodeInfo, FileCopyOperation, StashMode
 from aiida.common.exceptions import StashingError
-from aiida.common.folders import SandboxFolder
+from aiida._core.common.folders import SandboxFolder
 from aiida.engine.daemon import execmanager
 from aiida.orm import CalcJobNode, FolderData, PortableCode, RemoteData, SinglefileData
 from aiida.transports.plugins.local import LocalTransport

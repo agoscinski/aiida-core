@@ -12,7 +12,7 @@ import abc
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
-from aiida.common.lang import type_check
+from aiida._core.common.lang import type_check
 from aiida.common.log import AIIDA_LOGGER
 from aiida.orm.entities import EntityTypes
 

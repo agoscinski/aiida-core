@@ -54,7 +54,7 @@ def is_verbose() -> bool:
 
 def get_env_with_venv_bin() -> MutableMapping:
     """Create a clone of the current running environment with the AIIDA_PATH variable set directory of the config."""
-    from aiida.common.warnings import warn_deprecation
+    from aiida._core.common.warnings import warn_deprecation
     from aiida.manage.configuration import get_config
 
     warn_deprecation(
@@ -93,7 +93,7 @@ def print_last_process_state_change(process_type: Literal['work'] | Literal['cal
         Valid process types are either 'calculation' or 'work'.
     """
     from aiida.cmdline.utils.echo import echo_report
-    from aiida.common import timezone
+    from aiida._core.common import timezone
     from aiida.common.utils import str_timedelta
     from aiida.engine.utils import get_process_state_change_timestamp
 

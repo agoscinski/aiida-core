@@ -18,7 +18,7 @@ from pydantic import field_validator
 
 from aiida.common import exceptions
 from aiida.common.datastructures import CalcJobState
-from aiida.common.lang import classproperty
+from aiida._core.common.lang import classproperty
 from aiida.orm.pydantic import OrmMetadataField
 
 from ..process import ProcessNodeCaching
@@ -373,7 +373,7 @@ class CalcJobNode(CalculationNode):
 
         :param state: an instance of `JobState`
         """
-        from aiida.common import timezone
+        from aiida._core.common import timezone
         from aiida.schedulers.datastructures import JobState
 
         if not isinstance(state, JobState):

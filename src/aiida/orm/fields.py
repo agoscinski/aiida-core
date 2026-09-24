@@ -19,8 +19,8 @@ from pprint import pformat
 from types import UnionType
 from uuid import UUID
 
-from aiida.common.lang import isidentifier
-from aiida.common.warnings import warn_deprecation
+from aiida._core.common.lang import isidentifier
+from aiida._core.common.warnings import warn_deprecation
 
 __all__ = (
     'QbField',

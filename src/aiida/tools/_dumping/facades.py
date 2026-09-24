@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from aiida import orm
 from aiida.common.log import AIIDA_LOGGER
-from aiida.common.warnings import warn_deprecation
+from aiida._core.common.warnings import warn_deprecation
 from aiida.tools._dumping.config import ProcessDumpConfig
 from aiida.tools._dumping.engine import DumpEngine
 from aiida.tools._dumping.utils import DumpPaths

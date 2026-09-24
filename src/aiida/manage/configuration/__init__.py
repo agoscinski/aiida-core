@@ -56,7 +56,7 @@ import warnings
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Optional
 
-from aiida.common.warnings import AiidaDeprecationWarning
+from aiida._core.common.warnings import AiidaDeprecationWarning
 
 if TYPE_CHECKING:
     from aiida.orm import User
@@ -117,7 +117,7 @@ def _merge_deprecated_cache_yaml(config, filepath):
 
     import yaml
 
-    from aiida.common import timezone
+    from aiida._core.common import timezone
 
     cache_path_backup = None
     # Keep generating a new backup filename based on the current time until it does not exist

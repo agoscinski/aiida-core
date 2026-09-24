@@ -16,7 +16,7 @@ import pytest
 from aiida import orm
 from aiida.common import exceptions
 from aiida.common.log import LOG_LEVEL_REPORT
-from aiida.common.timezone import now
+from aiida._core.common.timezone import now
 from aiida.orm import Log
 
 

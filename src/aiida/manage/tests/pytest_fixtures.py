@@ -40,9 +40,9 @@ from importlib_metadata import EntryPoint, EntryPoints
 
 from aiida import plugins
 from aiida.common.exceptions import NotExistent
-from aiida.common.lang import type_check
+from aiida._core.common.lang import type_check
 from aiida.common.log import AIIDA_LOGGER
-from aiida.common.warnings import warn_deprecation
+from aiida._core.common.warnings import warn_deprecation
 from aiida.engine import Process, ProcessBuilder, submit
 from aiida.engine.daemon.client import DaemonClient, DaemonNotRunningException, DaemonTimeoutException
 from aiida.manage import Profile, get_manager, get_profile

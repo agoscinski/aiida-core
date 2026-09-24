@@ -10,7 +10,8 @@
 
 import unittest
 
-from aiida.common import escaping, utils
+from aiida.common import utils
+from aiida._core.common import escaping
 
 
 class UniqueTest(unittest.TestCase):

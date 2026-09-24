@@ -14,7 +14,7 @@ Data created with older AiiDA versions is guaranteed to work with newer versions
 Use the `warn_deprecation` helper, which handles `stacklevel=2` and respects the user's deprecation-visibility config:
 
 ```python
-from aiida.common.warnings import warn_deprecation
+from aiida._core.common.warnings import warn_deprecation
 
 def old_function(x):
     warn_deprecation('`old_function` is deprecated, use `new_function` instead.', version=3)

@@ -13,7 +13,7 @@ from importlib_metadata import EntryPoint as EP  # noqa: N817
 from importlib_metadata import EntryPoints
 
 from aiida.common.exceptions import MissingEntryPointError, MultipleEntryPointError
-from aiida.common.warnings import AiidaDeprecationWarning
+from aiida._core.common.warnings import AiidaDeprecationWarning
 from aiida.plugins import entry_point
 from aiida.plugins.entry_point import get_entry_point, parse_entry_point, validate_registered_entry_points
 

@@ -22,7 +22,7 @@ from sqlalchemy import insert, select
 from sqlalchemy.exc import IntegrityError
 
 from aiida.common.exceptions import CorruptStorage, StorageMigrationError
-from aiida.common.hashing import chunked_file_hash
+from aiida._core.common.hashing import chunked_file_hash
 from aiida.common.progress_reporter import get_progress_reporter
 from aiida.repository.common import File, FileType
 from aiida.storage.log import MIGRATE_LOGGER

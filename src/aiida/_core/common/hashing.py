@@ -21,7 +21,7 @@ from functools import singledispatch
 from itertools import chain
 from operator import itemgetter
 
-from aiida.common.constants import AIIDA_FLOAT_PRECISION
+from aiida._core.common.constants import AIIDA_FLOAT_PRECISION
 from aiida.common.exceptions import HashingError
 from aiida.common.utils import DatetimePrecision
 

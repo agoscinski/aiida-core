@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 from aiida import orm
 from aiida.common import AttributeDict
 from aiida.common.links import LinkType
-from aiida.common.warnings import warn_deprecation
+from aiida._core.common.warnings import warn_deprecation
 
 from .context import ToContext, append_
 from .utils import ProcessHandlerReport, process_handler

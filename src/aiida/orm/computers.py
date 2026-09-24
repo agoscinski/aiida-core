@@ -466,7 +466,7 @@ class Computer(entities.Entity['BackendComputer', ComputerCollection]):
 
         :param use_double_quotes: True if to escape with double quotes, False otherwise.
         """
-        from aiida.common.lang import type_check
+        from aiida._core.common.lang import type_check
 
         type_check(val, bool)
         self.set_property('use_double_quotes', val)

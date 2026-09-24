@@ -105,7 +105,7 @@ class TemplatereplacerCalculation(CalcJob):
     def prepare_for_submission(self, folder):
         """This is the routine to be called when you want to create the input files and related stuff with a plugin.
 
-        :param folder: a aiida.common.folders.Folder subclass where the plugin should put all its files.
+        :param folder: a aiida._core.common.folders.Folder subclass where the plugin should put all its files.
         """
         from aiida.common.exceptions import ValidationError
         from aiida.common.utils import validate_list_of_string_tuples

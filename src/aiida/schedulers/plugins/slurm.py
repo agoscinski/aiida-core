@@ -21,7 +21,7 @@ import typing as t
 from typing_extensions import override
 
 from aiida.common.exceptions import FeatureNotAvailable
-from aiida.common.lang import type_check
+from aiida._core.common.lang import type_check
 from aiida.schedulers import Scheduler, SchedulerError
 from aiida.schedulers.datastructures import JobInfo, JobState, JobTemplate, NodeNumberJobResource
 

@@ -41,7 +41,7 @@ See the `linting-and-ci` skill for details.
 
 ### Error handling
 
-Use `aiida.common.exceptions` for AiiDA-specific exceptions, `aiida.common.warnings` for non-fatal issues.
+Use `aiida.common.exceptions` for AiiDA-specific exceptions, `aiida._core.common.warnings` for non-fatal issues.
 Assign exception messages to a variable before raising: `msg = f'...'; raise TypeError(msg)`
 
 ### Best practices (not enforced)

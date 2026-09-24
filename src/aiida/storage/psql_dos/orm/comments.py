@@ -12,7 +12,8 @@ from datetime import datetime
 
 from sqlalchemy.orm.exc import NoResultFound
 
-from aiida.common import exceptions, lang
+from aiida.common import exceptions
+from aiida._core.common import lang
 from aiida.orm.implementation.comments import BackendComment, BackendCommentCollection
 from aiida.storage.psql_dos.models import comment as models
 

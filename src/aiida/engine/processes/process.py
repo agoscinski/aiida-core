@@ -40,7 +40,7 @@ from plumpy.utils import AttributesFrozendict
 from aiida import orm
 from aiida.common import exceptions
 from aiida.common.extendeddicts import AttributeDict
-from aiida.common.lang import classproperty, override
+from aiida._core.common.lang import classproperty, override
 from aiida.common.links import LinkType
 from aiida.common.log import LOG_LEVEL_REPORT
 from aiida.engine.utils import InterruptableFuture

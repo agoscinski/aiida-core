@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql.schema import Index
 from sqlalchemy.types import DateTime, Integer, String, Text
 
-from aiida.common import timezone
+from aiida._core.common import timezone
 from aiida.storage.psql_dos.models.base import Base
 
 

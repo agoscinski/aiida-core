@@ -32,9 +32,9 @@ from typing_extensions import Self
 
 from aiida.common import exceptions, log
 from aiida.common.exceptions import InvalidOperation
-from aiida.common.lang import classproperty, type_check
-from aiida.common.pydantic import get_metadata
-from aiida.common.warnings import warn_deprecation
+from aiida._core.common.lang import classproperty, type_check
+from aiida._core.common.pydantic import get_metadata
+from aiida._core.common.warnings import warn_deprecation
 from aiida.manage import get_manager
 
 from .fields import QbFields, add_field
@@ -256,7 +256,7 @@ class Entity(abc.ABC, Generic[BackendEntityType, CollectionType]):
         )
         compat_model = cls.__dict__.get('_COMPAT_MODEL')
         if compat_model is not None and isinstance(model, compat_model):
-            from aiida.common.docs import URL_CHANGELOG_ORM_MODELS
+            from aiida._core.common.docs import URL_CHANGELOG_ORM_MODELS
 
             class_name = cast(Any, cls).__name__
             msg = (
@@ -302,7 +302,7 @@ class Entity(abc.ABC, Generic[BackendEntityType, CollectionType]):
         """
         compat_model = cls.__dict__.get('_COMPAT_MODEL')
         if compat_model is not None and isinstance(model, compat_model):
-            from aiida.common.docs import URL_CHANGELOG_ORM_MODELS
+            from aiida._core.common.docs import URL_CHANGELOG_ORM_MODELS
 
             class_name = cast(Any, cls).__name__
             msg = (

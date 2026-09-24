@@ -34,7 +34,7 @@ from aiida.common.exceptions import (
     StorageMigrationError,
 )
 from aiida.common.log import AIIDA_LOGGER
-from aiida.common.pydantic import AiiDABaseModel, MetadataField
+from aiida._core.common.pydantic import AiiDABaseModel, MetadataField
 from aiida.manage import Profile
 from aiida.orm.entities import EntityTypes
 from aiida.orm.implementation import StorageBackend

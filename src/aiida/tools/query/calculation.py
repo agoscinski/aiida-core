@@ -13,7 +13,7 @@ from __future__ import annotations
 import typing as t
 from collections.abc import Iterable
 
-from aiida.common.lang import classproperty
+from aiida._core.common.lang import classproperty
 
 from .mapping import CalculationProjectionMapper, ProjectionMapper
 
@@ -152,7 +152,7 @@ class CalculationQueryBuilder:
         import datetime
 
         from aiida import orm
-        from aiida.common import timezone
+        from aiida._core.common import timezone
 
         # Define the list of projections for the QueryBuilder, which are all valid minus the compound projections
         projected_attributes = [
