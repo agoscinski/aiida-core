@@ -9,8 +9,8 @@
 
 Migration steps:
 
-1. :func:`_migrate_legacy_codes`: migrate the deprecated ``Code`` data plugin.
-2. :func:`_migrate_users_to_profile`: replace user ownership with a profile UUID label.
+1. :func:`_migrate_users_to_profile`: replace user ownership with a profile UUID label.
+2. :func:`_migrate_legacy_codes`: migrate the deprecated ``Code`` data plugin.
 
 Revision ID: main_0003
 Revises: main_0002
@@ -101,8 +101,10 @@ def _migrate_users_to_profile():
 
 def upgrade():
     """Migrations for the upgrade."""
-    _migrate_legacy_codes(op.get_bind())
+    # Rewrite nodes only after the schema changes: the UPDATE can leave deferred foreign-key trigger events
+    # pending, which prevents PostgreSQL from creating indexes on db_dbnode in the same transaction.
     _migrate_users_to_profile()
+    _migrate_legacy_codes(op.get_bind())
 
 
 def downgrade():

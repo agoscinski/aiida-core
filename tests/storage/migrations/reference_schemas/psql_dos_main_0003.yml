@@ -10,10 +10,6 @@ columns:
     nullable: false
     type: INTEGER
   - default: null
-    name: aiidauser_id
-    nullable: false
-    type: INTEGER
-  - default: null
     name: dbcomputer_id
     nullable: false
     type: INTEGER
@@ -51,13 +47,13 @@ columns:
     nullable: false
     type: TIMESTAMP
   - default: null
-    name: user_id
-    nullable: false
-    type: INTEGER
-  - default: null
     name: content
     nullable: false
     type: TEXT
+  - default: null
+    name: profile_uuid
+    nullable: false
+    type: VARCHAR(36)
   db_dbcomputer:
   - default: nextval('db_dbcomputer_id_seq'::regclass)
     name: id
@@ -121,9 +117,9 @@ columns:
     nullable: false
     type: JSONB
   - default: null
-    name: user_id
+    name: profile_uuid
     nullable: false
-    type: INTEGER
+    type: VARCHAR(36)
   db_dbgroup_dbnodes:
   - default: nextval('db_dbgroup_dbnodes_id_seq'::regclass)
     name: id
@@ -241,9 +237,9 @@ columns:
     nullable: true
     type: INTEGER
   - default: null
-    name: user_id
+    name: profile_uuid
     nullable: false
-    type: INTEGER
+    type: VARCHAR(36)
   db_dbsetting:
   - default: nextval('db_dbsetting_id_seq'::regclass)
     name: id
@@ -265,27 +261,6 @@ columns:
     name: time
     nullable: false
     type: TIMESTAMP
-  db_dbuser:
-  - default: nextval('db_dbuser_id_seq'::regclass)
-    name: id
-    nullable: false
-    type: INTEGER
-  - default: null
-    name: email
-    nullable: false
-    type: VARCHAR(254)
-  - default: null
-    name: first_name
-    nullable: false
-    type: VARCHAR(254)
-  - default: null
-    name: last_name
-    nullable: false
-    type: VARCHAR(254)
-  - default: null
-    name: institution
-    nullable: false
-    type: VARCHAR(254)
 constraints:
   check:
     alembic_version: []
@@ -298,7 +273,6 @@ constraints:
     db_dblog: []
     db_dbnode: []
     db_dbsetting: []
-    db_dbuser: []
   primary_keys:
     alembic_version:
       comment: null
@@ -370,24 +344,16 @@ constraints:
       dialect_options:
         postgresql_include: []
       name: db_dbsetting_pkey
-    db_dbuser:
-      comment: null
-      constrained_columns:
-      - id
-      dialect_options:
-        postgresql_include: []
-      name: db_dbuser_pkey
   unique:
     alembic_version: []
     db_dbauthinfo:
     - column_names:
-      - aiidauser_id
       - dbcomputer_id
       comment: null
       dialect_options:
         postgresql_include: []
         postgresql_nulls_not_distinct: false
-      name: uq_db_dbauthinfo_aiidauser_id_dbcomputer_id
+      name: uq_db_dbauthinfo_dbcomputer_id
     db_dbcomment:
     - column_names:
       - uuid
@@ -461,29 +427,9 @@ constraints:
         postgresql_include: []
         postgresql_nulls_not_distinct: false
       name: uq_db_dbsetting_key
-    db_dbuser:
-    - column_names:
-      - email
-      comment: null
-      dialect_options:
-        postgresql_include: []
-        postgresql_nulls_not_distinct: false
-      name: uq_db_dbuser_email
 foreign_keys:
   alembic_version: []
   db_dbauthinfo:
-  - comment: null
-    constrained_columns:
-    - aiidauser_id
-    name: fk_db_dbauthinfo_aiidauser_id_db_dbuser
-    options:
-      deferrable: true
-      initially: DEFERRED
-      ondelete: CASCADE
-    referred_columns:
-    - id
-    referred_schema: null
-    referred_table: db_dbuser
   - comment: null
     constrained_columns:
     - dbcomputer_id
@@ -509,32 +455,8 @@ foreign_keys:
     - id
     referred_schema: null
     referred_table: db_dbnode
-  - comment: null
-    constrained_columns:
-    - user_id
-    name: fk_db_dbcomment_user_id_db_dbuser
-    options:
-      deferrable: true
-      initially: DEFERRED
-      ondelete: CASCADE
-    referred_columns:
-    - id
-    referred_schema: null
-    referred_table: db_dbuser
   db_dbcomputer: []
-  db_dbgroup:
-  - comment: null
-    constrained_columns:
-    - user_id
-    name: fk_db_dbgroup_user_id_db_dbuser
-    options:
-      deferrable: true
-      initially: DEFERRED
-      ondelete: CASCADE
-    referred_columns:
-    - id
-    referred_schema: null
-    referred_table: db_dbuser
+  db_dbgroup: []
   db_dbgroup_dbnodes:
   - comment: null
     constrained_columns:
@@ -608,30 +530,10 @@ foreign_keys:
     - id
     referred_schema: null
     referred_table: db_dbcomputer
-  - comment: null
-    constrained_columns:
-    - user_id
-    name: fk_db_dbnode_user_id_db_dbuser
-    options:
-      deferrable: true
-      initially: DEFERRED
-      ondelete: RESTRICT
-    referred_columns:
-    - id
-    referred_schema: null
-    referred_table: db_dbuser
   db_dbsetting: []
-  db_dbuser: []
 indexes:
   alembic_version: []
   db_dbauthinfo:
-  - column_names:
-    - aiidauser_id
-    dialect_options:
-      postgresql_include: []
-    include_columns: []
-    name: ix_db_dbauthinfo_db_dbauthinfo_aiidauser_id
-    unique: false
   - column_names:
     - dbcomputer_id
     dialect_options:
@@ -640,13 +542,12 @@ indexes:
     name: ix_db_dbauthinfo_db_dbauthinfo_dbcomputer_id
     unique: false
   - column_names:
-    - aiidauser_id
     - dbcomputer_id
     dialect_options:
       postgresql_include: []
-    duplicates_constraint: uq_db_dbauthinfo_aiidauser_id_dbcomputer_id
+    duplicates_constraint: uq_db_dbauthinfo_dbcomputer_id
     include_columns: []
-    name: uq_db_dbauthinfo_aiidauser_id_dbcomputer_id
+    name: uq_db_dbauthinfo_dbcomputer_id
     unique: true
   db_dbcomment:
   - column_names:
@@ -657,11 +558,11 @@ indexes:
     name: ix_db_dbcomment_db_dbcomment_dbnode_id
     unique: false
   - column_names:
-    - user_id
+    - profile_uuid
     dialect_options:
       postgresql_include: []
     include_columns: []
-    name: ix_db_dbcomment_db_dbcomment_user_id
+    name: ix_db_dbcomment_db_dbcomment_profile_uuid
     unique: false
   - column_names:
     - uuid
@@ -706,18 +607,18 @@ indexes:
     name: ix_db_dbgroup_db_dbgroup_label
     unique: false
   - column_names:
+    - profile_uuid
+    dialect_options:
+      postgresql_include: []
+    include_columns: []
+    name: ix_db_dbgroup_db_dbgroup_profile_uuid
+    unique: false
+  - column_names:
     - type_string
     dialect_options:
       postgresql_include: []
     include_columns: []
     name: ix_db_dbgroup_db_dbgroup_type_string
-    unique: false
-  - column_names:
-    - user_id
-    dialect_options:
-      postgresql_include: []
-    include_columns: []
-    name: ix_db_dbgroup_db_dbgroup_user_id
     unique: false
   - column_names:
     - label
@@ -917,11 +818,11 @@ indexes:
     name: ix_db_dbnode_db_dbnode_process_type
     unique: false
   - column_names:
-    - user_id
+    - profile_uuid
     dialect_options:
       postgresql_include: []
     include_columns: []
-    name: ix_db_dbnode_db_dbnode_user_id
+    name: ix_db_dbnode_db_dbnode_profile_uuid
     unique: false
   - column_names:
     - label
@@ -975,22 +876,4 @@ indexes:
     duplicates_constraint: uq_db_dbsetting_key
     include_columns: []
     name: uq_db_dbsetting_key
-    unique: true
-  db_dbuser:
-  - column_names:
-    - email
-    dialect_options:
-      postgresql_include: []
-      postgresql_ops:
-        email: varchar_pattern_ops
-    include_columns: []
-    name: ix_pat_db_dbuser_email
-    unique: false
-  - column_names:
-    - email
-    dialect_options:
-      postgresql_include: []
-    duplicates_constraint: uq_db_dbuser_email
-    include_columns: []
-    name: uq_db_dbuser_email
     unique: true

@@ -781,6 +781,7 @@ class TestVerdiProfileDumpCLI:
         """Test that group argument is parsed correctly."""
         group = orm.Group(label='test_dump_group').store()
         node = orm.CalculationNode().store()
+        node.seal()
         group.add_nodes([node])
         test_path = tmp_path / 'group-test'
 

@@ -33,6 +33,7 @@ def command_create_profile(
     storage_cls,
     profile: Profile,
     set_as_default: bool = True,
+    email: str | None = None,
     broker: str = 'core.rabbitmq',
     use_rabbitmq: bool | None = None,
     **kwargs,
@@ -45,10 +46,14 @@ def command_create_profile(
     :param profile: The profile instance. This is an empty ``Profile`` instance created by the command line argument
         which currently only contains the selected profile name for the profile that is to be created.
     :param set_as_default: Whether to set the created profile as the new default.
+    :param email: Deprecated legacy user email; ignored since profiles no longer have users.
     :param broker: Message broker backend ('core.rabbitmq', 'core.zeromq', or 'none').
     :param use_rabbitmq: Deprecated. Use ``broker`` instead. If False, equivalent to ``broker='none'``.
     :param kwargs: Arguments to initialise instance of the selected storage implementation.
     """
+    if email is not None:
+        echo.echo_warning('The `--email` option is deprecated and ignored: profiles no longer have users.')
+
     # Handle deprecated --use-rabbitmq/--no-use-rabbitmq option
     if use_rabbitmq is not None:
         from aiida.common.warnings import warn_deprecation
@@ -123,6 +128,7 @@ def command_create_profile(
     entry_point_group='aiida.storage',
     shared_options=[
         setup.SETUP_PROFILE_NAME(),
+        click.option('--email', hidden=True, help='Deprecated; ignored because profiles no longer have users.'),
         setup.SETUP_PROFILE_SET_AS_DEFAULT(),
         setup.SETUP_BROKER_BACKEND(),
         setup.SETUP_USE_RABBITMQ(),  # Deprecated, for backward compatibility
