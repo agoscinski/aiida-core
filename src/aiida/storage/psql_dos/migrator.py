@@ -35,6 +35,7 @@ from aiida.common import exceptions
 from aiida.manage.configuration.profile import Profile
 from aiida.storage.log import MIGRATE_LOGGER
 from aiida.storage.migrations import TEMPLATE_INVALID_SCHEMA_VERSION
+from aiida.storage.psql_dos.models.profile import DbProfile
 from aiida.storage.psql_dos.models.settings import DbSetting
 from aiida.storage.psql_dos.utils import create_sqlalchemy_engine
 
@@ -309,6 +310,15 @@ class PsqlDosMigrator:
         MIGRATE_LOGGER.report('initialising empty storage schema')
         assert self._engine is not None
         get_orm_metadata().create_all(self._engine)
+        self.connection.execute(
+            insert(DbProfile).values(
+                uuid=self.profile.uuid,
+                email=self.profile.dictionary.get('email', ''),
+                first_name=self.profile.dictionary.get('first_name', ''),
+                last_name=self.profile.dictionary.get('last_name', ''),
+                institution=self.profile.dictionary.get('institution', ''),
+            )
+        )
 
         repository_uuid = self.get_repository_uuid()
 
@@ -353,6 +363,10 @@ class PsqlDosMigrator:
         :raises: :class:`~aiida.common.exceptions.UnreachableStorage` if the storage cannot be accessed.
         :raises: :class:`~aiida.common.exceptions.StorageMigrationError` if the storage is not initialised.
         """
+        from aiida.storage.migrations import require_single_legacy_user
+
+        require_single_legacy_user(self.connection)
+
         # The database can be in one of a few states:
         # 1. Legacy django database -> we transfer the version to alembic, migrate to the head of the django branch,
         #    reset the revision as one on the main branch, and then migrate to the head of the main branch

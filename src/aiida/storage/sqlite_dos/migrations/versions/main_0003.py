@@ -9,9 +9,9 @@
 
 Migration steps:
 
-1. :func:`_ensure_settings_table`: backfill the settings table.
-2. :func:`_migrate_legacy_codes`: migrate the deprecated ``Code`` data plugin.
-3. :func:`_migrate_users_to_profile`: replace user ownership with a profile UUID label.
+1. :func:`_migrate_users_to_profile`: replace the single legacy user with an ORM profile.
+2. :func:`_ensure_settings_table`: backfill the settings table.
+3. :func:`_migrate_legacy_codes`: migrate the deprecated ``Code`` data plugin.
 
 Revision ID: main_0003
 Revises: main_0002
@@ -129,9 +129,10 @@ def _migrate_users_to_profile():
 
 def upgrade():
     """Migrations for the upgrade."""
+    # Reject multi-user storages before touching the schema: SQLite DDL is not fully transactional.
+    _migrate_users_to_profile()
     _ensure_settings_table()
     _migrate_legacy_codes(op.get_bind())
-    _migrate_users_to_profile()
 
 
 def downgrade():

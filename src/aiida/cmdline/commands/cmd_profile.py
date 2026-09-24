@@ -34,6 +34,9 @@ def command_create_profile(
     profile: Profile,
     set_as_default: bool = True,
     email: str | None = None,
+    first_name: str = '',
+    last_name: str = '',
+    institution: str = '',
     broker: str = 'core.rabbitmq',
     use_rabbitmq: bool | None = None,
     **kwargs,
@@ -46,14 +49,14 @@ def command_create_profile(
     :param profile: The profile instance. This is an empty ``Profile`` instance created by the command line argument
         which currently only contains the selected profile name for the profile that is to be created.
     :param set_as_default: Whether to set the created profile as the new default.
-    :param email: Deprecated legacy user email; ignored since profiles no longer have users.
+    :param email: Contact email to store on the new ORM profile.
+    :param first_name: Contact's first name.
+    :param last_name: Contact's last name.
+    :param institution: Contact's institution.
     :param broker: Message broker backend ('core.rabbitmq', 'core.zeromq', or 'none').
     :param use_rabbitmq: Deprecated. Use ``broker`` instead. If False, equivalent to ``broker='none'``.
     :param kwargs: Arguments to initialise instance of the selected storage implementation.
     """
-    if email is not None:
-        echo.echo_warning('The `--email` option is deprecated and ignored: profiles no longer have users.')
-
     # Handle deprecated --use-rabbitmq/--no-use-rabbitmq option
     if use_rabbitmq is not None:
         from aiida.common.warnings import warn_deprecation
@@ -115,6 +118,24 @@ def command_create_profile(
     ) as exception:
         echo.echo_critical(str(exception))
 
+    contact_supplied = email is not None or any((first_name, last_name, institution))
+    if contact_supplied and storage_entry_point.name not in ('core.psql_dos', 'core.sqlite_dos'):
+        echo.echo_warning('Contact details are not stored in read-only or temporary storage.')
+
+    if contact_supplied and storage_entry_point.name in ('core.psql_dos', 'core.sqlite_dos'):
+        from aiida.orm import Profile as OrmProfile
+
+        storage = storage_cls(profile)
+        try:
+            identity = OrmProfile(backend=storage)
+            identity.email = email or ''
+            identity.first_name = first_name
+            identity.last_name = last_name
+            identity.institution = institution
+            identity.store()
+        finally:
+            storage.close()
+
     echo.echo_success(f'Created new profile `{profile.name}`.')
 
     if set_as_default:
@@ -128,7 +149,10 @@ def command_create_profile(
     entry_point_group='aiida.storage',
     shared_options=[
         setup.SETUP_PROFILE_NAME(),
-        click.option('--email', hidden=True, help='Deprecated; ignored because profiles no longer have users.'),
+        click.option('--email', help='Contact email for the new profile.'),
+        click.option('--first-name', default='', help='Contact first name.'),
+        click.option('--last-name', default='', help='Contact last name.'),
+        click.option('--institution', default='', help='Contact institution.'),
         setup.SETUP_PROFILE_SET_AS_DEFAULT(),
         setup.SETUP_BROKER_BACKEND(),
         setup.SETUP_USE_RABBITMQ(),  # Deprecated, for backward compatibility

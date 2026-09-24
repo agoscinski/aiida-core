@@ -100,6 +100,15 @@ class SqliteDosMigrator(PsqlDosMigrator):
         """
         assert self._engine is not None
         models.SqliteBase.metadata.create_all(self._engine)
+        self.connection.execute(
+            insert(models.DbProfile).values(
+                uuid=self.profile.uuid,
+                email=self.profile.dictionary.get('email', ''),
+                first_name=self.profile.dictionary.get('first_name', ''),
+                last_name=self.profile.dictionary.get('last_name', ''),
+                institution=self.profile.dictionary.get('institution', ''),
+            )
+        )
 
         repository_uuid = self.get_repository_uuid()
 
@@ -191,6 +200,9 @@ class SqliteDosMigrator(PsqlDosMigrator):
         if not inspect(self.connection).has_table(self.alembic_version_tbl_name):
             raise exceptions.StorageMigrationError('storage is uninitialised, cannot migrate.')
 
+        from aiida.storage.migrations import require_single_legacy_user
+
+        require_single_legacy_user(self.connection)
         MIGRATE_LOGGER.report('Migrating to the head of the main branch')
         self.migrate_up('main@head')
         self.connection.commit()

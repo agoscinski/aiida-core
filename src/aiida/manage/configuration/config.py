@@ -312,6 +312,7 @@ class ProfileSchema(BaseModel, defer_build=True):
     """Schema for the configuration of an AiiDA profile."""
 
     uuid: str = Field(description='A UUID that uniquely identifies the profile.', default_factory=uuid.uuid4)
+    legacy_default_user_email: str | None = None
     storage: ProfileStorageConfig
     process_control: ProcessControlConfig
     test_profile: bool = False

@@ -4,7 +4,7 @@
 
 ### Breaking changes
 
-The `orm.User` entity is removed: nodes, groups, comments and archives no longer carry per-human ownership and `AuthInfo` is per computer. Databases migrate automatically (`user_id` becomes a `profile_uuid` label stamped from the profile, contact strings are discarded), configuration profiles drop `default_user_email` and `autofill.user.*` (config migration v11 to v12), `verdi user` is deleted, and `verdi computer setup` now chains into transport configuration in interactive mode. Multi-`orm.User` single-database deployments must split into separate profiles/databases before upgrading. See [#7553](https://github.com/aiidateam/aiida-core/issues/7553).
+The `orm.User` entity is replaced by `orm.Profile`, identified by a database primary key and UUID rather than email. A single legacy user's contact details and the ownership of nodes, groups, comments and authinfos are preserved on migration; a storage containing multiple users cannot yet be migrated and is rejected before changing its schema. Configuration profiles retain their UUID and legacy default-user email as a migration hint (config migration v11 to v12). `verdi user` is removed; `verdi profile setup` accepts contact details. `verdi computer setup` now chains into transport configuration in interactive mode. See [#7553](https://github.com/aiidateam/aiida-core/issues/7553).
 
 Scheduler data structures, including `JobInfo`, `JobResource`, `JobState`, and `JobTemplate`, have moved from `aiida.schedulers.datastructures` to `aiida.common.datastructures`. They are no longer re-exported from `aiida.schedulers`.
 

@@ -25,6 +25,10 @@ columns:
     name: enabled
     nullable: false
     type: BOOLEAN
+  - default: null
+    name: profile_uuid
+    nullable: false
+    type: VARCHAR(36)
   db_dbcomment:
   - default: null
     name: id
@@ -240,6 +244,31 @@ columns:
     name: profile_uuid
     nullable: false
     type: VARCHAR(36)
+  db_dbprofile:
+  - default: null
+    name: id
+    nullable: false
+    type: INTEGER
+  - default: null
+    name: uuid
+    nullable: false
+    type: VARCHAR(36)
+  - default: null
+    name: email
+    nullable: false
+    type: VARCHAR(254)
+  - default: null
+    name: first_name
+    nullable: false
+    type: VARCHAR(254)
+  - default: null
+    name: last_name
+    nullable: false
+    type: VARCHAR(254)
+  - default: null
+    name: institution
+    nullable: false
+    type: VARCHAR(254)
 constraints:
   check:
     alembic_version: []
@@ -251,6 +280,7 @@ constraints:
     db_dblink: []
     db_dblog: []
     db_dbnode: []
+    db_dbprofile: []
   primary_keys:
     alembic_version:
       constrained_columns:
@@ -288,12 +318,17 @@ constraints:
       constrained_columns:
       - id
       name: db_dbnode_pkey
+    db_dbprofile:
+      constrained_columns:
+      - id
+      name: db_dbprofile_pkey
   unique:
     alembic_version: []
     db_dbauthinfo:
     - column_names:
+      - profile_uuid
       - dbcomputer_id
-      name: uq_db_dbauthinfo_dbcomputer_id
+      name: uq_db_dbauthinfo_profile_uuid_dbcomputer_id
     db_dbcomment:
     - column_names:
       - uuid
@@ -327,6 +362,10 @@ constraints:
     - column_names:
       - uuid
       name: uq_db_dbnode_uuid
+    db_dbprofile:
+    - column_names:
+      - uuid
+      name: uq_db_dbprofile_uuid
 foreign_keys:
   alembic_version: []
   db_dbauthinfo:
@@ -422,6 +461,7 @@ foreign_keys:
     - id
     referred_schema: null
     referred_table: db_dbcomputer
+  db_dbprofile: []
 indexes:
   alembic_version: []
   db_dbauthinfo:
@@ -429,6 +469,11 @@ indexes:
     - dbcomputer_id
     dialect_options: {}
     name: ix_db_dbauthinfo_db_dbauthinfo_dbcomputer_id
+    unique: 0
+  - column_names:
+    - profile_uuid
+    dialect_options: {}
+    name: ix_db_dbauthinfo_db_dbauthinfo_profile_uuid
     unique: 0
   db_dbcomment:
   - column_names:
@@ -542,3 +587,4 @@ indexes:
     dialect_options: {}
     name: ix_db_dbnode_db_dbnode_profile_uuid
     unique: 0
+  db_dbprofile: []

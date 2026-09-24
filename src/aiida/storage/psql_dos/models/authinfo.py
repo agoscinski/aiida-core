@@ -12,7 +12,7 @@ from sqlalchemy import ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import backref, relationship
 from sqlalchemy.schema import Column, UniqueConstraint
-from sqlalchemy.types import Boolean, Integer
+from sqlalchemy.types import Boolean, Integer, String
 
 from aiida.storage.psql_dos.models.base import Base
 
@@ -21,7 +21,7 @@ class DbAuthInfo(Base):
     """Database model to store data for :py:class:`aiida.orm.AuthInfo`, and keep computer authentication data.
 
     Specifications of how to submit jobs on the computer. There is at most one
-    row per computer: authentication is per-computer, not per-user.
+    row per computer and profile: authentication is specific to the profile.
     The model also has an ``enabled`` logical switch that indicates whether the device is available for use or not.
     """
 
@@ -37,10 +37,11 @@ class DbAuthInfo(Base):
     _metadata = Column('metadata', JSONB, default=dict, nullable=False)
     auth_params = Column(JSONB, default=dict, nullable=False)
     enabled = Column(Boolean, default=True, nullable=False)
+    profile_uuid = Column(String(36), nullable=False, index=True)
 
     dbcomputer = relationship('DbComputer', backref=backref('authinfos', passive_deletes=True, cascade='all, delete'))
 
-    __table_args__ = (UniqueConstraint('dbcomputer_id'),)
+    __table_args__ = (UniqueConstraint('profile_uuid', 'dbcomputer_id'),)
 
     def __str__(self):
         if self.enabled:

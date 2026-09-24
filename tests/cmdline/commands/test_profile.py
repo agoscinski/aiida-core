@@ -309,11 +309,40 @@ def test_setup(config_psql_dos, run_cli_command, isolated_config, tmp_path, entr
         options = ['--filepath', str(tmp_path)]
 
     profile_name = 'temp-profile'
-    options = [entry_point, '-n', '--profile-name', profile_name, '--email', 'email@host', *options]
+    options = [
+        entry_point,
+        '-n',
+        '--profile-name',
+        profile_name,
+        '--email',
+        'email@host',
+        '--first-name',
+        'Ada',
+        '--last-name',
+        'Lovelace',
+        '--institution',
+        'AiiDA',
+        *options,
+    ]
     result = run_cli_command(cmd_profile.profile_setup, options, use_subprocess=False)
     assert f'Created new profile `{profile_name}`.' in result.output
     assert profile_name in isolated_config.profile_names
     assert isolated_config.default_profile_name == profile_name
+    if entry_point in ('core.psql_dos', 'core.sqlite_dos'):
+        from aiida.orm import Profile as OrmProfile
+
+        profile = isolated_config.get_profile(profile_name)
+        storage = profile.storage_cls(profile)
+        try:
+            identity = OrmProfile(backend=storage)
+            assert identity.uuid == profile.uuid
+            assert identity.email == 'email@host'
+            assert identity.first_name == 'Ada'
+            assert identity.last_name == 'Lovelace'
+            assert identity.institution == 'AiiDA'
+            assert identity.pk is not None
+        finally:
+            storage.close()
 
 
 @pytest.mark.parametrize('set_as_default', (True, False))

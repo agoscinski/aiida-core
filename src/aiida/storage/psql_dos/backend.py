@@ -233,7 +233,7 @@ class PsqlDosBackend(StorageBackend):
             # Close the session otherwise the ``delete_tables`` call will hang as there will be an open connection
             # to the PostgreSQL server and it will block the deletion and the command will hang.
             self.get_session().close()
-            exclude_tables = [migrator.alembic_version_tbl_name, 'db_dbsetting']
+            exclude_tables = [migrator.alembic_version_tbl_name, 'db_dbsetting', 'db_dbprofile']
             migrator.delete_all_tables(exclude_tables=exclude_tables)
 
             # Clear out all references to database model instances which are now invalid.

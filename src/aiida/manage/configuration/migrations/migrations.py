@@ -511,8 +511,8 @@ class AiidaV3Migration(SingleMigration):
 class RemoveDefaultUser(SingleMigration):
     """Drop per-profile user identity now that ``orm.User`` is replaced by a profile label.
 
-    Removes ``default_user_email`` from profiles and the ``autofill.user.*`` global
-    options. Downgrade is a no-op: discarded contact strings cannot be restored.
+    Retain the former default user email as a migration hint until storage has
+    been migrated. A failed multi-user storage migration must not lose this mapping.
     """
 
     down_revision = 11
@@ -528,18 +528,17 @@ class RemoveDefaultUser(SingleMigration):
     )
 
     def upgrade(self, config: ConfigType) -> None:
-        for profile_name, profile in config.get('profiles', {}).items():
-            if profile.pop('default_user_email', None) is not None:
-                CONFIG_LOGGER.warning(
-                    f"profile '{profile_name}' had a 'default_user_email' key which was removed: "
-                    'user identity is now the profile itself.'
-                )
+        for profile in config.get('profiles', {}).values():
+            if (email := profile.pop('default_user_email', None)) is not None:
+                profile['legacy_default_user_email'] = email
         global_options = config.get('options', {})
         for option_name in self.autofill_user_options:
             global_options.pop(option_name, None)
 
     def downgrade(self, config: ConfigType) -> None:
-        CONFIG_LOGGER.warning('downgrading past the user removal will not restore user identity configuration.')
+        for profile in config.get('profiles', {}).values():
+            if (email := profile.pop('legacy_default_user_email', None)) is not None:
+                profile['default_user_email'] = email
 
 
 MIGRATIONS = (

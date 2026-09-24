@@ -25,6 +25,10 @@ columns:
     name: enabled
     nullable: false
     type: BOOLEAN
+  - default: null
+    name: profile_uuid
+    nullable: false
+    type: VARCHAR(36)
   db_dbcomment:
   - default: nextval('db_dbcomment_id_seq'::regclass)
     name: id
@@ -240,6 +244,31 @@ columns:
     name: profile_uuid
     nullable: false
     type: VARCHAR(36)
+  db_dbprofile:
+  - default: nextval('db_dbprofile_id_seq'::regclass)
+    name: id
+    nullable: false
+    type: INTEGER
+  - default: null
+    name: uuid
+    nullable: false
+    type: VARCHAR(36)
+  - default: null
+    name: email
+    nullable: false
+    type: VARCHAR(254)
+  - default: null
+    name: first_name
+    nullable: false
+    type: VARCHAR(254)
+  - default: null
+    name: last_name
+    nullable: false
+    type: VARCHAR(254)
+  - default: null
+    name: institution
+    nullable: false
+    type: VARCHAR(254)
   db_dbsetting:
   - default: nextval('db_dbsetting_id_seq'::regclass)
     name: id
@@ -272,6 +301,7 @@ constraints:
     db_dblink: []
     db_dblog: []
     db_dbnode: []
+    db_dbprofile: []
     db_dbsetting: []
   primary_keys:
     alembic_version:
@@ -337,6 +367,13 @@ constraints:
       dialect_options:
         postgresql_include: []
       name: db_dbnode_pkey
+    db_dbprofile:
+      comment: null
+      constrained_columns:
+      - id
+      dialect_options:
+        postgresql_include: []
+      name: db_dbprofile_pkey
     db_dbsetting:
       comment: null
       constrained_columns:
@@ -348,12 +385,13 @@ constraints:
     alembic_version: []
     db_dbauthinfo:
     - column_names:
+      - profile_uuid
       - dbcomputer_id
       comment: null
       dialect_options:
         postgresql_include: []
         postgresql_nulls_not_distinct: false
-      name: uq_db_dbauthinfo_dbcomputer_id
+      name: uq_db_dbauthinfo_profile_uuid_dbcomputer_id
     db_dbcomment:
     - column_names:
       - uuid
@@ -419,6 +457,14 @@ constraints:
         postgresql_include: []
         postgresql_nulls_not_distinct: false
       name: uq_db_dbnode_uuid
+    db_dbprofile:
+    - column_names:
+      - uuid
+      comment: null
+      dialect_options:
+        postgresql_include: []
+        postgresql_nulls_not_distinct: false
+      name: uq_db_dbprofile_uuid
     db_dbsetting:
     - column_names:
       - key
@@ -530,6 +576,7 @@ foreign_keys:
     - id
     referred_schema: null
     referred_table: db_dbcomputer
+  db_dbprofile: []
   db_dbsetting: []
 indexes:
   alembic_version: []
@@ -542,12 +589,20 @@ indexes:
     name: ix_db_dbauthinfo_db_dbauthinfo_dbcomputer_id
     unique: false
   - column_names:
+    - profile_uuid
+    dialect_options:
+      postgresql_include: []
+    include_columns: []
+    name: ix_db_dbauthinfo_db_dbauthinfo_profile_uuid
+    unique: false
+  - column_names:
+    - profile_uuid
     - dbcomputer_id
     dialect_options:
       postgresql_include: []
-    duplicates_constraint: uq_db_dbauthinfo_dbcomputer_id
+    duplicates_constraint: uq_db_dbauthinfo_profile_uuid_dbcomputer_id
     include_columns: []
-    name: uq_db_dbauthinfo_dbcomputer_id
+    name: uq_db_dbauthinfo_profile_uuid_dbcomputer_id
     unique: true
   db_dbcomment:
   - column_names:
@@ -858,6 +913,15 @@ indexes:
     duplicates_constraint: uq_db_dbnode_uuid
     include_columns: []
     name: uq_db_dbnode_uuid
+    unique: true
+  db_dbprofile:
+  - column_names:
+    - uuid
+    dialect_options:
+      postgresql_include: []
+    duplicates_constraint: uq_db_dbprofile_uuid
+    include_columns: []
+    name: uq_db_dbprofile_uuid
     unique: true
   db_dbsetting:
   - column_names:

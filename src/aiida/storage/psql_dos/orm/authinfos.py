@@ -32,6 +32,7 @@ class SqlaAuthInfo(entities.SqlaModelEntity[DbAuthInfo], BackendAuthInfo):
         self._model = utils.ModelWrapper(
             self.MODEL_CLASS(
                 dbcomputer=computer.bare_model,
+                profile_uuid=backend.profile.uuid,
                 enabled=enabled,
                 auth_params=auth_params,
                 metadata=metadata,

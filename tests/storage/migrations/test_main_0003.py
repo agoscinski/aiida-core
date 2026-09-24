@@ -81,6 +81,7 @@ def test_migrate_users_to_profile(migration_profile):
             session.add(comment)
             session.commit()
 
+            user_id = user.id
             node_id = node.id
             group_id = group.id
             comment_id = comment.id
@@ -91,6 +92,15 @@ def test_migrate_users_to_profile(migration_profile):
 
         assert migrator.get_schema_version_profile() == 'main_0003'
         assert not sa.inspect(migrator.connection).has_table('db_dbuser')
+        profile_model = migrator.get_current_table('db_dbprofile')
+        with migrator.session() as session:
+            identity = session.query(profile_model).one()
+            assert identity.id == user_id
+            assert identity.uuid == migration_profile.uuid
+            assert identity.email == 'test'
+            assert identity.first_name == 'test'
+            assert identity.last_name == 'test'
+            assert identity.institution == 'test'
 
         node_model = migrator.get_current_table('db_dbnode')
         group_model = migrator.get_current_table('db_dbgroup')
@@ -111,6 +121,43 @@ def test_migrate_users_to_profile(migration_profile):
             authinfo = session.query(authinfo_model).filter(authinfo_model.id == authinfo_id).one()
             assert not hasattr(authinfo, 'aiidauser_id')
             assert authinfo.dbcomputer_id == computer_id
+
+
+def test_migrate_no_users(migration_profile):
+    """A fresh legacy storage still needs a profile identity after migration."""
+    migrator_class = migration_profile.storage_cls.migrator
+    with migrator_class(migration_profile) as migrator:
+        migrator.migrate_up('main@main_0002')
+        migrator.migrate_up('main@main_0003')
+        model = migrator.get_current_table('db_dbprofile')
+        with migrator.session() as session:
+            profile = session.query(model).one()
+            assert profile.uuid == migration_profile.uuid
+            assert profile.email == ''
+
+
+def test_reject_multiple_users(migration_profile):
+    """Never drop user identities when a storage needs to be split into multiple profiles."""
+    migrator_class = migration_profile.storage_cls.migrator
+    with migrator_class(migration_profile) as migrator:
+        migrator.migrate_up('main@main_0002')
+        user_model = migrator.get_current_table('db_dbuser')
+        with migrator.session() as session:
+            session.add_all(
+                [
+                    user_model(email='first@example.org', first_name='First', last_name='', institution=''),
+                    user_model(email='second@example.org', first_name='Second', last_name='', institution=''),
+                ]
+            )
+            session.commit()
+
+        with pytest.raises(RuntimeError, match='multiple users'):
+            migrator.migrate_up('main@main_0003')
+
+        assert migrator.get_schema_version_profile() == 'main_0002'
+        assert sa.inspect(migrator.connection).has_table('db_dbuser')
+        with migrator.session() as session:
+            assert session.query(user_model).count() == 2
 
 
 def test_migrate_legacy_code(migration_profile):

@@ -4,6 +4,7 @@
   "profiles": {
     "default": {
       "PROFILE_UUID": "00000000000000000000000000000000",
+      "legacy_default_user_email": "email@aiida.net",
       "storage": {
         "backend": "core.psql_dos",
         "config": {
