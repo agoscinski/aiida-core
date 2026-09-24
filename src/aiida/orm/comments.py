@@ -21,8 +21,8 @@ from .pydantic import OrmMetadataField
 
 if TYPE_CHECKING:
     from aiida._core.orm.implementation import BackendComment, BackendNode, StorageBackend
-
     from aiida._core.orm.nodes.node import Node
+
     from .users import User
 
 __all__ = ('Comment',)

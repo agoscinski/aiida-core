@@ -432,8 +432,8 @@ class BaseTranslator:
         :raise RestValidationError: if no node is found or id pattern does
           not identify a unique node
         """
-        from aiida.common.exceptions import MultipleObjectsError, NotExistent
         from aiida._core.orm.utils.loaders import IdentifierType, get_loader
+        from aiida.common.exceptions import MultipleObjectsError, NotExistent
 
         loader = get_loader(self._aiida_class)
 

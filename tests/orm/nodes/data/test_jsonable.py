@@ -6,8 +6,8 @@ import math
 import pytest
 from pymatgen.core.structure import Molecule
 
-from aiida.orm import load_node
 from aiida._core.orm.nodes.data.jsonable import JsonableData
+from aiida.orm import load_node
 
 
 class JsonableClass:

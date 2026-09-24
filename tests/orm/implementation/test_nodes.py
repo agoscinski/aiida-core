@@ -14,9 +14,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from aiida.common import exceptions
 from aiida._core.common import timezone
 from aiida._core.orm.implementation.nodes import BackendNode
+from aiida.common import exceptions
 
 
 class TestBackendNode:

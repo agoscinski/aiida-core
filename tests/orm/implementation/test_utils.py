@@ -12,8 +12,8 @@ import math
 
 import pytest
 
-from aiida.common import exceptions
 from aiida._core.orm.implementation.utils import FIELD_SEPARATOR, clean_value, validate_attribute_extra_key
+from aiida.common import exceptions
 
 
 class TestOrmImplementationUtils:

@@ -10,9 +10,9 @@
 
 import pytest
 
+from aiida._core.orm.utils.calcjob import CalcJobResultManager
 from aiida.common.links import LinkType
 from aiida.orm import Dict
-from aiida._core.orm.utils.calcjob import CalcJobResultManager
 
 
 @pytest.fixture

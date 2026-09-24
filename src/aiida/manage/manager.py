@@ -18,13 +18,13 @@ if TYPE_CHECKING:
     from kiwipy.rmq import RmqThreadCommunicator
     from plumpy.process_comms import RemoteProcessThreadController
 
+    from aiida._core.orm.implementation import StorageBackend
     from aiida.brokers.broker import Broker
     from aiida.engine.daemon.client import DaemonClient
     from aiida.engine.persistence import AiiDAPersister
     from aiida.engine.runners import Runner
     from aiida.manage.configuration.config import Config
     from aiida.manage.configuration.profile import Profile
-    from aiida._core.orm.implementation import StorageBackend
 
 __all__ = ('get_manager',)
 

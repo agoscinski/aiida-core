@@ -13,10 +13,10 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable
 
+from aiida._core.orm.implementation import StorageBackend
 from aiida.common.log import AIIDA_LOGGER
 from aiida.manage import get_manager
 from aiida.orm import Group, Node, QueryBuilder
-from aiida._core.orm.implementation import StorageBackend
 from aiida.tools.graph.graph_traversers import get_nodes_delete
 
 __all__ = ('delete_group_nodes', 'delete_nodes')

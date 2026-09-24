@@ -31,27 +31,27 @@ from uuid import UUID
 import pydantic as pdt
 from typing_extensions import Self
 
-from aiida.common import exceptions
 from aiida._core.common.lang import classproperty, type_check
-from aiida.common.links import LinkType
-from aiida.common.log import AIIDA_LOGGER
 from aiida._core.common.pydantic import get_metadata
 from aiida._core.common.warnings import warn_deprecation
-from aiida.manage import get_manager
-from aiida.orm.fields import QbAttributesField, QbFields, add_field
 from aiida._core.orm.utils.node import (
     AbstractNodeMeta,
     get_query_type_from_type_string,
     get_type_string_from_class,
 )
-
+from aiida.common import exceptions
+from aiida.common.links import LinkType
+from aiida.common.log import AIIDA_LOGGER
+from aiida.manage import get_manager
 from aiida.orm.computers import Computer
 from aiida.orm.entities import Collection as EntityCollection
 from aiida.orm.entities import Entity, from_backend_entity
 from aiida.orm.extras import EntityExtras
+from aiida.orm.fields import QbAttributesField, QbFields, add_field
 from aiida.orm.pydantic import OrmMetadataField, OrmModel
 from aiida.orm.querybuilder import QueryBuilder
 from aiida.orm.users import User
+
 from .attributes import NodeAttributes
 from .caching import NodeCaching
 from .comments import NodeComments
@@ -1072,7 +1072,9 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
         is here for backwards compatibility to print the deprecation warning.
         """
         warn_deprecation(
-            'This attribute is deprecated, use `aiida._core.orm.nodes.node.NodeCollection` instead.', version=3, stacklevel=2
+            'This attribute is deprecated, use `aiida._core.orm.nodes.node.NodeCollection` instead.',
+            version=3,
+            stacklevel=2,
         )
         return NodeCollection
 

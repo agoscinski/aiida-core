@@ -16,11 +16,10 @@ from stat import S_ISDIR, S_ISREG
 
 import click
 
-from aiida.cmdline.params import options
-from aiida.cmdline.params.types.path import AbsolutePathOrEmptyParamType
 from aiida._core.common.escaping import escape_for_bash
 from aiida._core.common.warnings import warn_deprecation
-
+from aiida.cmdline.params import options
+from aiida.cmdline.params.types.path import AbsolutePathOrEmptyParamType
 from aiida.transports.transport import BlockingTransport, TransportInternalError, TransportPath, has_magic
 
 __all__ = ('SshTransport', 'convert_to_bool', 'parse_sshconfig')
@@ -422,8 +421,8 @@ class SshTransport(BlockingTransport):
         import paramiko
         from paramiko.ssh_exception import SSHException
 
-        from aiida.common.exceptions import InvalidOperation
         from aiida._core.transports.util import _DetachedProxyCommand
+        from aiida.common.exceptions import InvalidOperation
 
         if self._is_open:
             raise InvalidOperation('Cannot open the transport twice')

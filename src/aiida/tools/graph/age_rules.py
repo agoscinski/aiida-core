@@ -21,8 +21,8 @@ from aiida.tools.graph.age_entities import Basket
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from aiida.orm import QueryBuilder
     from aiida._core.orm.implementation.querybuilder import QueryDictType
+    from aiida.orm import QueryBuilder
 
 
 class Operation(metaclass=ABCMeta):

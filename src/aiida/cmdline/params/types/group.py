@@ -17,8 +17,8 @@ if t.TYPE_CHECKING:
 
 import click
 
-from aiida.cmdline.utils import decorators
 from aiida._core.common.lang import type_check
+from aiida.cmdline.utils import decorators
 
 from .identifier import IdentifierParamType
 

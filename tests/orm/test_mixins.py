@@ -10,10 +10,10 @@
 
 import pytest
 
+from aiida._core.orm.utils.mixins import Sealable
 from aiida.common import exceptions
 from aiida.common.links import LinkType
 from aiida.orm import CalculationNode, Int
-from aiida._core.orm.utils.mixins import Sealable
 
 
 class TestSealable:

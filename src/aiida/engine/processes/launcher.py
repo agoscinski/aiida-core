@@ -51,10 +51,10 @@ class ProcessLauncher(plumpy.ProcessLauncher):
             return the results
         :param tag: the tag of the checkpoint to continue from
         """
+        from aiida._core.orm.utils import serialize
         from aiida.common import exceptions
         from aiida.engine.exceptions import PastException
         from aiida.orm import Data, load_node
-        from aiida._core.orm.utils import serialize
 
         try:
             node = load_node(pk=pid)

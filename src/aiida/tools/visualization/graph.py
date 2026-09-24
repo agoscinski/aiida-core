@@ -19,9 +19,9 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 from graphviz import Digraph
 
 from aiida import orm
+from aiida._core.orm.utils.links import LinkPair
 from aiida.common import LinkType
 from aiida.manage import get_manager
-from aiida._core.orm.utils.links import LinkPair
 from aiida.tools.graph.graph_traversers import traverse_graph
 
 if TYPE_CHECKING:

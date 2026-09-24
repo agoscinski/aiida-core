@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 import click
 
+from aiida._core.common import timezone
 from aiida.cmdline.commands.cmd_verdi import verdi
 from aiida.cmdline.params import arguments, options
 from aiida.cmdline.params.options.multivalue import MultipleValueOption
@@ -23,7 +24,6 @@ from aiida.cmdline.params.types.plugin import PluginParamType
 from aiida.cmdline.utils import decorators, echo, echo_tabulate, multi_line_input
 from aiida.cmdline.utils.decorators import with_dbenv
 from aiida.common import exceptions
-from aiida._core.common import timezone
 from aiida.common.links import GraphTraversalRules
 
 if TYPE_CHECKING:
@@ -333,9 +333,9 @@ def extras(nodes, keys, fmt, identifier, raw):
 
 def _warn_about_stash_nodes(pks_to_delete: set[int]) -> None:
     """Warn about stash nodes whose target paths won't be automatically cleaned."""
+    from aiida._core.orm.nodes.data.remote.stash import RemoteStashData
     from aiida.calculations.stash import StashCalculation
     from aiida.orm import QueryBuilder
-    from aiida._core.orm.nodes.data.remote.stash import RemoteStashData
 
     if not pks_to_delete:
         return
@@ -411,9 +411,9 @@ def node_delete(identifier, dry_run, force, clean_workdir, **traversal_rules):
             echo.echo_success('Finished deletion.')
 
     if clean_workdir:
+        from aiida._core.orm.utils.remote import clean_mapping_remote_paths, get_calcjob_remote_paths
         from aiida.manage import get_manager
         from aiida.orm import CalcJobNode, QueryBuilder
-        from aiida._core.orm.utils.remote import clean_mapping_remote_paths, get_calcjob_remote_paths
         from aiida.tools.graph.graph_traversers import get_nodes_delete
 
         backend = get_manager().get_profile_storage()

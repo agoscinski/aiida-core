@@ -15,9 +15,6 @@ import tempfile
 import numpy as np
 import pytest
 
-from aiida.common.exceptions import ModificationNotAllowed
-from aiida.common.utils import Capturing
-from aiida.orm import ArrayData, BandsData, CifData, Dict, KpointsData, StructureData, TrajectoryData, load_node
 from aiida._core.orm.nodes.data.cif import has_pycifrw
 from aiida._core.orm.nodes.data.structure import (
     Kind,
@@ -29,6 +26,9 @@ from aiida._core.orm.nodes.data.structure import (
     has_pymatgen,
     has_spglib,
 )
+from aiida.common.exceptions import ModificationNotAllowed
+from aiida.common.utils import Capturing
+from aiida.orm import ArrayData, BandsData, CifData, Dict, KpointsData, StructureData, TrajectoryData, load_node
 
 
 def has_seekpath():

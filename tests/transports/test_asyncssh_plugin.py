@@ -91,7 +91,9 @@ class TestDataNodeHost:
             connections[host] = connection
             return connection
 
-        return connections, patch('aiida._core.transports.plugins.async_backend.asyncssh.connect', side_effect=fake_connect)
+        return connections, patch(
+            'aiida._core.transports.plugins.async_backend.asyncssh.connect', side_effect=fake_connect
+        )
 
     @pytest.mark.asyncio
     async def test_asyncssh_starts_sftp_client_on_data_node(self):

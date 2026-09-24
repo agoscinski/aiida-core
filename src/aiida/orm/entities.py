@@ -30,11 +30,11 @@ import pydantic as pdt
 from plumpy.base.utils import call_with_super_check, super_check
 from typing_extensions import Self
 
-from aiida.common import exceptions, log
-from aiida.common.exceptions import InvalidOperation
 from aiida._core.common.lang import classproperty, type_check
 from aiida._core.common.pydantic import get_metadata
 from aiida._core.common.warnings import warn_deprecation
+from aiida.common import exceptions, log
+from aiida.common.exceptions import InvalidOperation
 from aiida.manage import get_manager
 
 from .fields import QbFields, add_field

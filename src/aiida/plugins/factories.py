@@ -35,10 +35,10 @@ __all__ = (
 if TYPE_CHECKING:
     from importlib_metadata import EntryPoint
 
+    from aiida._core.orm.implementation import StorageBackend
     from aiida.brokers import Broker
     from aiida.engine import CalcJob, CalcJobImporter, WorkChain
     from aiida.orm import Data, Group
-    from aiida._core.orm.implementation import StorageBackend
     from aiida.parsers import Parser
     from aiida.schedulers import Scheduler
     from aiida.tools.data.orbital import Orbital

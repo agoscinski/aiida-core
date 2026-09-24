@@ -33,10 +33,8 @@ from typing import (
     overload,
 )
 
-from aiida.common.log import AIIDA_LOGGER
 from aiida._core.common.warnings import warn_deprecation
-from aiida.manage import get_manager
-from aiida.orm.entities import EntityTypes
+from aiida._core.orm import convert, nodes
 from aiida._core.orm.implementation.querybuilder import (
     GROUP_ENTITY_TYPE_PREFIX,
     BackendQueryBuilder,
@@ -44,13 +42,15 @@ from aiida._core.orm.implementation.querybuilder import (
     PathItemType,
     QueryDictType,
 )
+from aiida.common.log import AIIDA_LOGGER
+from aiida.manage import get_manager
+from aiida.orm.entities import EntityTypes
 
 from . import authinfos, comments, computers, entities, fields, groups, logs, users
-from aiida._core.orm import convert, nodes
 
 if TYPE_CHECKING:
-    from aiida.engine import Process
     from aiida._core.orm.implementation import StorageBackend
+    from aiida.engine import Process
 
 __all__ = ('QueryBuilder',)
 
@@ -1245,8 +1245,8 @@ def _get_ormclass_from_cls(cls: EntityClsType) -> tuple[EntityTypes, Classifier]
         aiida._core.orm.utils.node.get_type_string_from_class(cls.__module__, cls.__name__)
     """
     # Note: Unable to move this import to the top of the module for some reason
-    from aiida.engine import Process
     from aiida._core.orm.utils.node import is_valid_node_type_string
+    from aiida.engine import Process
 
     classifiers: Classifier
 

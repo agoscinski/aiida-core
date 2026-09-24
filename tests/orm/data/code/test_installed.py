@@ -12,10 +12,10 @@ import pathlib
 
 import pytest
 
-from aiida.common.exceptions import ModificationNotAllowed, ValidationError
 from aiida._core.common.warnings import AiidaDeprecationWarning
-from aiida.orm import Computer
 from aiida._core.orm.nodes.data.code.installed import InstalledCode
+from aiida.common.exceptions import ModificationNotAllowed, ValidationError
+from aiida.orm import Computer
 
 
 def test_constructor_raises(aiida_localhost, bash_path):

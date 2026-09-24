@@ -23,11 +23,11 @@ from typing import TYPE_CHECKING, Any, BinaryIO
 from sqlalchemy import column, insert, update
 from sqlalchemy.orm import Session
 
-from aiida.common.exceptions import ClosedStorage, IntegrityError
 from aiida._core.common.pydantic import AiiDABaseModel, MetadataField
+from aiida._core.orm.implementation import BackendEntity, StorageBackend
+from aiida.common.exceptions import ClosedStorage, IntegrityError
 from aiida.manage.configuration import Profile
 from aiida.orm.entities import EntityTypes
-from aiida._core.orm.implementation import BackendEntity, StorageBackend
 from aiida.repository.backend.sandbox import SandboxRepositoryBackend
 from aiida.storage.sqlite_zip import models, orm
 from aiida.storage.sqlite_zip.migrator import get_schema_version_head

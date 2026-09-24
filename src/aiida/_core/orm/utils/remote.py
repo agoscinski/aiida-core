@@ -14,9 +14,9 @@ import os
 import typing as t
 
 from aiida import orm
+from aiida._core.orm.nodes.data.remote.base import RemoteData
 from aiida.cmdline.utils import echo
 from aiida.common.exceptions import NotExistent
-from aiida._core.orm.nodes.data.remote.base import RemoteData
 
 if t.TYPE_CHECKING:
     from collections.abc import Sequence

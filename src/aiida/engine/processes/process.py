@@ -38,15 +38,15 @@ from plumpy.processes import Process as PlumpyProcess
 from plumpy.utils import AttributesFrozendict
 
 from aiida import orm
-from aiida.common import exceptions
-from aiida.common.extendeddicts import AttributeDict
 from aiida._core.common.lang import classproperty, override
-from aiida.common.links import LinkType
-from aiida.common.log import LOG_LEVEL_REPORT
-from aiida.engine.utils import InterruptableFuture
 from aiida._core.orm.implementation.utils import clean_value
 from aiida._core.orm.nodes.process.calculation.calcjob import CalcJobNode
 from aiida._core.orm.utils import serialize
+from aiida.common import exceptions
+from aiida.common.extendeddicts import AttributeDict
+from aiida.common.links import LinkType
+from aiida.common.log import LOG_LEVEL_REPORT
+from aiida.engine.utils import InterruptableFuture
 
 from .builder import ProcessBuilder
 from .exit_code import ExitCode, ExitCodesNamespace

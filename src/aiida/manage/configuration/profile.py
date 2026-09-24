@@ -24,8 +24,8 @@ from aiida.common import exceptions
 from .options import parse_option
 
 if TYPE_CHECKING:
-    from aiida.orm import Code, Computer, Group, User
     from aiida._core.orm.implementation import StorageBackend
+    from aiida.orm import Code, Computer, Group, User
 
 __all__ = ('Profile',)
 
@@ -216,8 +216,8 @@ class Profile:
         """
         from urllib.parse import urlparse
 
-        from aiida.common.utils import url2pathname
         from aiida._core.common.warnings import warn_deprecation
+        from aiida.common.utils import url2pathname
 
         warn_deprecation('This method has been deprecated', version=3)
 

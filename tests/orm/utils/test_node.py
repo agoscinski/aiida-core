@@ -10,13 +10,13 @@
 
 import pytest
 
-from aiida.common import exceptions
-from aiida.orm import Data, ProcessNode
 from aiida._core.orm.utils.node import (
     get_type_string_from_class,
     is_valid_node_type_string,
     load_node_class,
 )
+from aiida.common import exceptions
+from aiida.orm import Data, ProcessNode
 
 
 def test_load_node_class_fallback():

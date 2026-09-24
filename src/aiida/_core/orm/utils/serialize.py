@@ -26,8 +26,8 @@ from plumpy import Bundle, get_object_loader
 from plumpy.utils import AttributesFrozendict
 
 from aiida import orm
-from aiida.common import AttributeDict
 from aiida._core.orm.utils.managers import NodeLinksManager
+from aiida.common import AttributeDict
 
 _ENUM_TAG = '!enum'
 _DATACLASS_TAG = '!dataclass'

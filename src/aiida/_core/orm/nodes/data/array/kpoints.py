@@ -170,8 +170,8 @@ class KpointsData(ArrayData):
         """Validate if 'value' is a allowed crystal unit cell
         :param value: something compatible with a 3x3 tuple of floats
         """
-        from aiida.common.exceptions import ModificationNotAllowed
         from aiida._core.orm.nodes.data.structure import _get_valid_cell
+        from aiida.common.exceptions import ModificationNotAllowed
 
         if self.is_stored:
             raise ModificationNotAllowed('KpointsData cannot be modified, it has already been stored')
@@ -202,8 +202,8 @@ class KpointsData(ArrayData):
 
     def _set_pbc(self, value):
         """Validate the pbc, then store them"""
-        from aiida.common.exceptions import ModificationNotAllowed
         from aiida._core.orm.nodes.data.structure import get_valid_pbc
+        from aiida.common.exceptions import ModificationNotAllowed
 
         if self.is_stored:
             raise ModificationNotAllowed('The KpointsData object cannot be modified, it has already been stored')

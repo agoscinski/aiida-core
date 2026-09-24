@@ -17,9 +17,9 @@ import pytest
 from flask_cors.core import ACL_ORIGIN
 
 from aiida import orm
+from aiida._core.orm.nodes.data.array.array import clean_array
 from aiida.common.links import LinkType
 from aiida.manage import get_manager
-from aiida._core.orm.nodes.data.array.array import clean_array
 from aiida.restapi.run_api import configure_api
 
 
@@ -85,8 +85,8 @@ class TestRestApi:
         # create log message for calcjob
         import logging
 
-        from aiida.common.log import LOG_LEVEL_REPORT
         from aiida._core.common.timezone import now
+        from aiida.common.log import LOG_LEVEL_REPORT
         from aiida.orm import Log
 
         log_record = {

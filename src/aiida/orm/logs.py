@@ -22,9 +22,9 @@ from . import entities
 from .pydantic import OrmMetadataField
 
 if TYPE_CHECKING:
-    from aiida.orm import Node
     from aiida._core.orm.implementation import StorageBackend
     from aiida._core.orm.implementation.logs import BackendLog
+    from aiida.orm import Node
     from aiida.orm.querybuilder import FilterType, OrderByType
 
 __all__ = ('ASCENDING', 'DESCENDING', 'Log', 'OrderSpecifier')

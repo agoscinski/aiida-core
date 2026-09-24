@@ -20,13 +20,13 @@ from disk_objectstore import Container, backup_utils
 from sqlalchemy import column, insert, update
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
+from aiida._core.common.pydantic import AiiDABaseModel, MetadataField
+from aiida._core.orm.implementation import BackendEntity, StorageBackend
 from aiida.common import exceptions
 from aiida.common.exceptions import ClosedStorage, ConfigurationError, IntegrityError
 from aiida.common.log import AIIDA_LOGGER
-from aiida._core.common.pydantic import AiiDABaseModel, MetadataField
 from aiida.manage.configuration.profile import Profile
 from aiida.orm.entities import EntityTypes
-from aiida._core.orm.implementation import BackendEntity, StorageBackend
 from aiida.storage.log import STORAGE_LOGGER
 from aiida.storage.psql_dos.migrator import REPOSITORY_UUID_KEY, PsqlDosMigrator
 from aiida.storage.psql_dos.models import base

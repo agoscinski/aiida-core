@@ -16,11 +16,11 @@ from plumpy.utils import AttributesFrozendict
 
 from aiida import orm
 from aiida._core.common.lang import override
+from aiida._core.orm.nodes.caching import NodeCaching
 from aiida.engine import ExitCode, ExitCodesNamespace, Process, run, run_get_node, run_get_pk
 from aiida.engine.processes.ports import PortNamespace
 from aiida.manage.caching import disable_caching, enable_caching
 from aiida.orm import to_aiida_type
-from aiida._core.orm.nodes.caching import NodeCaching
 from aiida.plugins import CalculationFactory
 from tests.utils import processes as test_processes
 
@@ -383,7 +383,7 @@ class TestProcess:
 
             @classmethod
             def define(cls, spec):
-                super(ChildProcess, cls).define(spec)
+                super().define(spec)
                 spec.input('input', valid_type=orm.Int)
                 spec.output('output', valid_type=orm.Int)
                 spec.output('name.space', valid_type=orm.Int)
@@ -395,7 +395,7 @@ class TestProcess:
 
             @classmethod
             def define(cls, spec):
-                super(ParentProcess, cls).define(spec)
+                super().define(spec)
                 spec.input('input', valid_type=orm.Int)
                 spec.expose_outputs(ChildProcess)
 
@@ -433,7 +433,7 @@ class TestProcess:
 
             @classmethod
             def define(cls, spec):
-                super(ChildProcess, cls).define(spec)
+                super().define(spec)
                 spec.input('input', valid_type=orm.Int)
                 spec.output('output', valid_type=orm.Int)
                 spec.output('name.space', valid_type=orm.Int)
@@ -445,7 +445,7 @@ class TestProcess:
 
             @classmethod
             def define(cls, spec):
-                super(ParentProcess, cls).define(spec)
+                super().define(spec)
                 spec.input('input', valid_type=orm.Int)
                 spec.expose_outputs(ChildProcess, namespace='child')
 

@@ -23,8 +23,8 @@ from . import entities, users
 from .pydantic import OrmMetadataField
 
 if TYPE_CHECKING:
-    from aiida.orm import AuthInfo, User
     from aiida._core.orm.implementation import BackendComputer, StorageBackend
+    from aiida.orm import AuthInfo, User
     from aiida.schedulers import Scheduler
     from aiida.transports import Transport
 

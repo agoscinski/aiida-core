@@ -17,9 +17,9 @@ import sys
 from collections import OrderedDict
 from pathlib import Path, PurePosixPath
 
-from aiida.common.exceptions import InternalError
 from aiida._core.common.lang import classproperty
 from aiida._core.common.warnings import warn_deprecation
+from aiida.common.exceptions import InternalError
 
 __all__ = ('AsyncTransport', 'BlockingTransport', 'Transport', 'TransportPath')
 

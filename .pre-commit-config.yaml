@@ -97,16 +97,16 @@ repos:
         src/aiida/manage/configuration/__init__.py|
         src/aiida/manage/configuration/config.py|
         src/aiida/manage/external/rmq/launcher.py|
-        src/aiida/orm/nodes/data/cif.py|
-        src/aiida/orm/nodes/data/remote/base.py|
-        src/aiida/orm/nodes/data/structure.py|
-        src/aiida/orm/nodes/data/upf.py|
-        src/aiida/orm/nodes/process/calculation/calcjob.py|
-        src/aiida/orm/nodes/process/process.py|
-        src/aiida/orm/utils/builders/code.py|
-        src/aiida/orm/utils/builders/computer.py|
-        src/aiida/orm/utils/calcjob.py|
-        src/aiida/orm/utils/node.py|
+        src/aiida/_core/orm/nodes/data/cif.py|
+        src/aiida/_core/orm/nodes/data/remote/base.py|
+        src/aiida/_core/orm/nodes/data/structure.py|
+        src/aiida/_core/orm/nodes/data/upf.py|
+        src/aiida/_core/orm/nodes/process/calculation/calcjob.py|
+        src/aiida/_core/orm/nodes/process/process.py|
+        src/aiida/_core/orm/utils/builders/code.py|
+        src/aiida/_core/orm/utils/builders/computer.py|
+        src/aiida/_core/orm/utils/calcjob.py|
+        src/aiida/_core/orm/utils/node.py|
         src/aiida/restapi/common/utils.py|
         src/aiida/restapi/resources.py|
         src/aiida/restapi/run_api.py|
@@ -133,9 +133,9 @@ repos:
         src/aiida/tools/data/orbital/orbital.py|
         src/aiida/tools/data/orbital/realhydrogen.py|
         src/aiida/tools/dbimporters/plugins/.*|
-        src/aiida/transports/cli.py|
-        src/aiida/transports/plugins/local.py|
-        src/aiida/transports/plugins/ssh.py|
+        src/aiida/_core/transports/cli.py|
+        src/aiida/_core/transports/plugins/local.py|
+        src/aiida/_core/transports/plugins/ssh.py|
       )$
 
   - id: generate-conda-environment

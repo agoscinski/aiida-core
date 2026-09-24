@@ -23,12 +23,12 @@ from pydantic import field_validator
 from sqlalchemy import insert, inspect, select
 from sqlalchemy.orm import scoped_session, sessionmaker
 
+from aiida._core.common.pydantic import AiiDABaseModel, MetadataField
+from aiida._core.orm.implementation import BackendEntity
 from aiida.common import exceptions
 from aiida.common.log import AIIDA_LOGGER
-from aiida._core.common.pydantic import AiiDABaseModel, MetadataField
 from aiida.manage.configuration.profile import Profile
 from aiida.manage.configuration.settings import AiiDAConfigDir
-from aiida._core.orm.implementation import BackendEntity
 from aiida.storage.log import MIGRATE_LOGGER
 from aiida.storage.psql_dos.models.settings import DbSetting
 from aiida.storage.sqlite_zip import models, orm

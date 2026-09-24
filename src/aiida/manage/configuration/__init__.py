@@ -262,7 +262,8 @@ def create_profile(
     :param last_name: Last name for the default user.
     :param institution: Institution for the default user.
     :param create_user: If `True`, creates a user that is set as the default user.
-    :param storage_backend: The entry point to the :class:`aiida._core.orm.implementation.storage_backend.StorageBackend`
+    :param storage_backend: The entry point to the
+        :class:`aiida._core.orm.implementation.storage_backend.StorageBackend`
         implementation to use for the storage.
     :param storage_config: The configuration necessary to initialise and connect to the storage backend.
     :param broker_backend: The entry point to the :class:`aiida.brokers.Broker` implementation to use for the broker.

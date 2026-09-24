@@ -15,11 +15,11 @@ from io import BytesIO
 
 import pytest
 
-from aiida.common import LinkType, exceptions
 from aiida._core.common import timezone
+from aiida._core.orm.utils.links import LinkTriple
+from aiida.common import LinkType, exceptions
 from aiida.manage import get_manager
 from aiida.orm import CalculationNode, Data, Int, Log, Node, User, WorkflowNode, load_node
-from aiida._core.orm.utils.links import LinkTriple
 
 
 class TestNode:

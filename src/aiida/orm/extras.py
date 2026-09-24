@@ -13,8 +13,9 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Union
 
 if TYPE_CHECKING:
-    from .groups import Group
     from aiida._core.orm.nodes.node import Node
+
+    from .groups import Group
 
 __all__ = ('EntityExtras',)
 

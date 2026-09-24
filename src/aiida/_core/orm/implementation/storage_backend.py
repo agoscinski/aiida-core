@@ -21,9 +21,7 @@ from aiida.common.log import AIIDA_LOGGER
 if TYPE_CHECKING:
     from disk_objectstore.backup_utils import BackupManager
 
-    from aiida.manage.configuration.profile import Profile
     from aiida._core.orm.autogroup import AutogroupManager
-    from aiida.orm.entities import EntityTypes
     from aiida._core.orm.implementation import (
         BackendAuthInfoCollection,
         BackendCommentCollection,
@@ -34,6 +32,8 @@ if TYPE_CHECKING:
         BackendQueryBuilder,
         BackendUserCollection,
     )
+    from aiida.manage.configuration.profile import Profile
+    from aiida.orm.entities import EntityTypes
     from aiida.orm.users import User
     from aiida.repository.backend.abstract import AbstractRepositoryBackend
 

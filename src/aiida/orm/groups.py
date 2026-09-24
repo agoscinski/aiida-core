@@ -20,21 +20,21 @@ from uuid import UUID
 
 from typing_extensions import Self
 
-from aiida.common import exceptions
 from aiida._core.common.lang import classproperty, type_check
 from aiida._core.common.warnings import warn_deprecation
+from aiida._core.orm import convert
+from aiida.common import exceptions
 from aiida.manage import get_manager
 
 from . import entities, extras, users
-from aiida._core.orm import convert
 from .pydantic import OrmMetadataField
 
 if TYPE_CHECKING:
     from importlib_metadata import EntryPoint
 
-    from aiida.orm import Node, User
     from aiida._core.orm.implementation import StorageBackend
     from aiida._core.orm.implementation.groups import BackendGroup
+    from aiida.orm import Node, User
 
 __all__ = ('AutoGroup', 'Group', 'ImportGroup', 'UpfFamily')
 

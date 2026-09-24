@@ -103,9 +103,9 @@ def upload_upf_family(folder, group_label, group_description, stop_if_existing=T
     import os
 
     from aiida import orm
+    from aiida._core.common.files import md5_file
     from aiida.common import AIIDA_LOGGER
     from aiida.common.exceptions import UniquenessError
-    from aiida._core.common.files import md5_file
 
     emit_deprecation()
 
@@ -211,9 +211,9 @@ def parse_upf(fname, check_filename=True, encoding='utf-8'):
     """
     import os
 
+    from aiida._core.orm.nodes.data.structure import _valid_symbols
     from aiida.common import AIIDA_LOGGER
     from aiida.common.exceptions import ParsingError
-    from aiida._core.orm.nodes.data.structure import _valid_symbols
 
     emit_deprecation()
 
@@ -322,8 +322,8 @@ class UpfData(SinglefileData):
 
     def store(self, *args, **kwargs):
         """Store the node, reparsing the file so that the md5 and the element are correctly reset."""
-        from aiida.common.exceptions import ParsingError
         from aiida._core.common.files import md5_from_filelike
+        from aiida.common.exceptions import ParsingError
 
         if self.is_stored:
             return self
@@ -372,8 +372,8 @@ class UpfData(SinglefileData):
             Hint: Pass io.BytesIO(b"my string") to construct the file directly from a string.
         :param filename: specify filename to use (defaults to name of provided file).
         """
-        from aiida.common.exceptions import ParsingError
         from aiida._core.common.files import md5_file, md5_from_filelike
+        from aiida.common.exceptions import ParsingError
 
         parsed_data = parse_upf(file, check_filename=self.CHECK_FILENAME)
 
@@ -419,8 +419,8 @@ class UpfData(SinglefileData):
 
     def _validate(self):
         """Validate the UPF potential file stored for this node."""
-        from aiida.common.exceptions import ValidationError
         from aiida._core.common.files import md5_from_filelike
+        from aiida.common.exceptions import ValidationError
 
         super()._validate()
 

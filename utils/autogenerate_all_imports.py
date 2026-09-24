@@ -148,21 +148,22 @@ def write_inits(folder_path: Path, all_dict: dict, skip_children: dict[str, list
             alls = gather_all(list(mod_path), path_all_dict, skip_children)
 
             # merge names re-exported from the private `aiida._core` implementation.
-            # Absolute `_core` lines are sorted by submodule name together with the
-            # relative lines: this preserves the pre-move initialization order, which
-            # the modules rely on (they name-bind from each other at import time).
-            import_lines = [(mod, f'from .{mod} import *') for mod in sorted(path_all_dict.keys())]
-            core_imports = []
+            # Absolute `_core` lines come first (isort order). This is also the safe
+            # initialization order: `_core` modules only ever name-bind from fully
+            # importable public modules, never from a partially initialized facade.
+            import_lines = []
             if len(mod_path) == 1 and mod_path[0] in CORE_MOVED:
                 pkg = mod_path[0]
-                for key in CORE_MOVED[pkg]:
+                for key in sorted(CORE_MOVED[pkg]):
                     try:
                         core_dict = all_dict['_core'][pkg][key]
                     except KeyError:
                         continue
-                    import_lines.append((key, f'from aiida._core.{pkg}.{key} import *'))
+                    import_lines.append(f'from aiida._core.{pkg}.{key} import *')
                     alls.extend(gather_all(['_core', pkg, key], core_dict, skip_children))
-            import_lines.sort(key=lambda item: item[0])
+                if import_lines:
+                    import_lines.append('')
+            import_lines.extend(f'from .{mod} import *' for mod in sorted(path_all_dict.keys()))
 
             # check for non-unique imports
             if len(alls + list(path_all_dict)) != len(set(alls + list(path_all_dict))):
@@ -171,7 +172,7 @@ def write_inits(folder_path: Path, all_dict: dict, skip_children: dict[str, list
             auto_content = (
                 ['', f'# {AUTO_GENERATED}']
                 + ['', '# fmt: off', '']
-                + [line for _, line in import_lines]
+                + import_lines
                 + ['', '__all__ = (']
                 + [f'{INDENT}{a!r},' for a in isort_alls(set(alls))]
                 + [')', '', '# fmt: on', '']

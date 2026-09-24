@@ -12,12 +12,10 @@ from __future__ import annotations
 
 import inspect
 
-from aiida.common import exceptions
 from aiida._core.common.lang import classproperty, override, type_check
 from aiida._core.common.warnings import warn_deprecation
-from aiida.orm.pydantic import OrmMetadataField
-
-from aiida.orm.pydantic import OrmModel
+from aiida.common import exceptions
+from aiida.orm.pydantic import OrmMetadataField, OrmModel
 
 
 class FunctionCalculationMixin:

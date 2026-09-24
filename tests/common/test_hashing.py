@@ -18,10 +18,10 @@ from decimal import Decimal
 import numpy as np
 import pytest
 
-from aiida.common.exceptions import HashingError
 from aiida._core.common.folders import SandboxFolder
 from aiida._core.common.hashing import chunked_file_hash, float_to_text, make_hash
 from aiida._core.common.timezone import timezone_from_name
+from aiida.common.exceptions import HashingError
 from aiida.common.utils import DatetimePrecision
 from aiida.orm import Dict
 

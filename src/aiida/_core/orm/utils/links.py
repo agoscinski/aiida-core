@@ -12,13 +12,13 @@ from collections import OrderedDict
 from collections.abc import Generator, Iterator, Mapping
 from typing import TYPE_CHECKING, NamedTuple, Optional
 
-from aiida.common import exceptions
 from aiida._core.common.lang import type_check
+from aiida.common import exceptions
 
 if TYPE_CHECKING:
+    from aiida._core.orm.implementation.storage_backend import StorageBackend
     from aiida.common.links import LinkType
     from aiida.orm import Node
-    from aiida._core.orm.implementation.storage_backend import StorageBackend
 
 __all__ = ('LinkManager', 'LinkPair', 'LinkTriple', 'validate_link')
 

@@ -11,8 +11,8 @@
 from collections.abc import Iterable
 from typing import Any, Protocol
 
-from aiida.common import exceptions
 from aiida._core.common.docs import URL_CONFIG_SCHEMA_COMPATIBILITY
+from aiida.common import exceptions
 from aiida.common.log import AIIDA_LOGGER
 
 __all__ = (

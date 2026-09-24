@@ -714,7 +714,8 @@ class CifData(SinglefileData):
     def has_unknown_species(self):
         """Returns whether the cif contains atomic species that are not recognized by AiiDA.
 
-        The known species are taken from the elements dictionary in `aiida._core.common.constants`, with the exception of
+        The known species are taken from the elements dictionary in `aiida._core.common.constants`, with the
+        exception of
         the "unknown" placeholder element with symbol 'X', as this could not be used to construct a real structure.
         If any of the formula of the cif data contain species that are not in that elements dictionary, the function
         will return True and False in all other cases. If there is no formulae to be found, it will return None

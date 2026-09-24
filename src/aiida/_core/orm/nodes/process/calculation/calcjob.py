@@ -16,18 +16,18 @@ from typing import TYPE_CHECKING, Any, AnyStr, cast
 
 from pydantic import field_validator
 
+from aiida._core.common.lang import classproperty
 from aiida.common import exceptions
 from aiida.common.datastructures import CalcJobState
-from aiida._core.common.lang import classproperty
 from aiida.orm.pydantic import OrmMetadataField
 
 from ..process import ProcessNodeCaching
 from .calculation import CalculationNode
 
 if TYPE_CHECKING:
+    from aiida._core.orm.utils.calcjob import CalcJobResultManager
     from aiida.orm import FolderData
     from aiida.orm.authinfos import AuthInfo
-    from aiida._core.orm.utils.calcjob import CalcJobResultManager
     from aiida.parsers import Parser
     from aiida.schedulers.datastructures import JobInfo, JobState
     from aiida.tools.calculations import CalculationTools
@@ -440,7 +440,8 @@ class CalcJobNode(CalculationNode):
         The last job info is updated on every poll of the scheduler, except for the final poll when the job drops from
         the scheduler's job queue.
         For completed jobs, the last job info therefore contains the "second-to-last" job info that still shows the job
-        as running. Please use :meth:`~aiida._core.orm.nodes.process.calculation.calcjob.CalcJobNode.get_detailed_job_info`
+        as running. Please use
+        :meth:`~aiida._core.orm.nodes.process.calculation.calcjob.CalcJobNode.get_detailed_job_info`
         instead.
 
         :return: a `JobInfo` object (that closely resembles a dictionary) or None.

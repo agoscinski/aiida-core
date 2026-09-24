@@ -18,8 +18,8 @@ import re
 import numpy as np
 
 from aiida._core.common.constants import elements
-from aiida.engine import calcfunction
 from aiida._core.orm.nodes.data.structure import Kind, Site, StructureData
+from aiida.engine import calcfunction
 
 __all__ = ('spglib_tuple_to_structure', 'structure_to_spglib_tuple')
 

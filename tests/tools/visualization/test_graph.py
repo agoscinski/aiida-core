@@ -13,10 +13,10 @@ import re
 import pytest
 
 from aiida import orm
+from aiida._core.orm.utils.links import LinkPair
 from aiida.common import AttributeDict
 from aiida.common.links import LinkType
 from aiida.engine import ProcessState
-from aiida._core.orm.utils.links import LinkPair
 from aiida.tools.visualization import graph as graph_mod
 
 

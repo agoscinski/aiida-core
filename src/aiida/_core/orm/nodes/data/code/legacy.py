@@ -11,10 +11,10 @@
 import os
 import pathlib
 
+from aiida._core.common.warnings import warn_deprecation
 from aiida.common import exceptions
 from aiida.common.log import override_log_level
-from aiida._core.common.warnings import warn_deprecation
-from aiida.orm import Computer
+from aiida.orm.computers import Computer
 from aiida.orm.pydantic import OrmMetadataField
 
 from .abstract import AbstractCode
@@ -74,7 +74,8 @@ class Code(AbstractCode):
             warn_deprecation(
                 'The `Code` class is deprecated. To create an instance, use the '
                 '`aiida._core.orm.nodes.data.code.installed.InstalledCode` or '
-                '`aiida._core.orm.nodes.data.code.portable.PortableCode` for a "remote" or "local" code, respectively. If '
+                '`aiida._core.orm.nodes.data.code.portable.PortableCode` for a "remote" or "local" code, respectively. '
+                'If '
                 'you are using this class to compare type, e.g. in '
                 '`isinstance`, use `aiida._core.orm.nodes.data.code.abstract.AbstractCode`.',
                 version=3,

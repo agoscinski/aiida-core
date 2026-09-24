@@ -18,6 +18,7 @@ import pytest
 import yaml
 
 from aiida import orm
+from aiida._core.common.warnings import AiidaDeprecationWarning
 from aiida.cmdline.commands.cmd_computer import (
     computer_configure,
     computer_delete,
@@ -32,7 +33,6 @@ from aiida.cmdline.commands.cmd_computer import (
     computer_test,
 )
 from aiida.cmdline.utils.echo import ExitCode
-from aiida._core.common.warnings import AiidaDeprecationWarning
 
 
 def generate_setup_options_dict(replace_args=None, non_interactive=True):

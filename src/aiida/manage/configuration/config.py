@@ -613,7 +613,8 @@ class Config:
         """Create a new profile and initialise its storage.
 
         :param name: The profile name.
-        :param storage_backend: The entry point to the :class:`aiida._core.orm.implementation.storage_backend.StorageBackend`
+        :param storage_backend: The entry point to the
+            :class:`aiida._core.orm.implementation.storage_backend.StorageBackend`
             implementation to use for the storage.
         :param storage_config: The configuration necessary to initialise and connect to the storage backend.
         :param broker_backend: The entry point to the :class:`aiida.brokers.Broker` implementation to use for the
@@ -626,8 +627,8 @@ class Config:
         :raises EntryPointError: If the ``storage_backend`` does not have an associated entry point.
         :raises StorageMigrationError: If the storage cannot be initialised.
         """
-        from aiida.brokers import Broker
         from aiida._core.orm.implementation.storage_backend import StorageBackend
+        from aiida.brokers import Broker
         from aiida.plugins.entry_point import load_entry_point
 
         if name in self.profile_names:

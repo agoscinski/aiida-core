@@ -8,8 +8,8 @@
 ###########################################################################
 """Module with `Node` sub class for calculation processes."""
 
-from aiida.common.links import LinkType
 from aiida._core.orm.utils.managers import NodeLinksManager
+from aiida.common.links import LinkType
 
 from ..process import ProcessNode
 

@@ -13,9 +13,9 @@ from collections.abc import Mapping, MutableMapping
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from aiida._core.orm.nodes.data.base import BaseType
 from aiida.engine.processes.ports import PortNamespace
 from aiida.orm import Dict, Node
-from aiida._core.orm.nodes.data.base import BaseType
 
 from .utils import prune_mapping
 

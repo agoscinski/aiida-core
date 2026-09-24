@@ -12,9 +12,9 @@ import uuid
 
 import pytest
 
+from aiida._core.orm.utils.loaders import OrmEntityLoader
 from aiida.cmdline.params.types import NodeParamType
 from aiida.orm import Data
-from aiida._core.orm.utils.loaders import OrmEntityLoader
 
 
 class TestNodeParamType:

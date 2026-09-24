@@ -19,9 +19,9 @@ from itertools import chain
 import pytest
 
 from aiida import orm, plugins
+from aiida._core.orm.utils.links import LinkQuadruple
 from aiida.common.links import LinkType
 from aiida.orm.querybuilder import _get_ormclass
-from aiida._core.orm.utils.links import LinkQuadruple
 
 
 class TestBasic:

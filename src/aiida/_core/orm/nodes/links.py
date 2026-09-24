@@ -5,12 +5,12 @@ from __future__ import annotations
 import typing as t
 from typing import cast
 
-from aiida.common import exceptions
 from aiida._core.common.escaping import sql_string_match
 from aiida._core.common.lang import type_check
+from aiida.common import exceptions
 from aiida.common.links import LinkType
-
 from aiida.orm.querybuilder import QueryBuilder
+
 from ..utils.links import LinkManager, LinkTriple
 
 if t.TYPE_CHECKING:

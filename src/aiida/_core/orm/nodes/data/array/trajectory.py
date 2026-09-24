@@ -443,7 +443,8 @@ class TrajectoryData(ArrayData):
             for k in custom_kinds:
                 if not isinstance(k, Kind):
                     raise TypeError(
-                        'Each element of the custom_kinds list must be a aiida._core.orm.nodes.data.structure.Kind object'
+                        'Each element of the custom_kinds list must be a '
+                        'aiida._core.orm.nodes.data.structure.Kind object'
                     )
                 kind_names.append(k.name)
             if len(kind_names) != len(set(kind_names)):
@@ -510,8 +511,8 @@ class TrajectoryData(ArrayData):
         self, trajectory_index: int | None = None, main_file_name: str = ''
     ) -> tuple[bytes, dict[str, t.Any]]:
         """Write the given trajectory to a string of format CIF."""
-        from aiida.common.utils import Capturing
         from aiida._core.orm.nodes.data.cif import ase_loops, cif_from_ase, pycifrw_from_cif
+        from aiida.common.utils import Capturing
 
         cif = ''
         indices = list(range(self.numsteps))

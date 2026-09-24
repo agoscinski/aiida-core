@@ -19,10 +19,10 @@ from __future__ import annotations
 import pathlib
 from typing import cast
 
-from aiida.common import exceptions
 from aiida._core.common.lang import type_check
+from aiida.common import exceptions
 from aiida.common.log import override_log_level
-from aiida.orm import Computer
+from aiida.orm.computers import Computer
 from aiida.orm.entities import from_backend_entity
 from aiida.orm.pydantic import OrmMetadataField
 

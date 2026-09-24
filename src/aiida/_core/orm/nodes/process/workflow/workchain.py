@@ -10,8 +10,8 @@
 
 from typing import TYPE_CHECKING
 
-from aiida.common import exceptions
 from aiida._core.common.lang import classproperty
+from aiida.common import exceptions
 
 from .workflow import WorkflowNode
 

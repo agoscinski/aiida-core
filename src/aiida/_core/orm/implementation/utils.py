@@ -13,8 +13,8 @@ import numbers
 from collections.abc import Iterable, Mapping
 from decimal import Decimal
 
-from aiida.common import exceptions
 from aiida._core.common.constants import AIIDA_FLOAT_PRECISION
+from aiida.common import exceptions
 
 # This separator character is reserved to indicate nested fields in node attribute and extras dictionaries and
 # therefore is not allowed in individual attribute or extra keys.

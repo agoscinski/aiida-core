@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, ParamSpec
 import docstring_parser
 
 from aiida._core.common.lang import override
+from aiida._core.orm.utils.mixins import FunctionCalculationMixin
 from aiida.manage import get_manager
 from aiida.orm import (
     Bool,
@@ -37,7 +38,6 @@ from aiida.orm import (
     WorkFunctionNode,
     to_aiida_type,
 )
-from aiida._core.orm.utils.mixins import FunctionCalculationMixin
 
 from .process import Process
 from .process_spec import ProcessSpec
@@ -300,7 +300,8 @@ class FunctionProcess(Process):
 
         :param func: The function to build a process from
         :param node_class: Provide a custom node class to be used, has to be constructable with no arguments. It has to
-            be a sub class of `ProcessNode` and the mixin :class:`~aiida._core.orm.utils.mixins.FunctionCalculationMixin`.
+            be a sub class of `ProcessNode` and the mixin
+            :class:`~aiida._core.orm.utils.mixins.FunctionCalculationMixin`.
 
         :return: A Process class that represents the function
 

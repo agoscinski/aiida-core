@@ -850,7 +850,8 @@ def run_cli_command_subprocess(command, parameters, user_input, profile_name, su
     if suppress_warnings:
         env['PYTHONWARNINGS'] = 'ignore::Warning'
         # Need to explicitly remove the ``AIIDA_WARN_v3`` variable as this will trigger ``AiidaDeprecationWarning`` to
-        # be emitted by the ``aiida._core.common.warnings.warn_deprecation`` method and for an unknown reason these are not
+        # be emitted by the ``aiida._core.common.warnings.warn_deprecation`` method and for an unknown reason these
+        # are not
         # affected by the ``ignore::Warning`` setting.
         env.pop('AIIDA_WARN_v3', None)
 

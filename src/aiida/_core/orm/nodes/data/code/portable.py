@@ -24,11 +24,11 @@ import pathlib
 import warnings
 from typing import cast
 
-from aiida.common import exceptions
 from aiida._core.common.folders import Folder
 from aiida._core.common.lang import type_check
 from aiida._core.common.typing import FilePath
-from aiida.orm import Computer
+from aiida.common import exceptions
+from aiida.orm.computers import Computer
 from aiida.orm.pydantic import OrmMetadataField
 
 from .abstract import AbstractCode
@@ -79,7 +79,8 @@ class PortableCode(Code):
 
         .. note:: If the files necessary for this code are not all located in a single directory or the directory
             contains files that should not be uploaded, and so the ``filepath_files`` cannot be used. One can use the
-            methods of the :class:`aiida._core.orm.nodes.repository.NodeRepository` class. This can be accessed through the
+            methods of the :class:`aiida._core.orm.nodes.repository.NodeRepository` class. This can be accessed through
+            the
             ``base.repository`` attribute of the instance after it has been constructed. For example::
 
                 code = PortableCode(filepath_executable='some_name.exe')
@@ -160,7 +161,8 @@ class PortableCode(Code):
         """Validate content of the working directory created by the :class:`~aiida.engine.CalcJob` plugin.
 
         This method will be called by :meth:`~aiida.engine.processes.calcjobs.calcjob.CalcJob.presubmit` when a new
-        calculation job is launched, passing the :class:`~aiida._core.common.folders.Folder` that was used by the plugin used
+        calculation job is launched, passing the :class:`~aiida._core.common.folders.Folder` that was used by the plugin
+        used
         for the calculation to create the input files for the working directory. This method can be overridden by
         implementations of the ``AbstractCode`` class that need to validate the contents of that folder.
 

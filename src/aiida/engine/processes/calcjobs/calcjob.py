@@ -22,12 +22,12 @@ import plumpy.ports
 import plumpy.process_states
 
 from aiida import orm
-from aiida.common import AttributeDict, exceptions
-from aiida.common.datastructures import CalcInfo, FileCopyOperation
 from aiida._core.common.folders import Folder
 from aiida._core.common.lang import classproperty, override
-from aiida.common.links import LinkType
 from aiida._core.common.typing import FilePath
+from aiida.common import AttributeDict, exceptions
+from aiida.common.datastructures import CalcInfo, FileCopyOperation
+from aiida.common.links import LinkType
 
 from ..exit_code import ExitCode
 from ..ports import PortNamespace
@@ -732,8 +732,8 @@ class CalcJob(Process):
         of this process.
         """
         from aiida._core.common.folders import SubmitTestFolder
-        from aiida.engine.daemon.execmanager import upload_calculation
         from aiida._core.transports.plugins.local import LocalTransport
+        from aiida.engine.daemon.execmanager import upload_calculation
 
         with LocalTransport() as transport:
             with SubmitTestFolder() as folder:
@@ -751,11 +751,11 @@ class CalcJob(Process):
         as a normal calculation job, but rather the results are already computed outside of AiiDA and merely need to be
         imported.
         """
-        from aiida.common.datastructures import CalcJobState
         from aiida._core.common.folders import SandboxFolder
+        from aiida._core.transports.plugins.local import LocalTransport
+        from aiida.common.datastructures import CalcJobState
         from aiida.engine.daemon.execmanager import retrieve_calculation
         from aiida.manage import get_config_option
-        from aiida._core.transports.plugins.local import LocalTransport
 
         filepath_sandbox = get_config_option('storage.sandbox') or None
 

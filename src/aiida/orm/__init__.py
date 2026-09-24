@@ -12,6 +12,9 @@
 
 # fmt: off
 
+from aiida._core.orm.nodes import *
+from aiida._core.orm.utils import *
+
 from .authinfos import *
 from .comments import *
 from .computers import *
@@ -20,11 +23,9 @@ from .extras import *
 from .fields import *
 from .groups import *
 from .logs import *
-from aiida._core.orm.nodes import *
 from .pydantic import *
 from .querybuilder import *
 from .users import *
-from aiida._core.orm.utils import *
 
 __all__ = (
     'ASCENDING',

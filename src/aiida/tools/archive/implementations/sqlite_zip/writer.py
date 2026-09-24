@@ -25,8 +25,8 @@ from sqlalchemy.exc import IntegrityError as SqlaIntegrityError
 from sqlalchemy.future.engine import Connection
 
 from aiida import get_version
-from aiida.common.exceptions import CorruptStorage, IncompatibleStorageSchema, IntegrityError
 from aiida._core.common.hashing import chunked_file_hash
+from aiida.common.exceptions import CorruptStorage, IncompatibleStorageSchema, IntegrityError
 from aiida.common.progress_reporter import get_progress_reporter
 from aiida.orm.entities import EntityTypes
 from aiida.storage.sqlite_zip import models, utils

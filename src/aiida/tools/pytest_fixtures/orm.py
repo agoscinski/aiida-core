@@ -260,8 +260,8 @@ def aiida_computer_ssh_async(aiida_computer) -> t.Callable[[], Computer]:
         """
 
         def if_exists_and_is_configured(label):
-            from aiida.common.exceptions import NotExistent
             from aiida._core.orm.utils import load_computer
+            from aiida.common.exceptions import NotExistent
 
             try:
                 computer = load_computer(label=label)
@@ -302,7 +302,8 @@ def aiida_localhost(aiida_computer_local) -> Computer:
 
 @pytest.fixture
 def aiida_code():
-    """Return a factory to create a new or load an existing :class:`aiida._core.orm.nodes.data.code.abstract.AbstractCode`.
+    """Return a factory to create a new or load an existing
+    :class:`aiida._core.orm.nodes.data.code.abstract.AbstractCode`.
 
     Usage::
 
@@ -346,7 +347,8 @@ def aiida_code():
 
 @pytest.fixture
 def aiida_code_installed(aiida_code, aiida_localhost):
-    """Return a factory to create a new or load an existing :class:`aiida._core.orm.nodes.data.code.installed.InstalledCode`.
+    """Return a factory to create a new or load an existing
+    :class:`aiida._core.orm.nodes.data.code.installed.InstalledCode`.
 
     Usage::
 

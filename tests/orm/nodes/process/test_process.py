@@ -6,11 +6,11 @@ from pathlib import Path
 import pytest
 
 from aiida import orm
-from aiida.engine import ExitCode, ProcessState, launch
-from aiida.orm import Int
 from aiida._core.orm.nodes.caching import NodeCaching
 from aiida._core.orm.nodes.process.process import ProcessNode
 from aiida._core.orm.nodes.process.workflow import WorkflowNode
+from aiida.engine import ExitCode, ProcessState, launch
+from aiida.orm import Int
 from aiida.plugins import CalculationFactory
 
 ArithmeticAddCalculation = CalculationFactory('core.arithmetic.add')

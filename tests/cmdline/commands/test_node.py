@@ -20,9 +20,9 @@ from pathlib import Path
 import pytest
 
 from aiida import orm
+from aiida._core.common import timezone
 from aiida.cmdline.commands import cmd_node
 from aiida.cmdline.utils.echo import ExitCode
-from aiida._core.common import timezone
 from aiida.common.exceptions import NotExistent
 from aiida.common.links import LinkType
 from aiida.orm import CalcJobNode, RemoteData, WorkflowNode
@@ -835,8 +835,8 @@ class TestVerdiDelete:
     )
     def test_node_delete_stash_warning(self, clean_workdir, expect_warning, run_cli_command, aiida_localhost, tmp_path):
         """Warn about stash nodes only when deleting StashCalculation with --clean-workdir."""
-        from aiida.common.datastructures import StashMode
         from aiida._core.orm.nodes.data.remote.stash import RemoteStashFolderData
+        from aiida.common.datastructures import StashMode
 
         workdir = tmp_path / 'stash_workdir'
         workdir.mkdir()

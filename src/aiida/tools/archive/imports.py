@@ -16,15 +16,15 @@ from tabulate import tabulate
 
 from aiida import orm
 from aiida._core.common import timezone
-from aiida.common.exceptions import IncompatibleStorageSchema
 from aiida._core.common.lang import type_check
+from aiida._core.orm.implementation import StorageBackend
+from aiida.common.exceptions import IncompatibleStorageSchema
 from aiida.common.links import LinkType
 from aiida.common.log import AIIDA_LOGGER
 from aiida.common.progress_reporter import get_progress_reporter
 from aiida.common.utils import DEFAULT_BATCH_SIZE, DEFAULT_FILTER_SIZE, batch_iter
 from aiida.manage import get_manager
 from aiida.orm.entities import EntityTypes
-from aiida._core.orm.implementation import StorageBackend
 from aiida.orm.querybuilder import QueryBuilder
 from aiida.repository import Repository
 

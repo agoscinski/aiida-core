@@ -29,8 +29,8 @@ from typing import TYPE_CHECKING
 
 import psutil
 
-from aiida.common.exceptions import AiidaException, ConfigurationError
 from aiida._core.common.lang import type_check
+from aiida.common.exceptions import AiidaException, ConfigurationError
 from aiida.common.log import AIIDA_LOGGER
 from aiida.manage.configuration import get_config, get_config_option
 from aiida.manage.configuration.profile import Profile

@@ -13,9 +13,9 @@ import pathlib
 
 import pytest
 
-from aiida.common.exceptions import ModificationNotAllowed, ValidationError
 from aiida._core.common.warnings import AiidaDeprecationWarning
 from aiida._core.orm.nodes.data.code.portable import PortableCode
+from aiida.common.exceptions import ModificationNotAllowed, ValidationError
 
 
 def test_constructor_raises(tmp_path, bash_path):

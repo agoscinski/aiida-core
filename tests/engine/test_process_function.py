@@ -24,8 +24,8 @@ import re
 import pytest
 
 from aiida import orm
-from aiida.engine import ExitCode, calcfunction, run, run_get_node, submit, workfunction
 from aiida._core.orm.nodes.data.bool import get_true_node
+from aiida.engine import ExitCode, calcfunction, run, run_get_node, submit, workfunction
 from aiida.workflows.arithmetic.add_multiply import add_multiply
 
 DEFAULT_INT = 256

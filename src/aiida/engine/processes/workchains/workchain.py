@@ -22,11 +22,11 @@ from plumpy.processes import ProcessStateMachineMeta
 from plumpy.workchains import Stepper, _PropagateReturn, if_, return_, while_
 from plumpy.workchains import WorkChainSpec as PlumpyWorkChainSpec
 
+from aiida._core.common.lang import override
+from aiida._core.orm.utils import load_node
 from aiida.common import exceptions
 from aiida.common.extendeddicts import AttributeDict
-from aiida._core.common.lang import override
 from aiida.orm import Node, ProcessNode, WorkChainNode
-from aiida._core.orm.utils import load_node
 
 from ..exit_code import ExitCode
 from ..process import Process, ProcessState

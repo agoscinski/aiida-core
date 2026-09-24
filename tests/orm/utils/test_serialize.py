@@ -16,8 +16,8 @@ import numpy as np
 import pytest
 
 from aiida import orm
-from aiida.common.links import LinkType
 from aiida._core.orm.utils import serialize
+from aiida.common.links import LinkType
 
 
 def test_serialize_round_trip():

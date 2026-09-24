@@ -126,7 +126,8 @@ class TestPortNamespace:
         """Test the automatic setting of the serializer for non-metadata ports.
 
         For non-metadata portnamespaces, the serializer should be automatically set to the
-        :meth:`aiida._core.orm.nodes.data.base.to_aiida_type` serializer, unless the port already defines a serializer itself.
+        :meth:`aiida._core.orm.nodes.data.base.to_aiida_type` serializer, unless the port already defines a serializer
+        itself.
         """
         namespace = PortNamespace('namespace', is_metadata=is_metadata)
         port = InputPort('port')

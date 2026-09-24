@@ -15,12 +15,12 @@ import sys
 
 import click
 
+from aiida._core.common.warnings import warn_deprecation
 from aiida.cmdline.commands.cmd_verdi import verdi
 from aiida.cmdline.params import options
 from aiida.cmdline.utils import echo
 from aiida.common.exceptions import CorruptStorage, IncompatibleStorageSchema, UnreachableStorage
 from aiida.common.log import override_log_level
-from aiida._core.common.warnings import warn_deprecation
 
 from ..utils.echo import ExitCode
 
@@ -60,8 +60,8 @@ STATUS_SYMBOLS = {
 def verdi_status(print_traceback: bool, no_rmq: bool) -> None:
     """Print status of AiiDA services."""
     from aiida import __version__
-    from aiida.cmdline.utils.daemon import validate_daemon_env
     from aiida._core.common.docs import URL_NO_BROKER
+    from aiida.cmdline.utils.daemon import validate_daemon_env
     from aiida.engine.daemon.client import DaemonException, DaemonNotRunningException
     from aiida.manage.configuration.settings import AiiDAConfigDir
     from aiida.manage.manager import get_manager

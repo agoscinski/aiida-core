@@ -4,9 +4,9 @@ import enum
 
 import pytest
 
+from aiida._core.orm.nodes.data.enum import EnumData
 from aiida.common import links
 from aiida.orm import load_node
-from aiida._core.orm.nodes.data.enum import EnumData
 
 
 class DummyEnum(enum.Enum):

@@ -12,9 +12,9 @@ from datetime import datetime
 
 from sqlalchemy.orm.exc import NoResultFound
 
-from aiida.common import exceptions
 from aiida._core.common import lang
 from aiida._core.orm.implementation.comments import BackendComment, BackendCommentCollection
+from aiida.common import exceptions
 from aiida.storage.psql_dos.models import comment as models
 
 from . import entities, users, utils

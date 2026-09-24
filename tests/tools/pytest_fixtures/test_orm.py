@@ -5,10 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
+from aiida._core.transports.plugins.async_backend import _AsyncSSH, _OpenSSH
 from aiida.common.exceptions import IntegrityError, NotExistent
 from aiida.orm import Computer
 from aiida.transports import AsyncTransport, BlockingTransport
-from aiida._core.transports.plugins.async_backend import _AsyncSSH, _OpenSSH
 
 # This is needed when we run this file in isolation using
 # the `--noconftest` pytest option in the 'test-pytest-fixtures' CI job.

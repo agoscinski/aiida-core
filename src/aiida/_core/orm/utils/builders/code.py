@@ -11,9 +11,10 @@
 import enum
 import pathlib
 
-from aiida.common.utils import ErrorAccumulator
 from aiida._core.common.warnings import warn_deprecation
-from aiida.orm import InstalledCode, PortableCode
+from aiida._core.orm.nodes.data.code.installed import InstalledCode
+from aiida._core.orm.nodes.data.code.portable import PortableCode
+from aiida.common.utils import ErrorAccumulator
 
 
 class CodeBuilder:

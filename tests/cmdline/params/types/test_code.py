@@ -13,9 +13,9 @@ import uuid
 import click
 import pytest
 
+from aiida._core.orm.utils.loaders import OrmEntityLoader
 from aiida.cmdline.params.types import CodeParamType
 from aiida.orm import InstalledCode
-from aiida._core.orm.utils.loaders import OrmEntityLoader
 
 
 @pytest.fixture

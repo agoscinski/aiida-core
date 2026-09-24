@@ -195,8 +195,8 @@ def code_test(code):
 @with_dbenv()
 def code_duplicate(ctx, code, non_interactive, **kwargs):
     """Duplicate a code allowing to change some parameters."""
-    from aiida.common.exceptions import ValidationError
     from aiida._core.orm.utils.builders.code import CodeBuilder
+    from aiida.common.exceptions import ValidationError
 
     options_code.validate_label_uniqueness(ctx, None, kwargs['label'])
 

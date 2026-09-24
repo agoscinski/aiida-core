@@ -11,7 +11,6 @@
 from collections.abc import Iterator, Mapping, Sized
 from functools import singledispatch
 
-from aiida.orm.entities import from_backend_entity
 from aiida._core.orm.implementation import (
     BackendAuthInfo,
     BackendComment,
@@ -21,6 +20,7 @@ from aiida._core.orm.implementation import (
     BackendNode,
     BackendUser,
 )
+from aiida.orm.entities import from_backend_entity
 
 
 @singledispatch

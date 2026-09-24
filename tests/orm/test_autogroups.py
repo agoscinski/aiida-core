@@ -10,8 +10,8 @@
 
 import pytest
 
-from aiida.orm import AutoGroup, QueryBuilder
 from aiida._core.orm.autogroup import AutogroupManager
+from aiida.orm import AutoGroup, QueryBuilder
 
 
 @pytest.mark.usefixtures('aiida_profile_clean')

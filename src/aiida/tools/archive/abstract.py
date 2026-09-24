@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING, Any, BinaryIO, Literal, TypeVar, overload
 from typing_extensions import Self
 
 if TYPE_CHECKING:
+    from aiida._core.orm.implementation import StorageBackend
     from aiida.orm import QueryBuilder
     from aiida.orm.entities import Entity, EntityTypes
-    from aiida._core.orm.implementation import StorageBackend
     from aiida.tools.visualization.graph import Graph
 
 EntityType = TypeVar('EntityType', bound='Entity')

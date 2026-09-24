@@ -16,8 +16,8 @@ from collections import namedtuple
 from contextlib import contextmanager, suppress
 from enum import Enum
 
-from aiida.common import exceptions
 from aiida._core.common.lang import type_check
+from aiida.common import exceptions
 from aiida.manage.configuration import get_config_option
 from aiida.plugins.entry_point import ENTRY_POINT_GROUP_TO_MODULE_PATH_MAP, ENTRY_POINT_STRING_SEPARATOR
 

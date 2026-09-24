@@ -29,6 +29,7 @@ from workchains import (
     WorkFunctionRunnerWorkChain,
 )
 
+from aiida._core.orm.nodes.caching import NodeCaching
 from aiida.common import StashMode, exceptions
 from aiida.engine import run, submit
 from aiida.engine.daemon.client import get_daemon_client
@@ -36,7 +37,6 @@ from aiida.engine.persistence import ObjectLoader
 from aiida.engine.processes import CalcJob, Process
 from aiida.manage.caching import enable_caching
 from aiida.orm import CalcJobNode, Dict, Int, List, Str, load_code, load_node
-from aiida._core.orm.nodes.caching import NodeCaching
 from aiida.plugins import CalculationFactory, WorkflowFactory
 from aiida.workflows.arithmetic.add_multiply import add, add_multiply
 from tests.utils.memory import get_instances

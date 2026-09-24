@@ -28,9 +28,9 @@ from sqlalchemy.sql.elements import BinaryExpression, Cast, ColumnClause, Column
 from sqlalchemy.sql.expression import case, text
 from sqlalchemy.types import Boolean, DateTime, Float, Integer, String
 
+from aiida._core.orm.implementation.querybuilder import QUERYBUILD_LOGGER, BackendQueryBuilder, QueryDictType
 from aiida.common.exceptions import NotExistent
 from aiida.orm.entities import EntityTypes
-from aiida._core.orm.implementation.querybuilder import QUERYBUILD_LOGGER, BackendQueryBuilder, QueryDictType
 from aiida.storage.utils import _create_smarter_in_clause
 
 from .joiner import JoinReturn, SqlaJoiner

@@ -12,8 +12,8 @@ from abc import abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from aiida.common.exceptions import MultipleObjectsError, NotExistent
 from aiida._core.common.lang import classproperty
+from aiida.common.exceptions import MultipleObjectsError, NotExistent
 from aiida.orm.querybuilder import QueryBuilder
 
 if TYPE_CHECKING:

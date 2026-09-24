@@ -15,10 +15,10 @@ import os
 from pathlib import Path
 from typing import cast
 
-from aiida.orm import AuthInfo
+from aiida.orm.authinfos import AuthInfo
 from aiida.orm.computers import Computer
 from aiida.orm.pydantic import OrmMetadataField
-from aiida.transports import Transport
+from aiida.transports.transport import Transport
 
 from ..data import Data
 

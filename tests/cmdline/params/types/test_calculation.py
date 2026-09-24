@@ -12,9 +12,9 @@ import uuid
 
 import pytest
 
+from aiida._core.orm.utils.loaders import OrmEntityLoader
 from aiida.cmdline.params.types import CalculationParamType
 from aiida.orm import CalculationNode
-from aiida._core.orm.utils.loaders import OrmEntityLoader
 
 
 @pytest.fixture(scope='module')

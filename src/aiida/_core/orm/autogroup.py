@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import re
 
-from aiida.common import exceptions
 from aiida._core.common import timezone
 from aiida._core.common.escaping import escape_for_sql_like, get_regex_pattern_from_sql
-from aiida.orm import AutoGroup, QueryBuilder
+from aiida.common import exceptions
+from aiida.orm.groups import AutoGroup
+from aiida.orm.querybuilder import QueryBuilder
 from aiida.plugins.entry_point import get_entry_point_string_from_class
 
 

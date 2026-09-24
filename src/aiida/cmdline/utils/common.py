@@ -92,8 +92,8 @@ def print_last_process_state_change(process_type: Literal['work'] | Literal['cal
     :param process_type: optional process type for which to get the latest state change timestamp.
         Valid process types are either 'calculation' or 'work'.
     """
-    from aiida.cmdline.utils.echo import echo_report
     from aiida._core.common import timezone
+    from aiida.cmdline.utils.echo import echo_report
     from aiida.common.utils import str_timedelta
     from aiida.engine.utils import get_process_state_change_timestamp
 

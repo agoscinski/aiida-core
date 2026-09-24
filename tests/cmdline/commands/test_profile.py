@@ -15,8 +15,8 @@ import pytest
 from pgtest.pgtest import PGTest
 
 from aiida import orm
-from aiida.cmdline.commands import cmd_profile, cmd_verdi
 from aiida._core.common import docs
+from aiida.cmdline.commands import cmd_profile, cmd_verdi
 from aiida.engine.daemon.client import DaemonException, DaemonStalePidException, DaemonTimeoutException
 from aiida.manage import configuration
 from aiida.manage.configuration import profile_context

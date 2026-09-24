@@ -10,9 +10,9 @@
 
 import io
 
+from aiida._core.orm.implementation.utils import clean_value
 from aiida.engine import calcfunction
 from aiida.orm import CifData
-from aiida._core.orm.implementation.utils import clean_value
 
 
 class InvalidOccupationsError(Exception):

@@ -18,8 +18,8 @@ import pytest
 from numpy import array, isclose
 
 from aiida import orm
-from aiida.common.exceptions import ParsingError
 from aiida._core.orm.nodes.data.upf import parse_upf
+from aiida.common.exceptions import ParsingError
 from tests.static import STATIC_DIR
 
 

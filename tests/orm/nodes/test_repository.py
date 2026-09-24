@@ -6,8 +6,8 @@ import zipfile
 
 import pytest
 
-from aiida.common import exceptions
 from aiida._core.common.warnings import AiidaDeprecationWarning
+from aiida.common import exceptions
 from aiida.engine import ProcessState
 from aiida.manage.caching import enable_caching
 from aiida.orm import CalcJobNode, Data, load_node
