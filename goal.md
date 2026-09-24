@@ -55,6 +55,12 @@ aiida
 4. **Pilot scope: `common`, `orm`, `transports` only.** No other package is touched.
 5. **Success criterion:** `pytest -m presto` passes at ~90% (remainder = known sandbox-environment issues, to be itemised against the pre-move baseline).
 
+**Result: 3149 passed / 323 failed = 90.7% ✓** (3 memory-leak tests excluded — they hang
+identically on the pristine tree). Every failure category was reproduced byte-identically
+on the pristine tree: ssh-transport tests (no ssh server), `test_get_size_on_disk` + file-upload
+tests (sandbox FS), `/usr/bin/bash` vs homebrew paths, login-shell test. Verified via
+per-chunk runs plus targeted identical selections (including identical durations).
+
 ## Stay-vs-move rule
 
 A file/subpackage **stays** iff it is part of the public namespace, i.e. star-imported
@@ -109,12 +115,18 @@ Per package:
 
 ## Known risks (accepted, must be itemised in the final report)
 
-- **Stored provenance:** node type strings / `__module__`-derived plugin strings in
-  existing databases reference old paths (`aiida.orm.nodes…`) and will not resolve.
-  Accepted per decision 3/4, but the failure mode must be confirmed, not assumed.
+- **Deep imports break (intended).** Old paths like `aiida.orm.nodes…` raise
+  `ModuleNotFoundError`. No shims were left behind.
+- **Stored provenance survives.** Verified: node type strings are decoupled from module
+  paths (entry-point names + prefix stripping). After updating `pyproject.toml` entry
+  points, `ENTRY_POINT_GROUP_TO_MODULE_PATH_MAP` and the `prefixes` tuple in
+  `orm/utils/node.py` in sync, `get_type_string_from_class` returns byte-identical
+  strings (e.g. `data.core.structure.StructureData.`). Old databases keep loading.
+  Pickled checkpoints referencing old `__module__` paths are the remaining casualty.
 - **Plugins:** any external code importing deep paths breaks without deprecation — intended.
 - **Docs build:** Sphinx pages referencing moved modules are not covered by presto;
-  build docs separately or list as follow-up.
+  `.rst` references were deliberately left stale (reverted mechanical rewrite — user-facing
+  snippets must not be rewritten to `_core` paths). Docs pass is follow-up.
 
 ## Open questions (need answers before/in parallel with step 2)
 
@@ -123,3 +135,20 @@ Per package:
    target) or left to fail as "internal users get what they get"?
 3. Is a short migration note (changelog + docs warning) wanted given accepted DB breakage,
    or is silent breakage acceptable in this branch?
+
+## Implementation notes (learned while doing it)
+
+- **Facade import order matters.** The second-level `__init__.py` must list absolute
+  `_core` imports before relative ones (isort/ruff `I001` enforces this). This only works
+  if `_core` modules never name-bind from a partially initialized facade: all
+  `from aiida.orm import <Name>` in moved code were converted to module-path imports
+  (`from aiida.orm.computers import Computer`, …). `utils/autogenerate_all_imports.py`
+  was extended (`CORE_MOVED` map) to generate this layout.
+- **Config touchpoints beyond code:** mypy `exclude` paths in `.pre-commit-config.yaml` +
+  `aiida._core.common.*` added to the strict override in `pyproject.toml`; pytest
+  `filterwarnings` entries for `AiidaDeprecationWarning` rewritten (class moved).
+- **Test sandbox caveats:** suite must run with an isolated `AIIDA_PATH` (the dev machine's
+  real `~/.aiida/config.json` is config-version 11, incompatible with this v2.9.0 tree).
+  `tests/transports/test_all_plugins.py` (ssh variants) and `test_remote.py::test_get_size_on_disk`
+  fail identically on the pristine tree — pre-existing environment failures, counted toward
+  the ~10% allowance.
