@@ -18,7 +18,8 @@ It contains various sub-packages that we refer to as "second-level packages".
 
         from aiida import load_profile  # OK, top-level import
         from aiida.orm import QueryBuilder  # OK, second-level import
-        from aiida.tools.importexport import Archive # NOT PUBLIC API
+        from aiida.orm.nodes.data.structure import StructureData  # NOT PUBLIC API, use `from aiida.orm import StructureData`
+        from aiida.manage.configuration.config import Config  # NOT PUBLIC API, internal only
 
 .. warning::
 
