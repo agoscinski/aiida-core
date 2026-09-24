@@ -12,8 +12,8 @@
 
 # fmt: off
 
-from .transport import *
 from aiida._core.transports.plugins import *
+from .transport import *
 
 __all__ = (
     'AsyncSshTransport',
