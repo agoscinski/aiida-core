@@ -35,16 +35,19 @@ from typing import (
 
 from aiida._core.common.warnings import warn_deprecation
 from aiida._core.orm import convert, nodes
-from aiida._core.orm.implementation.querybuilder import (
-    GROUP_ENTITY_TYPE_PREFIX,
-    BackendQueryBuilder,
-    EntityRelationships,
-    PathItemType,
-    QueryDictType,
-)
 from aiida.common.log import AIIDA_LOGGER
 from aiida.manage import get_manager
 from aiida.orm.entities import EntityTypes
+
+if TYPE_CHECKING:
+    # Imported here to avoid a circular import at module level: this module is imported
+    # transitively while `aiida._core.orm.implementation` is still initializing.
+    from aiida._core.orm.implementation.querybuilder import (
+        GROUP_ENTITY_TYPE_PREFIX,
+        BackendQueryBuilder,
+        PathItemType,
+        QueryDictType,
+    )
 
 from . import authinfos, comments, computers, entities, fields, groups, logs, users
 
@@ -453,6 +456,8 @@ class QueryBuilder:
 
         try:
             # Get the functions that are implemented:
+            from aiida._core.orm.implementation.querybuilder import EntityRelationships
+
             spec_to_function_map = set(EntityRelationships[ormclass.value])
             if ormclass == EntityTypes.NODE:
                 # 'direction 'was an old implementation, which is now converted below to with_outgoing or with_incoming
@@ -1254,6 +1259,8 @@ def _get_ormclass_from_cls(cls: EntityClsType) -> tuple[EntityTypes, Classifier]
         classifiers = Classifier(cls.class_node_type)
         ormclass = EntityTypes.NODE
     elif issubclass(cls, groups.Group):
+        from aiida._core.orm.implementation.querybuilder import GROUP_ENTITY_TYPE_PREFIX
+
         type_string = cls._type_string
         assert type_string is not None, 'Group not registered as entry point'
         classifiers = Classifier(GROUP_ENTITY_TYPE_PREFIX + type_string)

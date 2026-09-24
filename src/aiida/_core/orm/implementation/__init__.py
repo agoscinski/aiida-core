@@ -19,10 +19,14 @@ from .entities import *
 from .groups import *
 from .logs import *
 from .nodes import *
-from .querybuilder import *
 from .storage_backend import *
 from .users import *
 from .utils import *
+# Imported last: it imports `aiida.orm.entities`, which runs the public facade, which in turn
+# (transitively through `nodes` and `querybuilder`) imports `convert`, which name-binds the
+# `Backend*` names from this partially initialized package. Those names must therefore all be
+# defined by the time this import runs, regardless of entry order.
+from .querybuilder import *
 
 __all__ = (
     'BackendAuthInfo',
