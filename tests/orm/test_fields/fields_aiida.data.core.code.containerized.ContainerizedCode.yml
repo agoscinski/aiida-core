@@ -1,6 +1,6 @@
 append_text: QbStrField('attributes.append_text', dtype=<class 'str'>, doc='Bash commands
   that should be appended to the run line in all submit scripts for this code')
-attributes: QbAttributesField('attributes', dtype=<class 'aiida.orm.nodes.data.code.containerized.ContainerizedCode.AttributesModel'>,
+attributes: QbAttributesField('attributes', dtype=<class 'aiida._core.orm.nodes.data.code.containerized.ContainerizedCode.AttributesModel'>,
   doc='The node attributes')
 computer: QbNumericField('computer', dtype=<class 'int'>, doc='The pk of the remote
   computer on which the executable resides')

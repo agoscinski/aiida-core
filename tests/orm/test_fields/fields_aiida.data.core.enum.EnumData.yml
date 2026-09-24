@@ -1,4 +1,4 @@
-attributes: QbAttributesField('attributes', dtype=<class 'aiida.orm.nodes.data.enum.EnumData.AttributesModel'>,
+attributes: QbAttributesField('attributes', dtype=<class 'aiida._core.orm.nodes.data.enum.EnumData.AttributesModel'>,
   doc='The node attributes')
 computer: QbNumericField('computer', dtype=int | None, doc='The PK of the computer')
 ctime: QbNumericField('ctime', dtype=<class 'datetime.datetime'>, doc='The creation

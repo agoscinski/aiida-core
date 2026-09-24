@@ -1,4 +1,4 @@
-attributes: QbAttributesField('attributes', dtype=<class 'aiida.orm.nodes.data.remote.base.RemoteData.AttributesModel'>,
+attributes: QbAttributesField('attributes', dtype=<class 'aiida._core.orm.nodes.data.remote.base.RemoteData.AttributesModel'>,
   doc='The node attributes')
 computer: QbNumericField('computer', dtype=<class 'int'>, doc='The pk of the remote
   computer on which the data resides')

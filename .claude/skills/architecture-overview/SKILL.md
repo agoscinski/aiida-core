@@ -61,8 +61,8 @@ To create a plugin, implement the corresponding ABC and register it as an entry 
 | `Transport` | `aiida.transports.transport` | File transfer and remote command execution | `aiida.transports` |
 | `Scheduler` | `aiida.schedulers.scheduler` | HPC job scheduler interface | `aiida.schedulers` |
 | `Parser` | `aiida.parsers.parser` | Parse calculation outputs | `aiida.parsers` |
-| `StorageBackend` | `aiida.orm.implementation.storage_backend` | Database and file storage | `aiida.storage` |
-| `AbstractCode` | `aiida.orm.nodes.data.code.abstract` | Code/executable representation | `aiida.data` |
+| `StorageBackend` | `aiida._core.orm.implementation.storage_backend` | Database and file storage | `aiida.storage` |
+| `AbstractCode` | `aiida._core.orm.nodes.data.code.abstract` | Code/executable representation | `aiida.data` |
 | `CalcJobImporter` | `aiida.engine.processes.calcjobs.importer` | Import existing calculation results | `aiida.calculations.importers` |
 
 ## Quick API overview via stubs

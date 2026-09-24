@@ -1,6 +1,6 @@
 append_text: QbStrField('attributes.append_text', dtype=<class 'str'>, doc='Bash commands
   that should be appended to the run line in all submit scripts for this code')
-attributes: QbAttributesField('attributes', dtype=<class 'aiida.orm.nodes.data.code.abstract.AbstractCode.AttributesModel'>,
+attributes: QbAttributesField('attributes', dtype=<class 'aiida._core.orm.nodes.data.code.abstract.AbstractCode.AttributesModel'>,
   doc='The node attributes')
 computer: QbNumericField('computer', dtype=int | None, doc='The PK of the computer')
 ctime: QbNumericField('ctime', dtype=<class 'datetime.datetime'>, doc='The creation

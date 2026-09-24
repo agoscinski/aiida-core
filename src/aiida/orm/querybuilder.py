@@ -35,6 +35,7 @@ from typing import (
 
 from aiida._core.common.warnings import warn_deprecation
 from aiida._core.orm import convert, nodes
+from aiida._core.orm.implementation import querybuilder as qb_implementation
 from aiida.common.log import AIIDA_LOGGER
 from aiida.manage import get_manager
 from aiida.orm.entities import EntityTypes
@@ -43,7 +44,6 @@ if TYPE_CHECKING:
     # Imported here to avoid a circular import at module level: this module is imported
     # transitively while `aiida._core.orm.implementation` is still initializing.
     from aiida._core.orm.implementation.querybuilder import (
-        GROUP_ENTITY_TYPE_PREFIX,
         BackendQueryBuilder,
         PathItemType,
         QueryDictType,
@@ -456,9 +456,7 @@ class QueryBuilder:
 
         try:
             # Get the functions that are implemented:
-            from aiida._core.orm.implementation.querybuilder import EntityRelationships
-
-            spec_to_function_map = set(EntityRelationships[ormclass.value])
+            spec_to_function_map = set(qb_implementation.EntityRelationships[ormclass.value])
             if ormclass == EntityTypes.NODE:
                 # 'direction 'was an old implementation, which is now converted below to with_outgoing or with_incoming
                 spec_to_function_map.add('direction')
@@ -1259,11 +1257,9 @@ def _get_ormclass_from_cls(cls: EntityClsType) -> tuple[EntityTypes, Classifier]
         classifiers = Classifier(cls.class_node_type)
         ormclass = EntityTypes.NODE
     elif issubclass(cls, groups.Group):
-        from aiida._core.orm.implementation.querybuilder import GROUP_ENTITY_TYPE_PREFIX
-
         type_string = cls._type_string
         assert type_string is not None, 'Group not registered as entry point'
-        classifiers = Classifier(GROUP_ENTITY_TYPE_PREFIX + type_string)
+        classifiers = Classifier(qb_implementation.GROUP_ENTITY_TYPE_PREFIX + type_string)
         ormclass = EntityTypes.GROUP
     elif issubclass(cls, computers.Computer):
         classifiers = Classifier('computer')
@@ -1309,7 +1305,7 @@ def _get_ormclass_from_str(type_string: str) -> tuple[EntityTypes, Classifier]:
     classifiers: Classifier
     type_string_lower = type_string.lower()
 
-    if type_string_lower.startswith(GROUP_ENTITY_TYPE_PREFIX):
+    if type_string_lower.startswith(qb_implementation.GROUP_ENTITY_TYPE_PREFIX):
         classifiers = Classifier('group.core')
         ormclass = EntityTypes.GROUP
     elif type_string_lower == EntityTypes.COMPUTER.value:
@@ -1497,7 +1493,7 @@ def _get_group_type_filter(classifiers: Classifier, subclassing: bool) -> dict:
     """
     from aiida._core.common.escaping import escape_for_sql_like
 
-    value = classifiers.ormclass_type_string[len(GROUP_ENTITY_TYPE_PREFIX) :]
+    value = classifiers.ormclass_type_string[len(qb_implementation.GROUP_ENTITY_TYPE_PREFIX) :]
 
     if not subclassing:
         filters = {'==': value}

@@ -1,6 +1,6 @@
 append_text: QbStrField('attributes.append_text', dtype=<class 'str'>, doc='The code
   that will be put in the scheduler script after the execution of the code')
-attributes: QbAttributesField('attributes', dtype=<class 'aiida.orm.nodes.data.code.legacy.Code.AttributesModel'>,
+attributes: QbAttributesField('attributes', dtype=<class 'aiida._core.orm.nodes.data.code.legacy.Code.AttributesModel'>,
   doc='The node attributes')
 computer: QbNumericField('computer', dtype=int | None, doc='The PK of the computer')
 ctime: QbNumericField('ctime', dtype=<class 'datetime.datetime'>, doc='The creation
