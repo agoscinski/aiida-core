@@ -18,7 +18,7 @@ import plumpy.loaders
 import plumpy.persistence
 from plumpy.exceptions import PersistenceError
 
-from aiida.orm.utils import serialize
+from aiida._core.orm.utils import serialize
 
 if TYPE_CHECKING:
     from aiida.engine.processes.process import Process

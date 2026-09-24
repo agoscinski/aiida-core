@@ -12,7 +12,7 @@ import pytest
 
 from aiida.common import exceptions
 from aiida.orm import Data, ProcessNode
-from aiida.orm.utils.node import (
+from aiida._core.orm.utils.node import (
     get_type_string_from_class,
     is_valid_node_type_string,
     load_node_class,
@@ -53,8 +53,8 @@ def test_load_node_class_with_node_prefix():
 
 def test_load_node_class_with_process_prefix():
     """Test the behavior of load_node_class with process prefix."""
-    from aiida.orm.nodes.process.calculation.calculation import CalculationNode
-    from aiida.orm.nodes.process.process import ProcessNode
+    from aiida._core.orm.nodes.process.calculation.calculation import CalculationNode
+    from aiida._core.orm.nodes.process.process import ProcessNode
 
     # Test process prefix with invalid type - should return CalculationNode
     loaded_class = load_node_class('process.calculation.invalid.')
@@ -89,15 +89,15 @@ def test_load_node_class_empty_string():
 def test_get_type_string_from_class():
     """Test conversion from class module/name to type string."""
     # Test with internal data class
-    type_string = get_type_string_from_class('aiida.orm.nodes.data.dict', 'Dict')
+    type_string = get_type_string_from_class('aiida._core.orm.nodes.data.dict', 'Dict')
     assert type_string == 'data.core.dict.Dict.'  # Changed to include 'core'
 
     # Test with Node class (should return empty string)
-    type_string = get_type_string_from_class('aiida.orm.nodes.node', 'Node')
+    type_string = get_type_string_from_class('aiida._core.orm.nodes.node', 'Node')
     assert type_string == ''
 
     # Test with process class
-    type_string = get_type_string_from_class('aiida.orm.nodes.process.process', 'ProcessNode')
+    type_string = get_type_string_from_class('aiida._core.orm.nodes.process.process', 'ProcessNode')
     assert type_string == 'process.ProcessNode.'
 
 

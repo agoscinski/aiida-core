@@ -613,7 +613,7 @@ class Config:
         """Create a new profile and initialise its storage.
 
         :param name: The profile name.
-        :param storage_backend: The entry point to the :class:`aiida.orm.implementation.storage_backend.StorageBackend`
+        :param storage_backend: The entry point to the :class:`aiida._core.orm.implementation.storage_backend.StorageBackend`
             implementation to use for the storage.
         :param storage_config: The configuration necessary to initialise and connect to the storage backend.
         :param broker_backend: The entry point to the :class:`aiida.brokers.Broker` implementation to use for the
@@ -622,12 +622,12 @@ class Config:
         :returns: The created profile.
         :raises ValueError: If the profile already exists.
         :raises TypeError: If the ``storage_backend`` is not a subclass of
-            :class:`aiida.orm.implementation.storage_backend.StorageBackend`.
+            :class:`aiida._core.orm.implementation.storage_backend.StorageBackend`.
         :raises EntryPointError: If the ``storage_backend`` does not have an associated entry point.
         :raises StorageMigrationError: If the storage cannot be initialised.
         """
         from aiida.brokers import Broker
-        from aiida.orm.implementation.storage_backend import StorageBackend
+        from aiida._core.orm.implementation.storage_backend import StorageBackend
         from aiida.plugins.entry_point import load_entry_point
 
         if name in self.profile_names:
@@ -641,7 +641,7 @@ class Config:
             if not issubclass(storage_cls, StorageBackend):
                 raise TypeError(
                     f'The `storage_backend={storage_backend}` is not a subclass of '
-                    '`aiida.orm.implementation.storage_backend.StorageBackend`.'
+                    '`aiida._core.orm.implementation.storage_backend.StorageBackend`.'
                 )
 
         storage_config = storage_cls.CliModel(**(storage_config or {})).model_dump()

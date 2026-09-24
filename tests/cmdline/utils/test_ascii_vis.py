@@ -8,7 +8,7 @@
 ###########################################################################
 """Tests for the :mod:`aiida.cmdline.utils.ascii_vis` module."""
 
-from aiida.orm.nodes.process.process import ProcessNode
+from aiida._core.orm.nodes.process.process import ProcessNode
 
 
 def test_build_call_graph():

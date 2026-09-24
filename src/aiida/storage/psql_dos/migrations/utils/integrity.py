@@ -201,7 +201,7 @@ def drop_hashes(conn, hash_extra_key: str, entry_point_string: str | None = None
     """
     from sqlalchemy.sql import text
 
-    from aiida.orm.utils.node import get_type_string_from_class
+    from aiida._core.orm.utils.node import get_type_string_from_class
     from aiida.plugins import load_entry_point_from_string
 
     if entry_point_string is not None:

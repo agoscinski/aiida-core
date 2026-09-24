@@ -12,8 +12,8 @@ import pytest
 
 from aiida.common.exceptions import NotExistent
 from aiida.orm import Data, Group, Node
-from aiida.orm.utils import load_code, load_computer, load_entity, load_group, load_node
-from aiida.orm.utils.loaders import NodeEntityLoader
+from aiida._core.orm.utils import load_code, load_computer, load_entity, load_group, load_node
+from aiida._core.orm.utils.loaders import NodeEntityLoader
 
 
 class TestOrmUtils:

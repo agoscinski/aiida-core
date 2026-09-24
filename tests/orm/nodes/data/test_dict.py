@@ -6,7 +6,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Tests for :class:`aiida.orm.nodes.data.dict.Dict` class."""
+"""Tests for :class:`aiida._core.orm.nodes.data.dict.Dict` class."""
 
 import pytest
 

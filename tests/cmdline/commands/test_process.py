@@ -701,7 +701,7 @@ class TestVerdiProcess:
         assert 'This is a new feature which is still in its testing phase' in result.output
         assert 'If you encounter unexpected behavior or bugs' in result.output
 
-    @patch('aiida.orm.nodes.process.process.ProcessNode.dump')
+    @patch('aiida._core.orm.nodes.process.process.ProcessNode.dump')
     def test_dump_calls_process_dump_with_correct_args(
         self, mock_dump, run_cli_command, tmp_path, generate_calculation_node_add
     ):
@@ -735,7 +735,7 @@ class TestVerdiProcess:
             dump_unsealed=True,
         )
 
-    @patch('aiida.orm.nodes.process.process.ProcessNode.dump')
+    @patch('aiida._core.orm.nodes.process.process.ProcessNode.dump')
     def test_dump_export_validation_error_handling(
         self, mock_dump, run_cli_command, tmp_path, generate_calculation_node_io
     ):
@@ -751,7 +751,7 @@ class TestVerdiProcess:
 
         assert 'Data validation error during dump: Test validation error' in result.output
 
-    @patch('aiida.orm.nodes.process.process.ProcessNode.dump')
+    @patch('aiida._core.orm.nodes.process.process.ProcessNode.dump')
     def test_dump_unexpected_error_handling(self, mock_dump, run_cli_command, tmp_path, generate_calculation_node_add):
         """Test handling of unexpected exceptions"""
         test_path = tmp_path / 'unexpected-error'

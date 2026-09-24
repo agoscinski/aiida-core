@@ -33,7 +33,7 @@ from aiida._core.common.typing import FilePath
 from aiida.engine.processes.exit_code import ExitCode
 from aiida.manage.configuration import get_config_option
 from aiida.orm import CalcJobNode, Code, FolderData, Node, PortableCode, RemoteData, load_node
-from aiida.orm.utils.log import get_dblogger_extra
+from aiida._core.orm.utils.log import get_dblogger_extra
 from aiida.repository.common import FileType
 from aiida.schedulers.datastructures import JobState
 from aiida.transports.transport import has_magic

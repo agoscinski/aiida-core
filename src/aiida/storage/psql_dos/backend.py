@@ -6,7 +6,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""SqlAlchemy implementation of `aiida.orm.implementation.backends.Backend`."""
+"""SqlAlchemy implementation of `aiida._core.orm.implementation.backends.Backend`."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from aiida.common.log import AIIDA_LOGGER
 from aiida._core.common.pydantic import AiiDABaseModel, MetadataField
 from aiida.manage.configuration.profile import Profile
 from aiida.orm.entities import EntityTypes
-from aiida.orm.implementation import BackendEntity, StorageBackend
+from aiida._core.orm.implementation import BackendEntity, StorageBackend
 from aiida.storage.log import STORAGE_LOGGER
 from aiida.storage.psql_dos.migrator import REPOSITORY_UUID_KEY, PsqlDosMigrator
 from aiida.storage.psql_dos.models import base

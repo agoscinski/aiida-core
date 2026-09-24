@@ -13,8 +13,8 @@ from unittest.mock import patch
 import pytest
 
 from aiida import orm
-from aiida.orm.nodes.data.remote.base import RemoteData
-from aiida.orm.utils import remote
+from aiida._core.orm.nodes.data.remote.base import RemoteData
+from aiida._core.orm.utils import remote
 
 
 @pytest.mark.usefixtures('aiida_profile_clean')

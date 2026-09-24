@@ -6,7 +6,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Tests for the :mod:`aiida.orm.nodes.data.array.array` module."""
+"""Tests for the :mod:`aiida._core.orm.nodes.data.array.array` module."""
 
 import numpy
 import pytest
@@ -48,7 +48,7 @@ def test_constructor():
 
 
 def test_get_array():
-    """Test :meth:`aiida.orm.nodes.data.array.array.ArrayData:get_array`."""
+    """Test :meth:`aiida._core.orm.nodes.data.array.array.ArrayData:get_array`."""
     node = ArrayData()
     with pytest.raises(ValueError, match='`name` not specified but the node contains no arrays.'):
         node.get_array()

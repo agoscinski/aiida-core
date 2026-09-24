@@ -341,7 +341,7 @@ def test_code_double_quotes(aiida_localhost, file_regression, code_use_double_qu
 @pytest.mark.requires_broker
 @pytest.mark.usefixtures('chdir_tmp_path')
 def test_containerized_code(file_regression, aiida_localhost):
-    """Test the :class:`~aiida.orm.nodes.data.code.containerized.ContainerizedCode`."""
+    """Test the :class:`~aiida._core.orm.nodes.data.code.containerized.ContainerizedCode`."""
     aiida_localhost.set_use_double_quotes(True)
     engine_command = """singularity exec --bind $PWD:$PWD {image_name}"""
     containerized_code = orm.ContainerizedCode(
@@ -374,7 +374,7 @@ def test_containerized_code(file_regression, aiida_localhost):
 @pytest.mark.requires_broker
 @pytest.mark.usefixtures('chdir_tmp_path')
 def test_containerized_code_wrap_cmdline_params(file_regression, aiida_localhost):
-    """Test :class:`~aiida.orm.nodes.data.code.containerized.ContainerizedCode` with ``wrap_cmdline_params = True``."""
+    """Test :class:`~aiida._core.orm.nodes.data.code.containerized.ContainerizedCode` with ``wrap_cmdline_params = True``."""
     aiida_localhost.set_use_double_quotes(False)
     engine_command = """docker run -i -v $PWD:/workdir:rw -w /workdir {image_name} sh -c"""
     containerized_code = orm.ContainerizedCode(
@@ -408,7 +408,7 @@ def test_containerized_code_wrap_cmdline_params(file_regression, aiida_localhost
 @pytest.mark.requires_broker
 @pytest.mark.usefixtures('chdir_tmp_path')
 def test_containerized_code_withmpi_true(file_regression, aiida_localhost):
-    """Test the :class:`~aiida.orm.nodes.data.code.containerized.ContainerizedCode` with ``withmpi=True``."""
+    """Test the :class:`~aiida._core.orm.nodes.data.code.containerized.ContainerizedCode` with ``withmpi=True``."""
     aiida_localhost.set_use_double_quotes(True)
     engine_command = """singularity exec --bind $PWD:$PWD {image_name}"""
     containerized_code = orm.ContainerizedCode(

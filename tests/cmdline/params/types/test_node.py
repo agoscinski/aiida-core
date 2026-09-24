@@ -14,7 +14,7 @@ import pytest
 
 from aiida.cmdline.params.types import NodeParamType
 from aiida.orm import Data
-from aiida.orm.utils.loaders import OrmEntityLoader
+from aiida._core.orm.utils.loaders import OrmEntityLoader
 
 
 class TestNodeParamType:

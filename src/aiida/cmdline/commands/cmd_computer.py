@@ -266,7 +266,7 @@ def get_parameter_default(parameter, ctx):
 
 def set_computer_builder(ctx, param, value):
     """Set the computer spec for defaults of following options."""
-    from aiida.orm.utils.builders.computer import ComputerBuilder
+    from aiida._core.orm.utils.builders.computer import ComputerBuilder
 
     ctx.computer_builder = ComputerBuilder.from_computer(value)
     return value
@@ -292,7 +292,7 @@ def set_computer_builder(ctx, param, value):
 @with_dbenv()
 def computer_setup(ctx, non_interactive, **kwargs):
     """Create a new computer."""
-    from aiida.orm.utils.builders.computer import ComputerBuilder
+    from aiida._core.orm.utils.builders.computer import ComputerBuilder
 
     if kwargs['label'] in get_computer_names():
         echo.echo_critical(
@@ -344,7 +344,7 @@ def computer_setup(ctx, non_interactive, **kwargs):
 @with_dbenv()
 def computer_duplicate(ctx, computer, non_interactive, **kwargs):
     """Duplicate a computer allowing to change some parameters."""
-    from aiida.orm.utils.builders.computer import ComputerBuilder
+    from aiida._core.orm.utils.builders.computer import ComputerBuilder
 
     if kwargs['label'] in get_computer_names():
         echo.echo_critical(f'A computer called {kwargs["label"]} already exists')

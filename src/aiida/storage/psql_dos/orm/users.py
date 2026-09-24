@@ -8,7 +8,7 @@
 ###########################################################################
 """SQLA user"""
 
-from aiida.orm.implementation.users import BackendUser, BackendUserCollection
+from aiida._core.orm.implementation.users import BackendUser, BackendUserCollection
 from aiida.storage.psql_dos.models.user import DbUser
 
 from . import entities, utils

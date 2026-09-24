@@ -118,7 +118,7 @@ class TestCalcJobNode:
         ),
     )
     def test_set_retrieve_list(self, retrieve_list, exception, match):
-        """Test the :meth:`aiida.orm.nodes.process.calculation.calcjob.CalcJobNode.set_retrieve_list`."""
+        """Test the :meth:`aiida._core.orm.nodes.process.calculation.calcjob.CalcJobNode.set_retrieve_list`."""
         node = CalcJobNode()
 
         if exception:

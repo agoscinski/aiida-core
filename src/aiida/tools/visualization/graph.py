@@ -21,11 +21,11 @@ from graphviz import Digraph
 from aiida import orm
 from aiida.common import LinkType
 from aiida.manage import get_manager
-from aiida.orm.utils.links import LinkPair
+from aiida._core.orm.utils.links import LinkPair
 from aiida.tools.graph.graph_traversers import traverse_graph
 
 if TYPE_CHECKING:
-    from aiida.orm.implementation import StorageBackend
+    from aiida._core.orm.implementation import StorageBackend
 
 __all__ = ('Graph', 'default_link_styles', 'default_node_styles', 'default_node_sublabels', 'pstate_node_styles')
 

@@ -37,7 +37,7 @@ from aiida.common.log import AIIDA_LOGGER
 from aiida._core.common.pydantic import AiiDABaseModel, MetadataField
 from aiida.manage import Profile
 from aiida.orm.entities import EntityTypes
-from aiida.orm.implementation import StorageBackend
+from aiida._core.orm.implementation import StorageBackend
 from aiida.repository.backend.abstract import AbstractRepositoryBackend, InfoDictType
 
 from . import orm

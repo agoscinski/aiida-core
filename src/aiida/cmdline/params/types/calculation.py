@@ -13,7 +13,7 @@ import typing as t
 from .identifier import IdentifierParamType
 
 if t.TYPE_CHECKING:
-    from aiida.orm.utils.loaders import CalculationEntityLoader
+    from aiida._core.orm.utils.loaders import CalculationEntityLoader
 
 __all__ = ('CalculationParamType',)
 
@@ -30,6 +30,6 @@ class CalculationParamType(IdentifierParamType):
 
         :return: the orm entity loader class for this ParamType
         """
-        from aiida.orm.utils.loaders import CalculationEntityLoader
+        from aiida._core.orm.utils.loaders import CalculationEntityLoader
 
         return CalculationEntityLoader

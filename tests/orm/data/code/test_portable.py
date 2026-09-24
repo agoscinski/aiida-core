@@ -6,7 +6,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Tests for the :class:`aiida.orm.nodes.data.code.portable.PortableCode` class."""
+"""Tests for the :class:`aiida._core.orm.nodes.data.code.portable.PortableCode` class."""
 
 import io
 import pathlib
@@ -15,7 +15,7 @@ import pytest
 
 from aiida.common.exceptions import ModificationNotAllowed, ValidationError
 from aiida._core.common.warnings import AiidaDeprecationWarning
-from aiida.orm.nodes.data.code.portable import PortableCode
+from aiida._core.orm.nodes.data.code.portable import PortableCode
 
 
 def test_constructor_raises(tmp_path, bash_path):
@@ -75,13 +75,13 @@ def test_validate(tmp_path):
 
 
 def test_can_run_on_computer(aiida_localhost, tmp_path):
-    """Test the :meth:`aiida.orm.nodes.data.code.portable.PortableCode.can_run_on_computer` method."""
+    """Test the :meth:`aiida._core.orm.nodes.data.code.portable.PortableCode.can_run_on_computer` method."""
     code = PortableCode(filepath_executable='./bash', filepath_files=tmp_path)
     assert code.can_run_on_computer(aiida_localhost)
 
 
 def test_filepath_executable(tmp_path):
-    """Test the :meth:`aiida.orm.nodes.data.code.portable.PortableCode.filepath_executable` property."""
+    """Test the :meth:`aiida._core.orm.nodes.data.code.portable.PortableCode.filepath_executable` property."""
     filepath_executable = 'mycode.py'
     code = PortableCode(filepath_executable=filepath_executable, filepath_files=tmp_path)
 
@@ -131,14 +131,14 @@ def test_filepath_executable_dotslash_subfolder(tmp_path):
 
 
 def test_full_label(tmp_path):
-    """Test the :meth:`aiida.orm.nodes.data.code.portable.PortableCode.full_label` property."""
+    """Test the :meth:`aiida._core.orm.nodes.data.code.portable.PortableCode.full_label` property."""
     label = 'some-label'
     code = PortableCode(label=label, filepath_executable='bash', filepath_files=tmp_path)
     assert code.full_label == label
 
 
 def test_get_execname(tmp_path):
-    """Test the deprecated :meth:`aiida.orm.nodes.data.code.portable.PortableCode.get_execname` method."""
+    """Test the deprecated :meth:`aiida._core.orm.nodes.data.code.portable.PortableCode.get_execname` method."""
     code = PortableCode(label='some-label', filepath_executable='bash', filepath_files=tmp_path)
     with pytest.warns(AiidaDeprecationWarning):
         assert code.get_execname() == 'bash'

@@ -39,7 +39,7 @@ def update_environment(argv):
 
 def validate_entry_point_strings(_, __, value):
     """Validate that `value` is a valid entrypoint string."""
-    from aiida.orm import autogroup
+    from aiida._core.orm import autogroup
 
     try:
         autogroup.AutogroupManager.validate(value)

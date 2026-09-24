@@ -13,11 +13,11 @@ import math
 import pytest
 
 from aiida.common import exceptions
-from aiida.orm.implementation.utils import FIELD_SEPARATOR, clean_value, validate_attribute_extra_key
+from aiida._core.orm.implementation.utils import FIELD_SEPARATOR, clean_value, validate_attribute_extra_key
 
 
 class TestOrmImplementationUtils:
-    """Test the utility methods in aiida.orm.implementation.utils"""
+    """Test the utility methods in aiida._core.orm.implementation.utils"""
 
     def test_invalid_attribute_extra_key(self):
         """Test supplying an invalid key to the `validate_attribute_extra_key` method."""

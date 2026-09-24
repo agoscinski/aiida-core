@@ -416,6 +416,6 @@ def _(dbmodel, backend):
 
 @get_backend_entity.register(models.DbLink)  # type: ignore[call-overload]
 def _(dbmodel, backend):
-    from aiida.orm.utils.links import LinkQuadruple
+    from aiida._core.orm.utils.links import LinkQuadruple
 
     return LinkQuadruple(dbmodel.input_id, dbmodel.output_id, dbmodel.type, dbmodel.label)

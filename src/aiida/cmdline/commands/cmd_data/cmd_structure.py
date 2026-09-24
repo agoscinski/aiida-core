@@ -53,7 +53,7 @@ def structure_list(elements, raw, formula_mode, past_days, groups, all_users):
     """List StructureData objects."""
     from tabulate import tabulate
 
-    from aiida.orm.nodes.data.structure import StructureData, get_formula, get_symbols_string
+    from aiida._core.orm.nodes.data.structure import StructureData, get_formula, get_symbols_string
 
     elements_only = False
     lst = data_list(

@@ -16,7 +16,7 @@ from tests.static import STATIC_DIR
 class TestCodDbImporter:
     """Test the CodDbImporter class."""
 
-    from aiida.orm.nodes.data.cif import has_pycifrw  # type: ignore[misc]
+    from aiida._core.orm.nodes.data.cif import has_pycifrw  # type: ignore[misc]
 
     def test_query_construction_1(self):
         """Test query construction."""

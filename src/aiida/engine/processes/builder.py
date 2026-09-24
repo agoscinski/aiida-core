@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from aiida.engine.processes.ports import PortNamespace
 from aiida.orm import Dict, Node
-from aiida.orm.nodes.data.base import BaseType
+from aiida._core.orm.nodes.data.base import BaseType
 
 from .utils import prune_mapping
 

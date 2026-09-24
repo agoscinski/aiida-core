@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from aiida.engine.runners import Runner
     from aiida.manage.configuration.config import Config
     from aiida.manage.configuration.profile import Profile
-    from aiida.orm.implementation import StorageBackend
+    from aiida._core.orm.implementation import StorageBackend
 
 __all__ = ('get_manager',)
 

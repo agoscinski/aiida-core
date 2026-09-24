@@ -1,4 +1,4 @@
-"""Tests for the :class:`aiida.orm.nodes.data.jsonable.JsonableData` data type."""
+"""Tests for the :class:`aiida._core.orm.nodes.data.jsonable.JsonableData` data type."""
 
 import datetime
 import math
@@ -7,7 +7,7 @@ import pytest
 from pymatgen.core.structure import Molecule
 
 from aiida.orm import load_node
-from aiida.orm.nodes.data.jsonable import JsonableData
+from aiida._core.orm.nodes.data.jsonable import JsonableData
 
 
 class JsonableClass:

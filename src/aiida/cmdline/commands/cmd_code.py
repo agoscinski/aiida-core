@@ -91,7 +91,7 @@ def get_on_computer(ctx: click.Context) -> bool:
 
 def set_code_builder(ctx: click.Context, _param: Any, value: Any) -> Any:
     """Set the code spec for defaults of following options."""
-    from aiida.orm.utils.builders.code import CodeBuilder
+    from aiida._core.orm.utils.builders.code import CodeBuilder
 
     # TODO(danielhollas): CodeBuilder is deprecated, rewrite this somehow?
     with warnings.catch_warnings(record=True):
@@ -121,7 +121,7 @@ def set_code_builder(ctx: click.Context, _param: Any, value: Any) -> Any:
 @with_dbenv()
 def setup_code(ctx, non_interactive, **kwargs):
     """Setup a new code (use `verdi code create`)."""
-    from aiida.orm.utils.builders.code import CodeBuilder
+    from aiida._core.orm.utils.builders.code import CodeBuilder
 
     options_code.validate_label_uniqueness(ctx, None, kwargs['label'])
 
@@ -196,7 +196,7 @@ def code_test(code):
 def code_duplicate(ctx, code, non_interactive, **kwargs):
     """Duplicate a code allowing to change some parameters."""
     from aiida.common.exceptions import ValidationError
-    from aiida.orm.utils.builders.code import CodeBuilder
+    from aiida._core.orm.utils.builders.code import CodeBuilder
 
     options_code.validate_label_uniqueness(ctx, None, kwargs['label'])
 
@@ -388,7 +388,7 @@ VALID_PROJECTIONS = {
 def code_list(computer, default_calc_job_plugin, all_entries, all_users, raw, show_owner, project):
     """List the available codes."""
     from aiida import orm
-    from aiida.orm.utils.node import load_node_class
+    from aiida._core.orm.utils.node import load_node_class
 
     if show_owner:
         echo.echo_deprecated(

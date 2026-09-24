@@ -6,7 +6,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Tests for the :class:`aiida.orm.nodes.data.data:Data` class."""
+"""Tests for the :class:`aiida._core.orm.nodes.data.data:Data` class."""
 
 import os
 

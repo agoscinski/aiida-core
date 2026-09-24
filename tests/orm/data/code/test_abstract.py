@@ -6,17 +6,17 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Tests for the :class:`aiida.orm.nodes.data.code.abstract.AbstractCode` class."""
+"""Tests for the :class:`aiida._core.orm.nodes.data.code.abstract.AbstractCode` class."""
 
 import pathlib
 
 import pytest
 
-from aiida.orm.nodes.data.code.abstract import AbstractCode
+from aiida._core.orm.nodes.data.code.abstract import AbstractCode
 
 
 class MockCode(AbstractCode):
-    """Implementation of :class:`aiida.orm.nodes.data.code.abstract.AbstractCode`."""
+    """Implementation of :class:`aiida._core.orm.nodes.data.code.abstract.AbstractCode`."""
 
     def can_run_on_computer(self, computer) -> bool:
         """Return whether the code can run on a given computer."""
@@ -33,7 +33,7 @@ class MockCode(AbstractCode):
 
 
 def test_set_label():
-    """Test the :meth:`aiida.orm.nodes.data.code.abstract.AbstractCode.label` property setter."""
+    """Test the :meth:`aiida._core.orm.nodes.data.code.abstract.AbstractCode.label` property setter."""
     label = 'some-label'
     code = MockCode(label=label)
     assert code.label == label
@@ -46,7 +46,7 @@ def test_set_label():
 
 
 def test_with_mpi():
-    """Test the :meth:`aiida.orm.nodes.data.code.abstract.AbstractCode.with_mpi` property setter."""
+    """Test the :meth:`aiida._core.orm.nodes.data.code.abstract.AbstractCode.with_mpi` property setter."""
     code = MockCode()
     assert code.with_mpi is None
 

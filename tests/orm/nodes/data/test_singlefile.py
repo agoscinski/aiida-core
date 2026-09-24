@@ -185,7 +185,7 @@ def test_binary_file(check_singlefile_content_with_store):
 
 
 def test_from_string():
-    """Test the :meth:`aiida.orm.nodes.data.singlefile.SinglefileData.from_string` classmethod."""
+    """Test the :meth:`aiida._core.orm.nodes.data.singlefile.SinglefileData.from_string` classmethod."""
     content = 'some\ncontent'
     node = SinglefileData.from_string(content).store()
     assert node.get_content() == content
@@ -201,7 +201,7 @@ def test_from_string():
 
 
 def test_from_bytes():
-    """Test the :meth:`aiida.orm.nodes.data.singlefile.SinglefileData.from_bytes` classmethod."""
+    """Test the :meth:`aiida._core.orm.nodes.data.singlefile.SinglefileData.from_bytes` classmethod."""
     content = b'some\ncontent'
     node = SinglefileData.from_bytes(content).store()
     assert node.get_content(mode='rb') == content
@@ -217,7 +217,7 @@ def test_from_bytes():
 
 
 def test_get_content():
-    """Test the :meth:`aiida.orm.nodes.data.singlefile.SinglefileData.get_content` method."""
+    """Test the :meth:`aiida._core.orm.nodes.data.singlefile.SinglefileData.get_content` method."""
     content = 'some\ncontent'
     node = SinglefileData.from_string(content).store()
     assert node.get_content() == content

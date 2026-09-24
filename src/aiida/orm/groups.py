@@ -25,15 +25,16 @@ from aiida._core.common.lang import classproperty, type_check
 from aiida._core.common.warnings import warn_deprecation
 from aiida.manage import get_manager
 
-from . import convert, entities, extras, users
+from . import entities, extras, users
+from aiida._core.orm import convert
 from .pydantic import OrmMetadataField
 
 if TYPE_CHECKING:
     from importlib_metadata import EntryPoint
 
     from aiida.orm import Node, User
-    from aiida.orm.implementation import StorageBackend
-    from aiida.orm.implementation.groups import BackendGroup
+    from aiida._core.orm.implementation import StorageBackend
+    from aiida._core.orm.implementation.groups import BackendGroup
 
 __all__ = ('AutoGroup', 'Group', 'ImportGroup', 'UpfFamily')
 
@@ -347,7 +348,7 @@ class Group(entities.Entity['BackendGroup', GroupCollection]):
 
         :param nodes: a single `Node` or a list of `Nodes`
         """
-        from .nodes import Node
+        from aiida._core.orm.nodes import Node
 
         if not self.is_stored:
             raise exceptions.ModificationNotAllowed('cannot add nodes to an unstored group')
@@ -368,7 +369,7 @@ class Group(entities.Entity['BackendGroup', GroupCollection]):
 
         :param nodes: a single `Node` or a list of `Nodes`
         """
-        from .nodes import Node
+        from aiida._core.orm.nodes import Node
 
         if not self.is_stored:
             raise exceptions.ModificationNotAllowed('cannot add nodes to an unstored group')

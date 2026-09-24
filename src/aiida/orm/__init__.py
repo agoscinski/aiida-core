@@ -20,11 +20,11 @@ from .extras import *
 from .fields import *
 from .groups import *
 from .logs import *
-from .nodes import *
 from .pydantic import *
 from .querybuilder import *
 from .users import *
-from .utils import *
+from aiida._core.orm.nodes import *
+from aiida._core.orm.utils import *
 
 __all__ = (
     'ASCENDING',

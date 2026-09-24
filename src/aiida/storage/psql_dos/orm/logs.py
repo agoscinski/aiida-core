@@ -11,7 +11,7 @@
 from sqlalchemy.orm.exc import NoResultFound
 
 from aiida.common import exceptions
-from aiida.orm.implementation import BackendLog, BackendLogCollection
+from aiida._core.orm.implementation import BackendLog, BackendLogCollection
 from aiida.storage.psql_dos.models import log as models
 
 from . import entities, utils

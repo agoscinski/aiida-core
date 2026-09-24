@@ -116,7 +116,7 @@ def submit_and_await(started_daemon_client):
     :param timeout: The time to wait for the process to achieve the state.
     :param kwargs: If the ``submittable`` is a process class, it is instantiated with the ``kwargs`` as inputs.
     :raises RuntimeError: If the process fails to achieve the specified state before the timeout expires.
-    :returns `~aiida.orm.nodes.process.process.ProcessNode`: The process node.
+    :returns `~aiida._core.orm.nodes.process.process.ProcessNode`: The process node.
     """
     from aiida.engine import ProcessState
 

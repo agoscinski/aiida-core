@@ -6,7 +6,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Tests for the :mod:`aiida.orm.utils.serialize` module."""
+"""Tests for the :mod:`aiida._core.orm.utils.serialize` module."""
 
 import types
 import uuid
@@ -17,7 +17,7 @@ import pytest
 
 from aiida import orm
 from aiida.common.links import LinkType
-from aiida.orm.utils import serialize
+from aiida._core.orm.utils import serialize
 
 
 def test_serialize_round_trip():
@@ -107,7 +107,7 @@ def test_serialize_unstored_computer():
 def test_mixed_attribute_normal_dict():
     """Regression test for #3092.
 
-    The yaml mapping constructor in `aiida.orm.utils.serialize` was not properly "deeply" reconstructing nested
+    The yaml mapping constructor in `aiida._core.orm.utils.serialize` was not properly "deeply" reconstructing nested
     mappings, causing a mix of attribute dictionaries and normal dictionaries to lose information in a round-trip.
 
     If a nested `AttributeDict` contained a normal dictionary, the content of the latter would be lost during the
@@ -181,7 +181,7 @@ def test_dataclass():
 
 def test_serialize_node_links_manager():
     """Test you can serialize and deserialize a NodeLinksManager"""
-    from aiida.orm.utils.managers import NodeLinksManager
+    from aiida._core.orm.utils.managers import NodeLinksManager
 
     node = orm.Data().store()
     node_links_manager = NodeLinksManager(node=node, link_type=LinkType.CREATE, incoming=False)

@@ -31,7 +31,7 @@ from aiida.engine.processes.exit_code import ExitCode
 from aiida.engine.transports import TransportQueue
 from aiida.engine.utils import InterruptableFuture, interruptable_task
 from aiida.manage.configuration import get_config_option
-from aiida.orm.nodes.process.calculation.calcjob import CalcJobNode
+from aiida._core.orm.nodes.process.calculation.calcjob import CalcJobNode
 from aiida.schedulers.datastructures import JobState
 
 from ..process import ProcessState

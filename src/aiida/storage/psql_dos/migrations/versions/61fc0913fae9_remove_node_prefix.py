@@ -8,7 +8,7 @@
 ###########################################################################
 """Remove the `node.` prefix from `db_dbnode.type`
 
-Final data migration for `Nodes` after `aiida.orm.nodes` reorganization was finalized to remove the `node.` prefix
+Final data migration for `Nodes` after `aiida._core.orm.nodes` reorganization was finalized to remove the `node.` prefix
 
 Note, this is identical to the django_0028 migration.
 

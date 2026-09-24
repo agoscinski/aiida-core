@@ -92,6 +92,6 @@ def _(dbmodel, backend):
 @get_backend_entity.register(DbLink)
 def _(dbmodel, backend):
     """Convert a dblink to the backend entity"""
-    from aiida.orm.utils.links import LinkQuadruple
+    from aiida._core.orm.utils.links import LinkQuadruple
 
     return LinkQuadruple(dbmodel.input_id, dbmodel.output_id, dbmodel.type, dbmodel.label)

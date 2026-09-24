@@ -19,7 +19,7 @@ from aiida.common import LinkType, exceptions
 from aiida._core.common import timezone
 from aiida.manage import get_manager
 from aiida.orm import CalculationNode, Data, Int, Log, Node, User, WorkflowNode, load_node
-from aiida.orm.utils.links import LinkTriple
+from aiida._core.orm.utils.links import LinkTriple
 
 
 class TestNode:
@@ -88,7 +88,7 @@ class TestNode:
             ('aiida.calculations:core.non_existing', r'could not load process class for entry point `.*`.*'),
             ('invalid', r'could not load process class from `.*`.*'),
             ('aiida.orm.non-existing.some_function', r'could not load process class from `.*`.*'),
-            ('aiida.orm.nodes.node.non-existing-function', r'could not load process class from `.*`.*'),
+            ('aiida._core.orm.nodes.node.non-existing-function', r'could not load process class from `.*`.*'),
         ),
     )
     def test_process_class_raises(process_type, match):
@@ -109,7 +109,7 @@ class TestNode:
             node.process_class
 
     def test_entry_point(self):
-        """Test the :meth:`aiida.orm.nodes.node.Node.entry_point` property."""
+        """Test the :meth:`aiida._core.orm.nodes.node.Node.entry_point` property."""
         from aiida.plugins.entry_point import get_entry_point_from_string
 
         node = Int()
@@ -981,7 +981,7 @@ class TestNodeCaching:
 
     def test_hashing_errors(self, caplog, monkeypatch):
         """Tests that ``compute_hash`` fails in an expected manner."""
-        from aiida.orm.nodes.caching import NodeCaching
+        from aiida._core.orm.nodes.caching import NodeCaching
 
         node = Data().store()
 

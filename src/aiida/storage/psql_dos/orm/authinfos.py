@@ -10,7 +10,7 @@
 
 from aiida.common import exceptions
 from aiida._core.common.lang import type_check
-from aiida.orm.implementation.authinfos import BackendAuthInfo, BackendAuthInfoCollection
+from aiida._core.orm.implementation.authinfos import BackendAuthInfo, BackendAuthInfoCollection
 from aiida.storage.psql_dos.models.authinfo import DbAuthInfo
 
 from . import computers, entities, users, utils
@@ -26,9 +26,9 @@ class SqlaAuthInfo(entities.SqlaModelEntity[DbAuthInfo], BackendAuthInfo):
     def __init__(self, backend, computer, user, enabled, auth_params, metadata):
         """Construct a new instance.
 
-        :param computer: a :class:`aiida.orm.implementation.computers.BackendComputer` instance
-        :param user: a :class:`aiida.orm.implementation.users.BackendUser` instance
-        :return: an :class:`aiida.orm.implementation.authinfos.BackendAuthInfo` instance
+        :param computer: a :class:`aiida._core.orm.implementation.computers.BackendComputer` instance
+        :param user: a :class:`aiida._core.orm.implementation.users.BackendUser` instance
+        :return: an :class:`aiida._core.orm.implementation.authinfos.BackendAuthInfo` instance
         """
         super().__init__(backend)
         type_check(user, self.USER_CLASS)
@@ -76,7 +76,7 @@ class SqlaAuthInfo(entities.SqlaModelEntity[DbAuthInfo], BackendAuthInfo):
     def computer(self):
         """Return the computer associated with this instance.
 
-        :return: :class:`aiida.orm.implementation.computers.BackendComputer`
+        :return: :class:`aiida._core.orm.implementation.computers.BackendComputer`
         """
         return self.backend.computers.ENTITY_CLASS.from_dbmodel(self.model.dbcomputer, self.backend)
 
@@ -84,7 +84,7 @@ class SqlaAuthInfo(entities.SqlaModelEntity[DbAuthInfo], BackendAuthInfo):
     def user(self):
         """Return the user associated with this instance.
 
-        :return: :class:`aiida.orm.implementation.users.BackendUser`
+        :return: :class:`aiida._core.orm.implementation.users.BackendUser`
         """
         return self.backend.users.ENTITY_CLASS.from_dbmodel(self.model.aiidauser, self.backend)
 

@@ -13,7 +13,7 @@ import pytest
 from aiida.common.exceptions import InvalidEntryPointTypeError
 from aiida.engine import CalcJob, CalcJobImporter, WorkChain, calcfunction, workfunction
 from aiida.orm import CalcFunctionNode, Data, Node, WorkFunctionNode
-from aiida.orm.implementation.storage_backend import StorageBackend
+from aiida._core.orm.implementation.storage_backend import StorageBackend
 from aiida.parsers import Parser
 from aiida.plugins import entry_point, factories
 from aiida.schedulers import Scheduler

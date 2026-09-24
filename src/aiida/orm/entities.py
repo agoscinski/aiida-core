@@ -41,7 +41,7 @@ from .fields import QbFields, add_field
 from .pydantic import OrmFieldsAsModelDump, OrmMetadataField, OrmModel
 
 if TYPE_CHECKING:
-    from aiida.orm.implementation import BackendEntity, StorageBackend
+    from aiida._core.orm.implementation import BackendEntity, StorageBackend
     from aiida.orm.querybuilder import FilterType, OrderByType, QueryBuilder
 
 __all__ = ('Collection', 'Entity', 'EntityTypes')
@@ -82,7 +82,7 @@ class Collection(abc.ABC, Generic[EntityType]):
 
         :param backend: the backend instance to get the collection for
         """
-        from aiida.orm.implementation import StorageBackend
+        from aiida._core.orm.implementation import StorageBackend
 
         type_check(backend, StorageBackend)
         return cls(entity_class, backend=backend)
@@ -93,7 +93,7 @@ class Collection(abc.ABC, Generic[EntityType]):
         :param entity_class: the entity type e.g. User, Computer, etc
         :param backend: the backend instance to get the collection for, or use the default
         """
-        from aiida.orm.implementation import StorageBackend
+        from aiida._core.orm.implementation import StorageBackend
 
         type_check(backend, StorageBackend, allow_none=True)
         assert issubclass(entity_class, self._entity_base_cls())
@@ -721,7 +721,7 @@ def from_backend_entity(cls: type[EntityType], backend_entity: BackendEntity) ->
 
     :return: an AiiDA entity instance
     """
-    from .implementation.entities import BackendEntity
+    from aiida._core.orm.implementation.entities import BackendEntity
 
     type_check(backend_entity, BackendEntity)
     entity = cls.__new__(cls)

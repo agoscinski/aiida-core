@@ -18,7 +18,7 @@ from aiida.cmdline.commands import cmd_calcjob as command
 from aiida.common.datastructures import CalcJobState
 from aiida.common.links import LinkType
 from aiida.engine import ProcessState
-from aiida.orm.nodes.data.remote.base import RemoteData
+from aiida._core.orm.nodes.data.remote.base import RemoteData
 from aiida.plugins import CalculationFactory
 from aiida.plugins.entry_point import get_entry_point_string_from_class
 from tests.utils.archives import import_test_archive
@@ -373,14 +373,14 @@ class TestVerdiCalculation:
 
         # Test when get_transport raises NotExistent
         with patch(
-            'aiida.orm.nodes.process.calculation.calcjob.CalcJobNode.get_transport', new=lambda _: raise_(NotExistent)
+            'aiida._core.orm.nodes.process.calculation.calcjob.CalcJobNode.get_transport', new=lambda _: raise_(NotExistent)
         ):
             result = self.cli_runner.invoke(command.calcjob_gotocomputer, options)
             assert result.exit_code == 1
             assert 'something' in result.output
 
         # Test when get_remote_workdir returns None
-        with patch('aiida.orm.nodes.process.calculation.calcjob.CalcJobNode.get_remote_workdir', new=lambda _: None):
+        with patch('aiida._core.orm.nodes.process.calculation.calcjob.CalcJobNode.get_remote_workdir', new=lambda _: None):
             result = self.cli_runner.invoke(command.calcjob_gotocomputer, options)
             assert result.exit_code == 1
             assert 'no remote work directory for this calcjob' in result.output

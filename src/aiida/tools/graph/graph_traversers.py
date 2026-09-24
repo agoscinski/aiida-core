@@ -22,8 +22,8 @@ from aiida.tools.graph.age_entities import Basket
 from aiida.tools.graph.age_rules import RuleSaveWalkers, RuleSequence, RuleSetWalkers, UpdateRule
 
 if TYPE_CHECKING:
-    from aiida.orm.implementation import StorageBackend
-    from aiida.orm.utils.links import LinkQuadruple
+    from aiida._core.orm.implementation import StorageBackend
+    from aiida._core.orm.utils.links import LinkQuadruple
     from aiida.tools.graph.age_rules import Operation
 
 

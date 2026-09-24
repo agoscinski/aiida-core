@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from aiida.brokers import Broker
     from aiida.engine import CalcJob, CalcJobImporter, WorkChain
     from aiida.orm import Data, Group
-    from aiida.orm.implementation import StorageBackend
+    from aiida._core.orm.implementation import StorageBackend
     from aiida.parsers import Parser
     from aiida.schedulers import Scheduler
     from aiida.tools.data.orbital import Orbital
@@ -192,7 +192,7 @@ def DataFactory(entry_point_name: str, load: bool = True) -> EntryPoint | type[D
 
     :param entry_point_name: the entry point name.
     :param load: if True, load the matched entry point and return the loaded resource instead of the entry point itself.
-    :return: sub class of :py:class:`~aiida.orm.nodes.data.data.Data`
+    :return: sub class of :py:class:`~aiida._core.orm.nodes.data.data.Data`
     :raises aiida.common.InvalidEntryPointTypeError: if the type of the loaded entry point is invalid.
     """
     from inspect import isclass
@@ -390,12 +390,12 @@ def StorageFactory(entry_point_name: str, load: bool = True) -> EntryPoint | typ
 
     :param entry_point_name: the entry point name.
     :param load: if True, load the matched entry point and return the loaded resource instead of the entry point itself.
-    :return: sub class of :py:class:`~aiida.orm.implementation.storage_backend.StorageBackend`.
+    :return: sub class of :py:class:`~aiida._core.orm.implementation.storage_backend.StorageBackend`.
     :raises aiida.common.InvalidEntryPointTypeError: if the type of the loaded entry point is invalid.
     """
     from inspect import isclass
 
-    from aiida.orm.implementation import StorageBackend
+    from aiida._core.orm.implementation import StorageBackend
 
     entry_point_group = 'aiida.storage'
     entry_point = BaseFactory(entry_point_group, entry_point_name, load=load)

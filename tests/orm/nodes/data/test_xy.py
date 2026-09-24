@@ -6,7 +6,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Tests for the :mod:`aiida.orm.nodes.data.array.xy` module."""
+"""Tests for the :mod:`aiida._core.orm.nodes.data.array.xy` module."""
 
 import numpy
 import pytest

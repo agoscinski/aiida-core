@@ -6,7 +6,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Tests for the :mod:`aiida.orm.nodes.data.array.bands` module."""
+"""Tests for the :mod:`aiida._core.orm.nodes.data.array.bands` module."""
 
 import uuid
 from argparse import Namespace
@@ -15,7 +15,7 @@ import pytest
 
 from aiida.common.exceptions import NotExistent
 from aiida.orm import BandsData, Group, User
-from aiida.orm.nodes.data.array.bands import get_bands_and_parents_structure
+from aiida._core.orm.nodes.data.array.bands import get_bands_and_parents_structure
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def alternate_user():
 
 
 class TestGetBandsAndParentsStructure:
-    """Tests for the :meth:`~aiida.orm.nodes.data.array.bands.get_bands_and_parents_structure` function."""
+    """Tests for the :meth:`~aiida._core.orm.nodes.data.array.bands.get_bands_and_parents_structure` function."""
 
     @staticmethod
     def _get_default_ns():

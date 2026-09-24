@@ -16,7 +16,7 @@ import pytest
 
 from aiida.common import exceptions
 from aiida._core.common import timezone
-from aiida.orm.implementation.nodes import BackendNode
+from aiida._core.orm.implementation.nodes import BackendNode
 
 
 class TestBackendNode:

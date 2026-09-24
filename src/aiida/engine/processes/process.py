@@ -44,9 +44,9 @@ from aiida._core.common.lang import classproperty, override
 from aiida.common.links import LinkType
 from aiida.common.log import LOG_LEVEL_REPORT
 from aiida.engine.utils import InterruptableFuture
-from aiida.orm.implementation.utils import clean_value
-from aiida.orm.nodes.process.calculation.calcjob import CalcJobNode
-from aiida.orm.utils import serialize
+from aiida._core.orm.implementation.utils import clean_value
+from aiida._core.orm.nodes.process.calculation.calcjob import CalcJobNode
+from aiida._core.orm.utils import serialize
 
 from .builder import ProcessBuilder
 from .exit_code import ExitCode, ExitCodesNamespace

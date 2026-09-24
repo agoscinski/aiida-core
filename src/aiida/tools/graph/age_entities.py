@@ -18,7 +18,7 @@ from typing import Any, Literal, TypeAlias, overload
 from typing_extensions import Self, TypedDict
 
 from aiida import orm
-from aiida.orm.utils.links import LinkQuadruple
+from aiida._core.orm.utils.links import LinkQuadruple
 
 VALID_ENTITY_CLASSES = (orm.Node, orm.Group)
 

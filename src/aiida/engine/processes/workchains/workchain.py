@@ -26,7 +26,7 @@ from aiida.common import exceptions
 from aiida.common.extendeddicts import AttributeDict
 from aiida._core.common.lang import override
 from aiida.orm import Node, ProcessNode, WorkChainNode
-from aiida.orm.utils import load_node
+from aiida._core.orm.utils import load_node
 
 from ..exit_code import ExitCode
 from ..process import Process, ProcessState

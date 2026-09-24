@@ -6,7 +6,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Tests for the :mod:`aiida.orm.nodes.data.remote.base.RemoteData` module."""
+"""Tests for the :mod:`aiida._core.orm.nodes.data.remote.base.RemoteData` module."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def remote_data_factory(tmp_path, aiida_localhost, aiida_computer_ssh):
 
 @pytest.mark.parametrize('mode', ('local', 'ssh'))
 def test_clean(remote_data_factory, mode):
-    """Test the :meth:`aiida.orm.nodes.data.remote.base.RemoteData.clean` method."""
+    """Test the :meth:`aiida._core.orm.nodes.data.remote.base.RemoteData.clean` method."""
 
     remote_data = remote_data_factory(mode=mode)
 
@@ -64,7 +64,7 @@ def test_clean(remote_data_factory, mode):
     ),
 )
 def test_get_size_on_disk_params(remote_data_factory, mode, setup, results):
-    """Test the :meth:`aiida.orm.nodes.data.remote.base.RemoteData.get_size_on_disk` method."""
+    """Test the :meth:`aiida._core.orm.nodes.data.remote.base.RemoteData.get_size_on_disk` method."""
 
     remote_data = remote_data_factory(mode=mode)
 
@@ -148,7 +148,7 @@ def test_get_size_on_disk_nested(aiida_localhost, tmp_path, num_char, relpath, s
 
 @pytest.mark.parametrize('mode', ('local', 'ssh'))
 def test_get_size_on_disk_excs(remote_data_factory, mode):
-    """Test the :meth:`aiida.orm.nodes.data.remote.base.RemoteData.get_size_on_disk` method."""
+    """Test the :meth:`aiida._core.orm.nodes.data.remote.base.RemoteData.get_size_on_disk` method."""
     # Extra function to avoid unnecessary parametrization here
     remote_data = remote_data_factory(mode=mode)
 
@@ -163,7 +163,7 @@ def test_get_size_on_disk_excs(remote_data_factory, mode):
 
 @pytest.mark.parametrize('mode', ('local', 'ssh'))
 def test_get_size_on_disk_du(remote_data_factory, mode, monkeypatch):
-    """Test the :meth:`aiida.orm.nodes.data.remote.base.RemoteData._get_size_on_disk_du` private method."""
+    """Test the :meth:`aiida._core.orm.nodes.data.remote.base.RemoteData._get_size_on_disk_du` private method."""
     # No additional parametrization here, as already done in `test_get_size_on_disk_sizes`.
 
     remote_data = remote_data_factory(mode=mode)
@@ -195,7 +195,7 @@ def test_get_size_on_disk_du(remote_data_factory, mode, monkeypatch):
 
 @pytest.mark.parametrize('mode', ('local', 'ssh'))
 def test_get_size_on_disk_stat(remote_data_factory, mode):
-    """Test the :meth:`aiida.orm.nodes.data.remote.base.RemoteData._get_size_on_disk_stat` private method."""
+    """Test the :meth:`aiida._core.orm.nodes.data.remote.base.RemoteData._get_size_on_disk_stat` private method."""
     # No additional parametrization here, as already done in `test_get_size_on_disk_sizes`.
 
     remote_data = remote_data_factory(mode=mode)

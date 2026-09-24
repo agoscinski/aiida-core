@@ -836,7 +836,7 @@ class TestVerdiDelete:
     def test_node_delete_stash_warning(self, clean_workdir, expect_warning, run_cli_command, aiida_localhost, tmp_path):
         """Warn about stash nodes only when deleting StashCalculation with --clean-workdir."""
         from aiida.common.datastructures import StashMode
-        from aiida.orm.nodes.data.remote.stash import RemoteStashFolderData
+        from aiida._core.orm.nodes.data.remote.stash import RemoteStashFolderData
 
         workdir = tmp_path / 'stash_workdir'
         workdir.mkdir()

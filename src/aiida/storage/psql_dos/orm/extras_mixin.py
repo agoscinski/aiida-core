@@ -11,7 +11,7 @@
 from collections.abc import Iterable
 from typing import Any
 
-from aiida.orm.implementation.utils import clean_value, validate_attribute_extra_key
+from aiida._core.orm.implementation.utils import clean_value, validate_attribute_extra_key
 
 
 class ExtrasMixin:

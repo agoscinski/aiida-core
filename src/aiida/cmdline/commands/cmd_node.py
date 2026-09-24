@@ -335,7 +335,7 @@ def _warn_about_stash_nodes(pks_to_delete: set[int]) -> None:
     """Warn about stash nodes whose target paths won't be automatically cleaned."""
     from aiida.calculations.stash import StashCalculation
     from aiida.orm import QueryBuilder
-    from aiida.orm.nodes.data.remote.stash import RemoteStashData
+    from aiida._core.orm.nodes.data.remote.stash import RemoteStashData
 
     if not pks_to_delete:
         return
@@ -386,7 +386,7 @@ def node_delete(identifier, dry_run, force, clean_workdir, **traversal_rules):
     the nodes necessary to keep a consistent graph, according to the rules outlined in the documentation.
     You can modify some of those rules using options of this command.
     """
-    from aiida.orm.utils.loaders import NodeEntityLoader
+    from aiida._core.orm.utils.loaders import NodeEntityLoader
     from aiida.tools import delete_nodes
 
     pks = []
@@ -413,7 +413,7 @@ def node_delete(identifier, dry_run, force, clean_workdir, **traversal_rules):
     if clean_workdir:
         from aiida.manage import get_manager
         from aiida.orm import CalcJobNode, QueryBuilder
-        from aiida.orm.utils.remote import clean_mapping_remote_paths, get_calcjob_remote_paths
+        from aiida._core.orm.utils.remote import clean_mapping_remote_paths, get_calcjob_remote_paths
         from aiida.tools.graph.graph_traversers import get_nodes_delete
 
         backend = get_manager().get_profile_storage()

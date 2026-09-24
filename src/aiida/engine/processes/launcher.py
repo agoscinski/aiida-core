@@ -54,7 +54,7 @@ class ProcessLauncher(plumpy.ProcessLauncher):
         from aiida.common import exceptions
         from aiida.engine.exceptions import PastException
         from aiida.orm import Data, load_node
-        from aiida.orm.utils import serialize
+        from aiida._core.orm.utils import serialize
 
         try:
             node = load_node(pk=pid)

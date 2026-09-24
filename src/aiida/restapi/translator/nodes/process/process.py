@@ -12,7 +12,7 @@ from aiida.restapi.translator.nodes.node import NodeTranslator
 
 
 class ProcessTranslator(NodeTranslator):
-    """Translator relative to resource 'data' and aiida class `~aiida.orm.nodes.data.data.Data`"""
+    """Translator relative to resource 'data' and aiida class `~aiida._core.orm.nodes.data.data.Data`"""
 
     # A label associated to the present class (coincides with the resource name)
     __label__ = 'process'

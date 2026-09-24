@@ -22,7 +22,7 @@ from aiida import orm
 from aiida.common import exceptions
 from aiida.common.links import LinkType
 from aiida.orm.entities import EntityTypes
-from aiida.orm.implementation import storage_backend as storage_backend_module
+from aiida._core.orm.implementation import storage_backend as storage_backend_module
 
 
 class TestBackend:

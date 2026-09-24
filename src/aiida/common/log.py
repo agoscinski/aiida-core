@@ -338,7 +338,7 @@ def configure_logging(with_orm: bool = False, daemon: bool = False, daemon_log_f
 
         config['handlers']['database'] = {
             'level': get_config_option('logging.database_handler'),
-            'class': 'aiida.orm.utils.log.DBLogHandler',
+            'class': 'aiida._core.orm.utils.log.DBLogHandler',
         }
         config['loggers']['aiida']['handlers'].append('database')
 

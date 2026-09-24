@@ -6,13 +6,13 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Tests for the :class:`aiida.orm.nodes.data.code.containerized.ContainerizedCode` class."""
+"""Tests for the :class:`aiida._core.orm.nodes.data.code.containerized.ContainerizedCode` class."""
 
 import pathlib
 
 import pytest
 
-from aiida.orm.nodes.data.code.containerized import ContainerizedCode
+from aiida._core.orm.nodes.data.code.containerized import ContainerizedCode
 
 
 def test_constructor_raises(aiida_localhost):

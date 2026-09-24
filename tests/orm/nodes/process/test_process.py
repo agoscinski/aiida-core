@@ -1,4 +1,4 @@
-"""Tests for :mod:`aiida.orm.nodes.process.process`."""
+"""Tests for :mod:`aiida._core.orm.nodes.process.process`."""
 
 import tempfile
 from pathlib import Path
@@ -8,16 +8,16 @@ import pytest
 from aiida import orm
 from aiida.engine import ExitCode, ProcessState, launch
 from aiida.orm import Int
-from aiida.orm.nodes.caching import NodeCaching
-from aiida.orm.nodes.process.process import ProcessNode
-from aiida.orm.nodes.process.workflow import WorkflowNode
+from aiida._core.orm.nodes.caching import NodeCaching
+from aiida._core.orm.nodes.process.process import ProcessNode
+from aiida._core.orm.nodes.process.workflow import WorkflowNode
 from aiida.plugins import CalculationFactory
 
 ArithmeticAddCalculation = CalculationFactory('core.arithmetic.add')
 
 
 def test_exit_code():
-    """Test the :meth:`aiida.orm.nodes.process.process.ProcessNode.exit_code` property."""
+    """Test the :meth:`aiida._core.orm.nodes.process.process.ProcessNode.exit_code` property."""
     node = ProcessNode()
     assert node.exit_code is None
 
@@ -76,13 +76,13 @@ def process_nodes():
 
 
 def test_is_valid_cache(process_nodes):
-    """Test the :meth:`aiida.orm.nodes.process.process.ProcessNode.is_valid_cache` property."""
+    """Test the :meth:`aiida._core.orm.nodes.process.process.ProcessNode.is_valid_cache` property."""
     for node, is_valid_cache in process_nodes:
         assert node.base.caching.is_valid_cache == is_valid_cache, node
 
 
 def test_get_builder_restart(aiida_code_installed):
-    """Test :meth:`aiida.orm.nodes.process.process.ProcessNode.get_builder_restart`."""
+    """Test :meth:`aiida._core.orm.nodes.process.process.ProcessNode.get_builder_restart`."""
     inputs = {
         'code': aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash'),
         'x': Int(1),

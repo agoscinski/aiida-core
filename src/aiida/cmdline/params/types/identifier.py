@@ -22,7 +22,7 @@ from aiida.plugins.entry_point import get_entry_point_from_string
 if t.TYPE_CHECKING:
     from importlib_metadata import EntryPoint
 
-    from aiida.orm.utils.loaders import OrmEntityLoader
+    from aiida._core.orm.utils.loaders import OrmEntityLoader
 
 __all__ = ('IdentifierParamType',)
 
@@ -33,7 +33,7 @@ class IdentifierParamType(click.ParamType, ABC):
     the convert method, which attempts to convert a value passed to the command for a parameter with this type,
     to an orm entity. The actual loading of the entity is delegated to the orm class loader. Subclasses of this
     parameter type should implement the `orm_class_loader` method to return the appropriate orm class loader,
-    which should be a subclass of `aiida.orm.utils.loaders.OrmEntityLoader` for the corresponding orm class.
+    which should be a subclass of `aiida._core.orm.utils.loaders.OrmEntityLoader` for the corresponding orm class.
     """
 
     def __init__(self, sub_classes: tuple[str, ...] | None = None):
@@ -94,7 +94,7 @@ class IdentifierParamType(click.ParamType, ABC):
         :raises RuntimeError: if the defined orm class loader is not a subclass of the OrmEntityLoader class
         """
         from aiida.common import exceptions
-        from aiida.orm.utils.loaders import OrmEntityLoader
+        from aiida._core.orm.utils.loaders import OrmEntityLoader
 
         value = super().convert(value, param, ctx)
 

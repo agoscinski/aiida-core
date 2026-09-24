@@ -6,7 +6,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Test running a :class:`~aiida.orm.nodes.data.codes.containerized.ContainerizedCode` code."""
+"""Test running a :class:`~aiida._core.orm.nodes.data.codes.containerized.ContainerizedCode` code."""
 
 from aiida import orm
 from aiida.engine import run_get_node

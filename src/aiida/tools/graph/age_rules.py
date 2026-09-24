@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from aiida.orm import QueryBuilder
-    from aiida.orm.implementation.querybuilder import QueryDictType
+    from aiida._core.orm.implementation.querybuilder import QueryDictType
 
 
 class Operation(metaclass=ABCMeta):
@@ -85,7 +85,7 @@ class QueryRule(Operation, metaclass=ABCMeta):
         super().__init__(max_iterations, track_edges=track_edges)
 
         def get_spec_from_path(query_dict: QueryDictType, idx: int) -> Literal['nodes', 'groups']:
-            from aiida.orm.implementation.querybuilder import GROUP_ENTITY_TYPE_PREFIX
+            from aiida._core.orm.implementation.querybuilder import GROUP_ENTITY_TYPE_PREFIX
 
             entity_type = query_dict['path'][idx]['entity_type']
 

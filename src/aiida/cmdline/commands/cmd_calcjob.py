@@ -267,7 +267,7 @@ def calcjob_cleanworkdir(calcjobs, past_days, older_than, computers, force, exit
     If both are specified, a logical AND is done between the two, i.e. the calcjobs that will be cleaned have been
     modified AFTER [-p option] days from now, but BEFORE [-o option] days from now.
     """
-    from aiida.orm.utils.remote import clean_mapping_remote_paths, get_calcjob_remote_paths
+    from aiida._core.orm.utils.remote import clean_mapping_remote_paths, get_calcjob_remote_paths
 
     if calcjobs:
         if past_days is not None and older_than is not None:

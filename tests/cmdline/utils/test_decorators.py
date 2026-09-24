@@ -35,7 +35,7 @@ def manager(monkeypatch):
     manager = get_manager()
 
     class StorageBackend:
-        """Mock version of :class:`aiida.orm.implementation.storage_backend.StorageBackend`."""
+        """Mock version of :class:`aiida._core.orm.implementation.storage_backend.StorageBackend`."""
 
         def close(self):
             pass

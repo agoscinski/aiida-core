@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Union
 
 if TYPE_CHECKING:
     from .groups import Group
-    from .nodes.node import Node
+    from aiida._core.orm.nodes.node import Node
 
 __all__ = ('EntityExtras',)
 

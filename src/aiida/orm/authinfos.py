@@ -22,8 +22,8 @@ from .pydantic import OrmMetadataField
 from .users import User
 
 if TYPE_CHECKING:
-    from aiida.orm.implementation import StorageBackend
-    from aiida.orm.implementation.authinfos import BackendAuthInfo
+    from aiida._core.orm.implementation import StorageBackend
+    from aiida._core.orm.implementation.authinfos import BackendAuthInfo
     from aiida.transports import Transport
 
 __all__ = ('AuthInfo',)

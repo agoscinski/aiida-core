@@ -318,7 +318,7 @@ class TestVerdiComputerConfigure:
     @pytest.fixture(autouse=True)
     def init_profile(self, run_cli_command):
         """Initialize the profile."""
-        from aiida.orm.utils.builders.computer import ComputerBuilder
+        from aiida._core.orm.utils.builders.computer import ComputerBuilder
 
         self.cli_runner = run_cli_command
         self.user = orm.User.collection.get_default()

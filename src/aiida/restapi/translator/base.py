@@ -433,7 +433,7 @@ class BaseTranslator:
           not identify a unique node
         """
         from aiida.common.exceptions import MultipleObjectsError, NotExistent
-        from aiida.orm.utils.loaders import IdentifierType, get_loader
+        from aiida._core.orm.utils.loaders import IdentifierType, get_loader
 
         loader = get_loader(self._aiida_class)
 

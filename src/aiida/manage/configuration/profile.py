@@ -25,7 +25,7 @@ from .options import parse_option
 
 if TYPE_CHECKING:
     from aiida.orm import Code, Computer, Group, User
-    from aiida.orm.implementation import StorageBackend
+    from aiida._core.orm.implementation import StorageBackend
 
 __all__ = ('Profile',)
 

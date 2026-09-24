@@ -23,8 +23,8 @@ from .pydantic import OrmMetadataField
 
 if TYPE_CHECKING:
     from aiida.orm import Node
-    from aiida.orm.implementation import StorageBackend
-    from aiida.orm.implementation.logs import BackendLog
+    from aiida._core.orm.implementation import StorageBackend
+    from aiida._core.orm.implementation.logs import BackendLog
     from aiida.orm.querybuilder import FilterType, OrderByType
 
 __all__ = ('ASCENDING', 'DESCENDING', 'Log', 'OrderSpecifier')
@@ -94,7 +94,7 @@ class LogCollection(entities.Collection['Log']):
 
         :return: the list of log entries
         """
-        from . import nodes
+        from aiida._core.orm import nodes
 
         if not isinstance(entity, nodes.Node):
             raise Exception('Only node logs are stored')
@@ -259,7 +259,7 @@ class Log(entities.Entity['BackendLog', LogCollection]):
 
     @property
     def node(self) -> Node:
-        from .utils.loaders import load_node
+        from aiida._core.orm.utils.loaders import load_node
 
         return load_node(self.dbnode_id)
 

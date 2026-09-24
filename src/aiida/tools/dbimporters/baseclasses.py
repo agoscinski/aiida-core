@@ -256,7 +256,7 @@ class CifEntry(DbEntry):
         """Returns ASE representation of the CIF.
 
         .. note:: To be removed, as it is duplicated in
-            :py:class:`aiida.orm.nodes.data.cif.CifData`.
+            :py:class:`aiida._core.orm.nodes.data.cif.CifData`.
         """
         from aiida.orm import CifData
 
@@ -265,11 +265,11 @@ class CifEntry(DbEntry):
     def get_cif_node(self, store=False, parse_policy='lazy'):
         """Creates a CIF node, that can be used in AiiDA workflow.
 
-        :return: :py:class:`aiida.orm.nodes.data.cif.CifData` object
+        :return: :py:class:`aiida._core.orm.nodes.data.cif.CifData` object
         """
         import tempfile
 
-        from aiida.orm.nodes.data.cif import CifData
+        from aiida._core.orm.nodes.data.cif import CifData
 
         cifnode = None
 
@@ -305,7 +305,7 @@ class UpfEntry(DbEntry):
     def get_upf_node(self, store=False):
         """Creates an UPF node, that can be used in AiiDA workflow.
 
-        :return: :py:class:`aiida.orm.nodes.data.upf.UpfData` object
+        :return: :py:class:`aiida._core.orm.nodes.data.upf.UpfData` object
         """
         import tempfile
 

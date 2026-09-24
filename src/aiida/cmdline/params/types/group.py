@@ -13,7 +13,7 @@ from __future__ import annotations
 import typing as t
 
 if t.TYPE_CHECKING:
-    from aiida.orm.utils.loaders import GroupEntityLoader
+    from aiida._core.orm.utils.loaders import GroupEntityLoader
 
 import click
 
@@ -62,7 +62,7 @@ class GroupParamType(IdentifierParamType):
 
         :return: the orm entity loader class for this `ParamType`
         """
-        from aiida.orm.utils.loaders import GroupEntityLoader
+        from aiida._core.orm.utils.loaders import GroupEntityLoader
 
         return GroupEntityLoader
 

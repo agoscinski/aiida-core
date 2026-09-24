@@ -1,4 +1,4 @@
-"""Tests for the :class:`aiida.orm.nodes.data.enum.Enum` data plugin."""
+"""Tests for the :class:`aiida._core.orm.nodes.data.enum.Enum` data plugin."""
 
 import enum
 
@@ -6,7 +6,7 @@ import pytest
 
 from aiida.common import links
 from aiida.orm import load_node
-from aiida.orm.nodes.data.enum import EnumData
+from aiida._core.orm.nodes.data.enum import EnumData
 
 
 class DummyEnum(enum.Enum):

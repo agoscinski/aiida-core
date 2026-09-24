@@ -18,7 +18,7 @@ import subprocess
 import sys
 
 from aiida._core.common.warnings import warn_deprecation
-from aiida.transports import cli as transport_cli
+from aiida._core.transports import cli as transport_cli
 from aiida.transports.transport import BlockingTransport, TransportInternalError, TransportPath, has_magic
 
 

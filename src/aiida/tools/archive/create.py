@@ -29,8 +29,8 @@ from aiida.common.progress_reporter import get_progress_reporter
 from aiida.common.utils import DEFAULT_BATCH_SIZE, DEFAULT_FILTER_SIZE, batch_iter
 from aiida.manage import get_manager
 from aiida.orm.entities import EntityTypes
-from aiida.orm.implementation import StorageBackend
-from aiida.orm.utils.links import LinkQuadruple
+from aiida._core.orm.implementation import StorageBackend
+from aiida._core.orm.utils.links import LinkQuadruple
 from aiida.tools.graph.graph_traversers import get_nodes_export, validate_traversal_rules
 
 from .abstract import ArchiveFormatAbstract, ArchiveWriterAbstract

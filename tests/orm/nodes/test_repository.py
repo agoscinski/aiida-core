@@ -1,4 +1,4 @@
-"""Tests for the :mod:`aiida.orm.nodes.repository` module."""
+"""Tests for the :mod:`aiida._core.orm.nodes.repository` module."""
 
 import io
 import pathlib

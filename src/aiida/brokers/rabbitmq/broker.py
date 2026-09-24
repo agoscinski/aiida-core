@@ -162,7 +162,7 @@ class RabbitmqBroker(Broker):
         """Return an instance of :class:`kiwipy.Communicator`."""
         from kiwipy.rmq import RmqThreadCommunicator
 
-        from aiida.orm.utils import serialize
+        from aiida._core.orm.utils import serialize
 
         self._communicator = RmqThreadCommunicator.connect(
             connection_params={'url': self.get_url()},

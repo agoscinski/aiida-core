@@ -13,7 +13,7 @@ from __future__ import annotations
 import typing as t
 
 if t.TYPE_CHECKING:
-    from aiida.orm.utils.loaders import CodeEntityLoader
+    from aiida._core.orm.utils.loaders import CodeEntityLoader
 
 import click
 from click.shell_completion import CompletionItem
@@ -46,7 +46,7 @@ class CodeParamType(IdentifierParamType):
 
         :return: the orm entity loader class for this ParamType
         """
-        from aiida.orm.utils.loaders import CodeEntityLoader
+        from aiida._core.orm.utils.loaders import CodeEntityLoader
 
         return CodeEntityLoader
 

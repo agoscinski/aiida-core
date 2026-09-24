@@ -11,6 +11,9 @@ from pprint import pprint
 AUTO_GENERATED = 'AUTO-GENERATED'
 # Four-space indentation level (must be compatible with the formatter!)
 INDENT = '    '
+# Subpackages moved to private `aiida._core` that are still re-exported from the
+# public second-level facade, e.g. `aiida.orm` re-exports `aiida._core.orm.nodes`.
+CORE_MOVED = {'orm': ['nodes', 'utils'], 'transports': ['plugins']}
 
 
 def isort_alls(alls: set[str]) -> list[str]:
@@ -65,8 +68,9 @@ def parse_all(folder_path: Path) -> tuple[dict, dict]:
         if all_token is None:
             continue
 
-        # Warn if private module contains __all__
-        if path.name.startswith('_'):
+        # Warn if private module contains __all__ (`aiida._core` is exempt: it holds
+        # the private implementation whose `__all__` is consumed by the public facades)
+        if path.name.startswith('_') and '_core' not in path.relative_to(folder_path).parts:
             bad_all.setdefault('__all__ in private module', []).append(str(path.relative_to(folder_path)))
 
         if not isinstance(all_token.value, (ast.List, ast.Tuple)):
@@ -83,7 +87,7 @@ def parse_all(folder_path: Path) -> tuple[dict, dict]:
 
         path_dict = all_dict
         for part in path.parent.relative_to(folder_path).parts:
-            if part.startswith('_'):
+            if part.startswith('_') and '_core' not in path.relative_to(folder_path).parts:
                 bad_all.setdefault('__all__ in private package', []).append(str(path.relative_to(folder_path)))
                 continue
             path_dict = path_dict.setdefault(part, {})
@@ -119,6 +123,10 @@ def write_inits(folder_path: Path, all_dict: dict, skip_children: dict[str, list
 
         rel_path = path.parent.relative_to(folder_path).as_posix()
 
+        if rel_path == '_core' or rel_path.startswith('_core/'):
+            # private implementation keeps hand-written minimal `__init__.py` files
+            continue
+
         # get sub_dict for this folder
         path_all_dict = all_dict
         mod_path = path.parent.relative_to(folder_path).parts
@@ -139,6 +147,18 @@ def write_inits(folder_path: Path, all_dict: dict, skip_children: dict[str, list
             }
             alls = gather_all(list(mod_path), path_all_dict, skip_children)
 
+            # merge names re-exported from the private `aiida._core` implementation
+            core_imports = []
+            if len(mod_path) == 1 and mod_path[0] in CORE_MOVED:
+                pkg = mod_path[0]
+                for key in CORE_MOVED[pkg]:
+                    try:
+                        core_dict = all_dict['_core'][pkg][key]
+                    except KeyError:
+                        continue
+                    core_imports.append(f'from aiida._core.{pkg}.{key} import *')
+                    alls.extend(gather_all(['_core', pkg, key], core_dict, skip_children))
+
             # check for non-unique imports
             if len(alls + list(path_all_dict)) != len(set(alls + list(path_all_dict))):
                 non_unique[rel_path] = [k for k, v in Counter(alls + list(path_all_dict)).items() if v > 1]
@@ -147,6 +167,7 @@ def write_inits(folder_path: Path, all_dict: dict, skip_children: dict[str, list
                 ['', f'# {AUTO_GENERATED}']
                 + ['', '# fmt: off', '']
                 + [f'from .{mod} import *' for mod in sorted(path_all_dict.keys())]
+                + sorted(core_imports)
                 + ['', '__all__ = (']
                 + [f'{INDENT}{a!r},' for a in isort_alls(set(alls))]
                 + [')', '', '# fmt: on', '']

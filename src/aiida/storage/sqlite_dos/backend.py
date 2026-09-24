@@ -28,7 +28,7 @@ from aiida.common.log import AIIDA_LOGGER
 from aiida._core.common.pydantic import AiiDABaseModel, MetadataField
 from aiida.manage.configuration.profile import Profile
 from aiida.manage.configuration.settings import AiiDAConfigDir
-from aiida.orm.implementation import BackendEntity
+from aiida._core.orm.implementation import BackendEntity
 from aiida.storage.log import MIGRATE_LOGGER
 from aiida.storage.psql_dos.models.settings import DbSetting
 from aiida.storage.sqlite_zip import models, orm

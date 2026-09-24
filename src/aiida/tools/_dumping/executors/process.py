@@ -24,7 +24,7 @@ from aiida import orm
 from aiida.common import LinkType
 from aiida._core.common import timezone
 from aiida.common.log import AIIDA_LOGGER
-from aiida.orm.utils import LinkTriple
+from aiida._core.orm.utils import LinkTriple
 from aiida.tools._dumping.config import DumpMode
 from aiida.tools._dumping.tracking import DumpRecord
 from aiida.tools._dumping.utils import DumpPaths, registry_name_for

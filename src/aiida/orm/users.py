@@ -19,8 +19,8 @@ from . import entities
 from .pydantic import OrmMetadataField
 
 if TYPE_CHECKING:
-    from aiida.orm.implementation import StorageBackend
-    from aiida.orm.implementation.users import BackendUser
+    from aiida._core.orm.implementation import StorageBackend
+    from aiida._core.orm.implementation.users import BackendUser
 
 __all__ = ('User',)
 

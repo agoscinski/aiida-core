@@ -11,7 +11,7 @@ Note that the backend implementation is enforced and handled with a composition 
 :func:`QueryBuilder` is the frontend class that the user can use. It inherits from *object* and contains
 backend-specific functionality. Backend specific functionality is provided by the implementation classes.
 
-These inherit from :func:`aiida.orm.implementation.querybuilder.BackendQueryBuilder`,
+These inherit from :func:`aiida._core.orm.implementation.querybuilder.BackendQueryBuilder`,
 an interface classes which enforces the implementation of its defined methods.
 An instance of one of the implementation classes becomes a member of the :func:`QueryBuilder` instance
 when instantiated by the user.
@@ -37,7 +37,7 @@ from aiida.common.log import AIIDA_LOGGER
 from aiida._core.common.warnings import warn_deprecation
 from aiida.manage import get_manager
 from aiida.orm.entities import EntityTypes
-from aiida.orm.implementation.querybuilder import (
+from aiida._core.orm.implementation.querybuilder import (
     GROUP_ENTITY_TYPE_PREFIX,
     BackendQueryBuilder,
     EntityRelationships,
@@ -45,11 +45,12 @@ from aiida.orm.implementation.querybuilder import (
     QueryDictType,
 )
 
-from . import authinfos, comments, computers, convert, entities, fields, groups, logs, nodes, users
+from . import authinfos, comments, computers, entities, fields, groups, logs, users
+from aiida._core.orm import convert, nodes
 
 if TYPE_CHECKING:
     from aiida.engine import Process
-    from aiida.orm.implementation import StorageBackend
+    from aiida._core.orm.implementation import StorageBackend
 
 __all__ = ('QueryBuilder',)
 
@@ -817,7 +818,7 @@ class QueryBuilder:
             # Will project the ORM instance
             qb.add_projection('struc', '*')
             print type(qb.first()[0])
-            # >>> aiida.orm.nodes.data.structure.StructureData
+            # >>> aiida._core.orm.nodes.data.structure.StructureData
 
         The double star ``**`` projects all possible projections of this entity:
 
@@ -1241,11 +1242,11 @@ def _get_ormclass_from_cls(cls: EntityClsType) -> tuple[EntityTypes, Classifier]
     :returns: the ORM class as well as a dictionary with additional classifier strings
 
     Note: the ormclass_type_string is currently hardcoded for group, computer etc. One could instead use something like
-        aiida.orm.utils.node.get_type_string_from_class(cls.__module__, cls.__name__)
+        aiida._core.orm.utils.node.get_type_string_from_class(cls.__module__, cls.__name__)
     """
     # Note: Unable to move this import to the top of the module for some reason
     from aiida.engine import Process
-    from aiida.orm.utils.node import is_valid_node_type_string
+    from aiida._core.orm.utils.node import is_valid_node_type_string
 
     classifiers: Classifier
 
@@ -1296,7 +1297,7 @@ def _get_ormclass_from_str(type_string: str) -> tuple[EntityTypes, Classifier]:
     :param query: an instance of the appropriate QueryBuilder backend.
     :returns: the ORM class as well as a dictionary with additional classifier strings
     """
-    from aiida.orm.utils.node import is_valid_node_type_string
+    from aiida._core.orm.utils.node import is_valid_node_type_string
 
     classifiers: Classifier
     type_string_lower = type_string.lower()
@@ -1332,7 +1333,7 @@ def _get_node_type_filter(classifiers: Classifier, subclassing: bool) -> dict:
     :returns: dictionary in QueryBuilder filter language to pass into {"type": ... }
     """
     from aiida._core.common.escaping import escape_for_sql_like
-    from aiida.orm.utils.node import get_query_type_from_type_string
+    from aiida._core.orm.utils.node import get_query_type_from_type_string
 
     value = classifiers.ormclass_type_string
 

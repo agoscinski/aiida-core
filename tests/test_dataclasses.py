@@ -18,8 +18,8 @@ import pytest
 from aiida.common.exceptions import ModificationNotAllowed
 from aiida.common.utils import Capturing
 from aiida.orm import ArrayData, BandsData, CifData, Dict, KpointsData, StructureData, TrajectoryData, load_node
-from aiida.orm.nodes.data.cif import has_pycifrw
-from aiida.orm.nodes.data.structure import (
+from aiida._core.orm.nodes.data.cif import has_pycifrw
+from aiida._core.orm.nodes.data.structure import (
     Kind,
     Site,
     _atomic_masses,
@@ -347,7 +347,7 @@ Te2 0.00000 0.00000 0.79030 0.01912
         """Tests CifData.pycifrw_from_cif()"""
         import re
 
-        from aiida.orm.nodes.data.cif import pycifrw_from_cif
+        from aiida._core.orm.nodes.data.cif import pycifrw_from_cif
 
         datablocks = [
             {
@@ -407,7 +407,7 @@ _publ_section_title                     'Test CIF'
         """Tests CifData.pycifrw_from_cif() - check syntax pb in PyCifRW 3.6."""
         import re
 
-        from aiida.orm.nodes.data.cif import pycifrw_from_cif
+        from aiida._core.orm.nodes.data.cif import pycifrw_from_cif
 
         datablocks = [
             {
@@ -780,7 +780,7 @@ _tag   {'a' * 5000}
 
 
 class TestKindValidSymbols:
-    """Tests the symbol validation of the aiida.orm.nodes.data.structure.Kind class."""
+    """Tests the symbol validation of the aiida._core.orm.nodes.data.structure.Kind class."""
 
     def test_bad_symbol(self):
         """Should not accept a non-existing symbol."""

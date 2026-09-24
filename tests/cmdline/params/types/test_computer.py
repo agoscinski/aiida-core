@@ -14,7 +14,7 @@ import pytest
 
 from aiida import orm
 from aiida.cmdline.params.types import ComputerParamType
-from aiida.orm.utils.loaders import OrmEntityLoader
+from aiida._core.orm.utils.loaders import OrmEntityLoader
 
 
 @pytest.fixture

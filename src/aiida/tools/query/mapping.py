@@ -95,8 +95,8 @@ class CalculationProjectionMapper(ProjectionMapper):
         projection_formatters: dict[str, Callable[[Any], str]] | None = None,
     ):
         from aiida.orm import ProcessNode
-        from aiida.orm.nodes.caching import NodeCaching
-        from aiida.orm.utils.mixins import Sealable
+        from aiida._core.orm.nodes.caching import NodeCaching
+        from aiida._core.orm.utils.mixins import Sealable
 
         self._valid_projections = projections
 
