@@ -963,7 +963,7 @@ def test_direct_interactive(run_cli_command, non_interactive_editor):
 
 def test_computer_test_stderr(run_cli_command, aiida_localhost, monkeypatch):
     """Test `verdi computer test` where tested command returns non-empty stderr."""
-    from aiida.transports.plugins.local import LocalTransport
+    from aiida._core.transports.plugins.local import LocalTransport
 
     aiida_localhost.configure()
     stderr = 'spurious output in standard error'
@@ -980,7 +980,7 @@ def test_computer_test_stderr(run_cli_command, aiida_localhost, monkeypatch):
 
 def test_computer_test_stdout(run_cli_command, aiida_localhost, monkeypatch):
     """Test `verdi computer test` where tested command returns non-empty stdout."""
-    from aiida.transports.plugins.local import LocalTransport
+    from aiida._core.transports.plugins.local import LocalTransport
 
     aiida_localhost.configure()
     stdout = 'spurious output in standard output'
@@ -1057,7 +1057,7 @@ def test_computer_goto(run_cli_command, aiida_localhost):
 
     # Test when gotocomputer_command raises NotImplementedError
     with patch(
-        'aiida.transports.plugins.local.LocalTransport.gotocomputer_command',
+        'aiida._core.transports.plugins.local.LocalTransport.gotocomputer_command',
         new=lambda _, __=None: raise_(NotImplementedError('something-BBB')),
     ):
         # The run_cli_command wraps the actual exception into an AssertionError

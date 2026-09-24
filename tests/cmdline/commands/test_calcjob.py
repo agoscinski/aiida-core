@@ -387,7 +387,7 @@ class TestVerdiCalculation:
 
         # Test when gotocomputer_command raises NotImplementedError
         with patch(
-            'aiida.transports.plugins.local.LocalTransport.gotocomputer_command',
+            'aiida._core.transports.plugins.local.LocalTransport.gotocomputer_command',
             new=lambda _, __: raise_(NotImplementedError),
         ):
             result = self.cli_runner.invoke(command.calcjob_gotocomputer, options)

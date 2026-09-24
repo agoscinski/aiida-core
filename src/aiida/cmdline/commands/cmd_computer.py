@@ -693,7 +693,7 @@ class LazyConfigureGroup(VerdiCommandGroup):
         return subcommands
 
     def get_command(self, ctx, name):
-        from aiida.transports import cli as transport_cli
+        from aiida._core.transports import cli as transport_cli
 
         try:
             command = transport_cli.create_configure_cmd(name)
@@ -719,7 +719,7 @@ def computer_configure():
 def computer_config_show(computer, user, defaults, as_option_string):
     """Show the current configuration for a computer."""
     from aiida._core.common.escaping import escape_for_bash
-    from aiida.transports import cli as transport_cli
+    from aiida._core.transports import cli as transport_cli
 
     transport_cls = computer.get_transport_class()
     option_list = [

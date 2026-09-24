@@ -671,7 +671,7 @@ class LocalTransport(BlockingTransport):
         :param path: the path of the given file.
         """
         path = str(path)
-        from aiida.transports.util import FileAttribute
+        from aiida._core.transports.util import FileAttribute
 
         os_attr = os.lstat(os.path.join(self.curdir, path))
         aiida_attr = FileAttribute()

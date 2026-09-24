@@ -6,14 +6,14 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Test :mod:`aiida.transports.plugins.ssh`."""
+"""Test :mod:`aiida._core.transports.plugins.ssh`."""
 
 import logging
 
 import paramiko
 import pytest
 
-from aiida.transports.plugins.ssh import SshTransport
+from aiida._core.transports.plugins.ssh import SshTransport
 from aiida.transports.transport import TransportInternalError
 
 

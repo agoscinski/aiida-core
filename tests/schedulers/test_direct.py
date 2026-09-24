@@ -93,7 +93,7 @@ def test_kill_job(scheduler, tmpdir):
 
     from psutil import Process
 
-    from aiida.transports.plugins.local import LocalTransport
+    from aiida._core.transports.plugins.local import LocalTransport
 
     def run_sleep_100():
         import subprocess

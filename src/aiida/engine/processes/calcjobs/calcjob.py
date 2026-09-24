@@ -733,7 +733,7 @@ class CalcJob(Process):
         """
         from aiida._core.common.folders import SubmitTestFolder
         from aiida.engine.daemon.execmanager import upload_calculation
-        from aiida.transports.plugins.local import LocalTransport
+        from aiida._core.transports.plugins.local import LocalTransport
 
         with LocalTransport() as transport:
             with SubmitTestFolder() as folder:
@@ -755,7 +755,7 @@ class CalcJob(Process):
         from aiida._core.common.folders import SandboxFolder
         from aiida.engine.daemon.execmanager import retrieve_calculation
         from aiida.manage import get_config_option
-        from aiida.transports.plugins.local import LocalTransport
+        from aiida._core.transports.plugins.local import LocalTransport
 
         filepath_sandbox = get_config_option('storage.sandbox') or None
 

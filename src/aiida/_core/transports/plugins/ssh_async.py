@@ -957,7 +957,7 @@ class AsyncSshTransport(AsyncTransport):
         :return: object FixedFieldsAttributeDict
         """
         path = str(path)
-        from aiida.transports.util import FileAttribute
+        from aiida._core.transports.util import FileAttribute
 
         obj_stat = await self.async_backend.lstat(path)
         aiida_attr = FileAttribute()

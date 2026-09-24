@@ -87,8 +87,8 @@ requires-python = '>=3.10'
 'core.always_kill' = 'aiida.calculations.monitors.base:always_kill'
 
 [project.entry-points.'aiida.cmdline.computer.configure']
-'core.local' = 'aiida.transports.plugins.local:CONFIGURE_LOCAL_CMD'
-'core.ssh' = 'aiida.transports.plugins.ssh:CONFIGURE_SSH_CMD'
+'core.local' = 'aiida._core.transports.plugins.local:CONFIGURE_LOCAL_CMD'
+'core.ssh' = 'aiida._core.transports.plugins.ssh:CONFIGURE_SSH_CMD'
 
 [project.entry-points.'aiida.cmdline.data']
 'core.array' = 'aiida.cmdline.commands.cmd_data.cmd_array:array'
@@ -204,9 +204,9 @@ requires-python = '>=3.10'
 [project.entry-points.'aiida.tools.workflows']
 
 [project.entry-points.'aiida.transports']
-'core.local' = 'aiida.transports.plugins.local:LocalTransport'
-'core.ssh' = 'aiida.transports.plugins.ssh:SshTransport'
-'core.ssh_async' = 'aiida.transports.plugins.ssh_async:AsyncSshTransport'
+'core.local' = 'aiida._core.transports.plugins.local:LocalTransport'
+'core.ssh' = 'aiida._core.transports.plugins.ssh:SshTransport'
+'core.ssh_async' = 'aiida._core.transports.plugins.ssh_async:AsyncSshTransport'
 
 [project.entry-points.'aiida.workflows']
 'core.arithmetic.add_multiply' = 'aiida.workflows.arithmetic.add_multiply:add_multiply'

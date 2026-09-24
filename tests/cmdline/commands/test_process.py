@@ -164,7 +164,7 @@ def test_process_kill_failing_transport(
     kill_timeout = 10
 
     # patch a faulty transport open
-    mokeypatch_args = ('aiida.transports.plugins.local.LocalTransport.open', MockFunctions.mock_open)
+    mokeypatch_args = ('aiida._core.transports.plugins.local.LocalTransport.open', MockFunctions.mock_open)
     with fork_worker_context(monkeypatch.setattr, mokeypatch_args):
         node = submit_and_await(make_a_builder(100), ProcessState.WAITING)
         result = await_condition(lambda: get_process_function_report(node), timeout=kill_timeout)
@@ -203,7 +203,7 @@ def test_process_kill_failing_transport_failed_kill(
 
     kill_timeout = 10
 
-    monkeypatch_args = ('aiida.transports.plugins.local.LocalTransport.open', MockFunctions.mock_open)
+    monkeypatch_args = ('aiida._core.transports.plugins.local.LocalTransport.open', MockFunctions.mock_open)
     with fork_worker_context(monkeypatch.setattr, monkeypatch_args):
         node = submit_and_await(make_a_builder(5), ProcessState.WAITING)
 

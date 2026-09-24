@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from aiida.transports.plugins.async_backend import _AsyncSSH, _OpenSSH, get_openssh_version
-from aiida.transports.plugins.ssh_async import AsyncSshTransport
+from aiida._core.transports.plugins.async_backend import _AsyncSSH, _OpenSSH, get_openssh_version
+from aiida._core.transports.plugins.ssh_async import AsyncSshTransport
 
 
 class TestAuthenticationScript:
@@ -91,7 +91,7 @@ class TestDataNodeHost:
             connections[host] = connection
             return connection
 
-        return connections, patch('aiida.transports.plugins.async_backend.asyncssh.connect', side_effect=fake_connect)
+        return connections, patch('aiida._core.transports.plugins.async_backend.asyncssh.connect', side_effect=fake_connect)
 
     @pytest.mark.asyncio
     async def test_asyncssh_starts_sftp_client_on_data_node(self):
@@ -148,7 +148,7 @@ class TestDataNodeHost:
             return connection
 
         backend = _AsyncSSH('login.hpc', 'dtn.hpc', MagicMock(), 'bash -l ')
-        patcher = patch('aiida.transports.plugins.async_backend.asyncssh.connect', side_effect=fake_connect)
+        patcher = patch('aiida._core.transports.plugins.async_backend.asyncssh.connect', side_effect=fake_connect)
 
         with patcher, pytest.raises(error):
             await backend.open()
@@ -270,15 +270,15 @@ def test_get_openssh_version():
     mock_result.stdout = ''
 
     mock_result.stderr = 'OpenSSH_9.0p1, OpenSSL 3.0.2'
-    with patch('aiida.transports.plugins.async_backend.subprocess.run', return_value=mock_result):
+    with patch('aiida._core.transports.plugins.async_backend.subprocess.run', return_value=mock_result):
         assert get_openssh_version() == 9
 
     mock_result.stderr = 'OpenSSH_8.9p1, OpenSSL 3.0.2'
-    with patch('aiida.transports.plugins.async_backend.subprocess.run', return_value=mock_result):
+    with patch('aiida._core.transports.plugins.async_backend.subprocess.run', return_value=mock_result):
         assert get_openssh_version() == 8
 
     mock_result.stderr = ''
-    with patch('aiida.transports.plugins.async_backend.subprocess.run', return_value=mock_result):
+    with patch('aiida._core.transports.plugins.async_backend.subprocess.run', return_value=mock_result):
         assert get_openssh_version() is None
 
 
@@ -375,7 +375,7 @@ def test_escape_for_scp_version_aware():
 )
 def test_use_sftp_selects_scp_mode(version, use_sftp, expected_use_sftp, expected_options):
     """Test that `use_sftp=False` adds `-O`, but only if the client would otherwise transfer over SFTP."""
-    with patch('aiida.transports.plugins.async_backend.get_openssh_version', return_value=version):
+    with patch('aiida._core.transports.plugins.async_backend.get_openssh_version', return_value=version):
         backend = _OpenSSH('myhpc', 'myhpc', MagicMock(), 'bash ', use_sftp=use_sftp)
 
     assert backend.use_sftp is expected_use_sftp
@@ -385,7 +385,7 @@ def test_use_sftp_selects_scp_mode(version, use_sftp, expected_use_sftp, expecte
 def test_undetectable_openssh_version_warns():
     """Test that an undetectable client version warns that `use_sftp=False` was not applied."""
     logger = MagicMock()
-    with patch('aiida.transports.plugins.async_backend.get_openssh_version', return_value=None):
+    with patch('aiida._core.transports.plugins.async_backend.get_openssh_version', return_value=None):
         backend = _OpenSSH('myhpc', 'myhpc', logger, 'bash ', use_sftp=False)
 
     assert backend.scp_options == []
@@ -396,7 +396,7 @@ def test_undetectable_openssh_version_warns():
 @pytest.mark.parametrize('use_sftp, expected_options', ((True, []), (False, ['-O'])))
 def test_transport_passes_use_sftp_to_openssh_backend(use_sftp, expected_options):
     """Test that the `use_sftp` config option reaches the openssh backend."""
-    with patch('aiida.transports.plugins.async_backend.get_openssh_version', return_value=9):
+    with patch('aiida._core.transports.plugins.async_backend.get_openssh_version', return_value=9):
         transport = AsyncSshTransport(machine='myhpc', backend='openssh', use_sftp=use_sftp)
 
     assert transport.async_backend.scp_options == expected_options
