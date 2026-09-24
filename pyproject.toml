@@ -520,6 +520,11 @@ select = [
 [tool.ruff.lint.pyflakes]
 extend-generics = ["aiida.orm.entities.Entity", "aiida.orm.entities.Collection"]
 
+# The import order in this file is load-bearing (see comment in the file): `querybuilder`
+# must come last or a circular import breaks `aiida._core.orm.implementation`-first entry.
+[tool.ruff.lint.per-file-ignores]
+'src/aiida/_core/orm/implementation/__init__.py' = ['I001']
+
 [tool.tox]
 legacy_tox_ini = """
 [tox]
