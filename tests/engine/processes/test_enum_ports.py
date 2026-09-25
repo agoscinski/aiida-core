@@ -59,7 +59,7 @@ def test_a_member_is_stored_as_the_enum_it_belongs_to(member):
 
 
 def test_a_container_field_holds_a_member():
-    """A field of a container is a port like any other, so it keeps the enum the same way."""
+    """A field of a structured type is a port like any other, so it keeps the enum the same way."""
     results, node = run_get_node(reads_a_container, given={'spin': Spin.COLLINEAR, 'mode': Plain.SLOW})
 
     assert isinstance(node.inputs.given.spin, EnumData)
