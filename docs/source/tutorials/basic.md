@@ -278,14 +278,14 @@ More details for how to {ref}`run external codes <how-to:run-codes>`.
 Let's begin by setting up the computer using the ``verdi computer`` subcommand:
 
 ```console
-$ verdi computer setup -L tutor -H localhost -A core.local -S core.direct -w `echo $PWD/work` --safe-interval 1 -n
+$ verdi computer setup core.local -L tutor -H localhost -S core.direct -w `echo $PWD/work` --safe-interval 1 -n
 ```
 
 This command sets up the computer with the following options:
 
 - *label* (`-L`): tutor
 - *hostname* (`-H`): localhost
-- *authentication* (`-A`): local
+- *transport*: `core.local`
 - *scheduler* (`-S`): direct
 - *work-dir* (`-w`): The `work` subdirectory of the current directory
 - *safe interval* (`--safe-interval`): 1 second between connections
@@ -305,7 +305,7 @@ This command sets up a code with *label* `add` on the *computer* `tutor`, using 
 ```{code-cell} ipython3
 :tags: ["hide-cell"]
 
-%verdi computer setup -L tutor -H localhost -A core.local -S core.direct -w /tmp --safe-interval 0 -n
+%verdi computer setup core.local -L tutor -H localhost -S core.direct -w /tmp --safe-interval 0 -n
 %verdi code create core.code.installed --label add --computer=tutor --default-calc-job-plugin core.arithmetic.add --filepath-executable=/bin/bash -n
 ```
 

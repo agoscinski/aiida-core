@@ -18,6 +18,7 @@ from math import isclose
 import click
 
 from aiida.cmdline.commands.cmd_verdi import verdi
+from aiida.cmdline.groups.dynamic import DynamicEntryPointCommandGroup
 from aiida.cmdline.params import arguments, options
 from aiida.cmdline.params.options.commands import computer as options_computer
 from aiida.cmdline.utils import echo, echo_tabulate
@@ -270,26 +271,45 @@ def set_computer_builder(ctx, param, value):
     return value
 
 
-@verdi_computer.command('setup', context_settings={'ignore_unknown_options': True, 'allow_extra_args': True})
-@options_computer.LABEL()
-@options_computer.HOSTNAME()
-@options_computer.DESCRIPTION()
-@options_computer.AUTHENTICATION()
-@options_computer.SCHEDULER()
-@options_computer.SHEBANG()
-@options_computer.WORKDIR()
-@options_computer.MPI_RUN_COMMAND()
-@options_computer.MPI_PROCS_PER_MACHINE()
-@options_computer.DEFAULT_MEMORY_PER_MACHINE()
-@options_computer.USE_DOUBLE_QUOTES()
-@options_computer.PREPEND_TEXT()
-@options_computer.APPEND_TEXT()
-@click.option('--auth-params', type=click.UNPROCESSED, hidden=True)
-@options.NON_INTERACTIVE()
-@options.CONFIG_FILE()
-@click.pass_context
+class ComputerSetupGroup(DynamicEntryPointCommandGroup):
+    """Expose transport plugins as setup commands with their authentication options."""
+
+    def list_options(self, entry_point):
+        """Return authentication options for a transport plugin."""
+        from aiida.transports.cli import list_transport_options
+
+        return list_transport_options(entry_point)
+
+    def create_options(self, entry_point):
+        """Apply computer and transport options, flattening setup YAML authentication parameters."""
+        from aiida.cmdline.params.options.config import yaml_config_file_provider
+
+        def config_provider(handle, command_name):
+            config = yaml_config_file_provider(handle, command_name)
+            transport = config.pop('auth', entry_point)
+            if transport != entry_point:
+                msg = f'Transport `{transport}` in config does not match `{entry_point}`.'
+                raise ValueError(msg)
+            auth_params = config.pop('auth_params', {})
+            if not isinstance(auth_params, dict):
+                msg = 'Expected a mapping of transport options under `auth_params`.'
+                raise ValueError(msg)
+            return {**config, **auth_params}
+
+        def apply_options(func):
+            func = options.NON_INTERACTIVE()(func)
+            func = options.CONFIG_FILE(provider=config_provider)(func)
+            for option in reversed(self.list_options(entry_point)):
+                func = option(func)
+            for option in reversed(self.shared_options or []):
+                func = option(func)
+            return func
+
+        return apply_options
+
+
 @with_dbenv()
-def computer_setup(ctx, non_interactive, **kwargs):
+def create_computer(ctx, transport_cls, **kwargs):
     """Create a new computer.
 
     Transport-specific authentication options can be passed alongside the setup options.
@@ -297,14 +317,8 @@ def computer_setup(ctx, non_interactive, **kwargs):
     """
     from aiida.orm.utils.builders.computer import ComputerBuilder
 
-    # Parse transport-specific options after the computer exists, so their defaults can
-    # depend on its hostname and on the user's existing configuration.
-    auth_params = kwargs.pop('auth_params') or {}
-    if not isinstance(auth_params, dict):
-        raise click.BadParameter('Expected a mapping of transport options.', param_hint='auth_params')
-    configure_args = [*ctx.args, kwargs['label']]
-    if non_interactive:
-        configure_args.append('--non-interactive')
+    transport_type = click.get_current_context().info_name
+    auth_params = {name: kwargs.pop(name) for name in transport_cls.auth_options}
 
     if kwargs['label'] in get_computer_names():
         echo.echo_critical(
@@ -313,7 +327,7 @@ def computer_setup(ctx, non_interactive, **kwargs):
             'computer starting from the settings of {c}.'.format(c=kwargs['label'])
         )
 
-    kwargs['transport'] = kwargs.pop('auth').name
+    kwargs['transport'] = transport_type
     kwargs['scheduler'] = kwargs['scheduler'].name
 
     computer_builder = ComputerBuilder(**kwargs)
@@ -329,7 +343,37 @@ def computer_setup(ctx, non_interactive, **kwargs):
     else:
         echo.echo_success(f'Computer<{computer.pk}> {computer.label} created')
 
-    _configure_new_computer(ctx, computer, configure_args, auth_params)
+    from aiida import orm
+
+    try:
+        computer.configure(**auth_params)
+    except BaseException:
+        orm.Computer.collection.delete(computer.pk)
+        raise
+
+
+@verdi_computer.group(
+    'setup',
+    cls=ComputerSetupGroup,
+    command=create_computer,
+    entry_point_group='aiida.transports',
+    shared_options=[
+        options_computer.LABEL(),
+        options_computer.HOSTNAME(),
+        options_computer.DESCRIPTION(),
+        options_computer.SCHEDULER(),
+        options_computer.SHEBANG(),
+        options_computer.WORKDIR(),
+        options_computer.MPI_RUN_COMMAND(),
+        options_computer.MPI_PROCS_PER_MACHINE(),
+        options_computer.DEFAULT_MEMORY_PER_MACHINE(),
+        options_computer.USE_DOUBLE_QUOTES(),
+        options_computer.PREPEND_TEXT(),
+        options_computer.APPEND_TEXT(),
+    ],
+)
+def computer_setup():
+    """Set up a computer for the default user using a transport plugin."""
 
 
 def _configure_new_computer(ctx, computer, args, auth_params):

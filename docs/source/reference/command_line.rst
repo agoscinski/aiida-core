@@ -129,7 +129,7 @@ Below is a list with all available subcommands.
       goto       Open a shell connecting to the remote computer.
       list       List all available computers.
       relabel    Relabel a computer.
-      setup      Create a new computer.
+      setup      Set up a computer for the default user using a transport plugin.
       show       Show detailed information for a computer.
       test       Test the connection to a computer.
 

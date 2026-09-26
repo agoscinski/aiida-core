@@ -41,7 +41,7 @@ sed -i "s|PLACEHOLDER_REMOTE_ABS_PATH_DOUBLER|${CONFIG}/doubler.sh|" "${CONFIG}/
 verdi setup --non-interactive --config "${CONFIG}/profile.yaml"
 
 # set up localhost computer
-verdi computer setup --non-interactive --config "${CONFIG}/localhost.yaml"
+verdi computer setup core.local --non-interactive --config "${CONFIG}/localhost.yaml"
 verdi computer configure core.local localhost --config "${CONFIG}/localhost-config.yaml"
 verdi computer test localhost
 verdi code create core.code.installed --non-interactive --config "${CONFIG}/doubler.yaml"
@@ -49,7 +49,7 @@ verdi code create core.code.installed --non-interactive --config "${CONFIG}/add.
 verdi code create core.code.containerized --non-interactive --config "${CONFIG}/add-containerized.yaml"
 
 # set up slurm-ssh computer
-verdi computer setup --non-interactive --config "${CONFIG}/slurm-ssh.yaml"
+verdi computer setup core.ssh --non-interactive --config "${CONFIG}/slurm-ssh.yaml"
 verdi computer configure core.ssh slurm-ssh --non-interactive --config "${CONFIG}/slurm-ssh-config.yaml" -n  # needs slurm container
 verdi computer test slurm-ssh --print-traceback
 

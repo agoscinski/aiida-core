@@ -70,7 +70,7 @@ Start the interactive setup with:
 
 .. code-block:: console
 
-    $ verdi computer setup
+    $ verdi computer setup core.ssh
 
 At the end, the command will open your default editor on a file containing a summary of the configuration up to this point.
 You can add ``bash`` commands that will be executed
@@ -98,7 +98,7 @@ The command then prompts for transport-specific connection details and configure
 
     .. code-block:: console
 
-        $ verdi computer setup --config computer.yml
+        $ verdi computer setup core.local --config computer.yml
 
     where ``computer.yml`` is a configuration file in the `YAML format <https://en.wikipedia.org/wiki/YAML#Syntax>`__.
     This file contains the information in a series of key-value pairs:
@@ -123,7 +123,7 @@ The command then prompts for transport-specific connection details and configure
 
     .. code-block:: console
 
-        $ verdi computer setup --help
+        $ verdi computer setup core.local --help
 
     Note: remove the ``--`` prefix and replace dashes (``-``) within the keys with an underscore ( ``_`` ).
 
@@ -136,7 +136,7 @@ Pass transport-specific connection details when setting up the computer, for exa
 
 .. code-block:: console
 
-    $ verdi computer setup --auth core.ssh --host login.example.org
+    $ verdi computer setup core.ssh --host login.example.org
 
 You can also put transport-specific settings under ``auth_params`` in the setup YAML file.
 

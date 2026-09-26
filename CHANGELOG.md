@@ -9,7 +9,7 @@
 Computer setup now configures authentication for the default user in the same step. This changes the computer configuration interface:
 
 - `verdi computer configure` (including `configure show`) has been removed. Pass authentication options to `verdi computer setup` instead; `verdi computer duplicate` also configures the new computer. Scripts that configure an existing computer or a non-default user with the removed command must be adapted.
-- The computer setup and duplicate option `--transport` (`-T`) is replaced by `--auth` (`-A`). Setup YAML files and `verdi computer export setup` now use the key `auth` instead of `transport`; put connection settings under `auth_params` in setup YAML files.
+- Select the transport for setup as a subcommand (e.g. `verdi computer setup core.ssh`); the setup option `--transport` (`-T`) is removed. The duplicate option `--transport` (`-T`) is replaced by `--auth` (`-A`). Setup YAML files and `verdi computer export setup` use the key `auth` instead of `transport`; put connection settings under `auth_params` in setup YAML files.
 - `Computer.configure()` no longer accepts a `User` and configures only the computer's profile default user. To configure a specific user through the Python API, create and store an `aiida.orm.AuthInfo` for the computer and user, supplying `auth_params` as needed. Do not rely on the internal `Computer._configure_user()` in plugin code.
 
 #### Other breaking changes

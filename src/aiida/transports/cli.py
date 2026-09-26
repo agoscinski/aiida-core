@@ -80,7 +80,14 @@ def interactive_default(key, also_non_interactive=False):
         computer = ctx.params.get('computer', None)
 
         if computer is None:
-            return None
+            if ctx.parent is None or ctx.parent.command.name != 'setup':
+                return None
+            computer = orm.Computer(
+                label=ctx.params.get('label') or 'new-computer',
+                hostname=ctx.params.get('hostname') or 'localhost',
+                transport_type=ctx.info_name,
+            )
+            return transport_option_default(key, computer)
 
         try:
             authinfo = orm.AuthInfo.collection.get(dbcomputer_id=computer.pk, aiidauser_id=user.pk)
