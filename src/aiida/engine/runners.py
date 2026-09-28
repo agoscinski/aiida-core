@@ -23,6 +23,7 @@ from aiida.brokers import communicator as broker_communicator
 from aiida.brokers.filters import BroadcastFilter
 from aiida.common import exceptions
 from aiida.engine import transports, utils
+from aiida.engine.daemon.environment import validate_submission_environment
 from aiida.engine.processes import Process, ProcessBuilder, ProcessState, futures
 from aiida.engine.processes.calcjobs import manager
 from aiida.engine.processes.communications import RemoteProcessThreadController, wrap_communicator
@@ -184,6 +185,11 @@ class Runner:
         """
         assert not utils.is_process_function(process), 'Cannot submit a process function'
         assert not self._closed
+
+        if self._broker_submit:
+            # Instantiating stores the node, so refuse an incompatible daemon before creating one.
+            if drift := validate_submission_environment():
+                raise exceptions.ConfigurationError(drift)
 
         inputs = utils.prepare_inputs(inputs, **kwargs)
         process_inited = self.instantiate_process(process, **inputs)

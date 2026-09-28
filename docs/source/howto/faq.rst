@@ -67,6 +67,10 @@ That is to say, if the safe interval is set to 60 seconds, any single worker is 
 Why would a process that runs fine locally raise an exception when submitted to the daemon?
 ===========================================================================================
 This is almost always caused by an import issue.
+
+.. note::
+    A class defined in a Jupyter notebook cell, or in a script run as ``__main__``, is carried in the checkpoint. Broker submission of any process class is refused if the running daemon has a different Python binary or package versions, or its import paths resolve a different AiiDA installation. Run ``verdi daemon restart`` from this environment before submitting again.
+
 To determine exactly what might be going wrong, first :ref:`increase the logging verbosity <intro:increase-logging-verbosity>` by running:
 
 .. code-block:: console

@@ -13,6 +13,7 @@ import threading
 import pytest
 
 from aiida.calculations.arithmetic.add import ArithmeticAddCalculation
+from aiida.common.exceptions import ConfigurationError
 from aiida.engine import Process, launch
 from aiida.engine.processes.generic.futures import Future
 from aiida.manage.caching import enable_caching
@@ -106,3 +107,27 @@ def test_run_return_value_cached(aiida_code_installed):
     assert node_cached.base.caching.get_cache_source() == node_source.uuid
     assert sorted(results_cached.keys()) == sorted(results_source.keys())
     assert sorted(results_cached.keys()) == ['remote_folder', 'retrieved', 'sum']
+
+
+class NotebookProc(Proc):
+    """Stands in for a process class defined in a notebook cell, once ``unresolvable_in_main`` has relabelled it."""
+
+
+@pytest.mark.requires_broker
+@pytest.mark.parametrize('process', [Proc, NotebookProc])
+def test_submit_refuses_daemon_drift_before_a_node_exists(manager, monkeypatch, process):
+    """A known environment mismatch refuses every process class before storing its node."""
+    from aiida.engine import runners
+    from aiida.orm import ProcessNode, QueryBuilder
+
+    monkeypatch.setattr(runners, 'validate_submission_environment', lambda: 'Run `verdi daemon restart`')
+    before = QueryBuilder().append(ProcessNode).count()
+    runner = manager.create_runner(broker_submit=True, poll_interval=0.5)
+
+    try:
+        with pytest.raises(ConfigurationError, match='verdi daemon restart'):
+            runner.submit(process, a=Str('input'))
+    finally:
+        runner.close()
+
+    assert QueryBuilder().append(ProcessNode).count() == before

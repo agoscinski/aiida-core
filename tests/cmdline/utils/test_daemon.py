@@ -122,7 +122,7 @@ def test_format_package_state_change_lines_editable_path_disappears(tmp_path):
 def test_validate_python_binary_match():
     """No error when binaries match."""
     version_info = {'packages': {}, 'python_binary': '/usr/bin/python3'}
-    with patch('aiida.cmdline.utils.daemon.sys') as mock_sys:
+    with patch('aiida.engine.daemon.environment.sys') as mock_sys:
         mock_sys.executable = '/usr/bin/python3'
         assert validate_python_binary(version_info) is None
 
@@ -130,7 +130,7 @@ def test_validate_python_binary_match():
 def test_validate_python_binary_mismatch():
     """Error message is returned when binaries differ."""
     version_info = {'packages': {}, 'python_binary': '/old/venv/bin/python'}
-    with patch('aiida.cmdline.utils.daemon.sys') as mock_sys:
+    with patch('aiida.engine.daemon.environment.sys') as mock_sys:
         mock_sys.executable = '/new/venv/bin/python'
         error = validate_python_binary(version_info)
     assert 'different Python binary' in error

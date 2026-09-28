@@ -6,11 +6,10 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Utilities for daemon-related CLI output."""
+"""CLI wrappers for daemon environment checks."""
 
 from __future__ import annotations
 
-import sys
 import typing as t
 
 if t.TYPE_CHECKING:
@@ -19,106 +18,43 @@ if t.TYPE_CHECKING:
 
 def format_package_version_info(version_info: PackageVersionInfo) -> str:
     """Return a human-readable string for package version information."""
-    version = version_info['version']
-    editable_path = version_info.get('editable_path')
+    from aiida.engine.daemon.environment import format_package_version_info as format_info
 
-    if editable_path is not None:
-        return f'{version} @ {editable_path}'
-
-    return version
+    return format_info(version_info)
 
 
 def package_versions_match(package_version: PackageVersionInfo, current_package_version: PackageVersionInfo) -> bool:
     """Return whether daemon and current package version information match."""
-    if package_version['version'] != current_package_version['version']:
-        return False
+    from aiida.engine.daemon.environment import package_versions_match as match
 
-    daemon_path = package_version.get('editable_path')
-    current_path = current_package_version.get('editable_path')
-
-    if daemon_path is None and current_path is None:
-        return True
-
-    if daemon_path is None or current_path is None:
-        return False
-
-    return daemon_path == current_path
+    return match(package_version, current_package_version)
 
 
 def format_package_state_change_lines(
     daemon_packages: PackageVersionSnapshot, current_packages: PackageVersionSnapshot
 ) -> list[str]:
     """Return formatted package-state mismatch lines."""
-    changed: list[str] = []
-    added: list[str] = []
-    removed: list[str] = []
+    from aiida.engine.daemon.environment import format_package_state_change_lines as format_lines
 
-    for package in sorted(set(daemon_packages) | set(current_packages)):
-        package_version = daemon_packages.get(package)
-        current_package_version = current_packages.get(package)
-
-        if package_version is not None and current_package_version is not None:
-            if package_versions_match(package_version, current_package_version):
-                continue
-            changed.append(
-                f'{package} ({format_package_version_info(package_version)} '
-                f'-> {format_package_version_info(current_package_version)})'
-            )
-        elif current_package_version is not None:
-            added.append(f'{package} ({format_package_version_info(current_package_version)})')
-        elif package_version is not None:
-            removed.append(f'{package} ({format_package_version_info(package_version)})')
-
-    lines: list[str] = []
-    if changed:
-        lines.append(f'Changed packages: {", ".join(changed)}')
-    if added:
-        lines.append(f'Added packages: {", ".join(added)}')
-    if removed:
-        lines.append(f'Removed packages: {", ".join(removed)}')
-    return lines
+    return format_lines(daemon_packages, current_packages)
 
 
 def validate_python_binary(env_info: DaemonEnvInfo) -> str | None:
-    """Return an error message if the daemon's Python binary differs from the current one, or None if they match."""
-    if env_info['python_binary'] == sys.executable:
-        return None
+    """Return an error message if the daemon's Python binary differs, or None if it matches."""
+    from aiida.engine.daemon.environment import validate_python_binary as validate
 
-    return (
-        'The daemon is running with a different Python binary than the current one. '
-        'Run `verdi daemon restart` to use the current Python binary.\n'
-        f'Daemon: {env_info["python_binary"]}\n'
-        f'Current: {sys.executable}'
-    )
+    return validate(env_info)
 
 
 def validate_package_versions(env_info: DaemonEnvInfo) -> str | None:
-    """Return an error message if daemon and current package versions differ, or None if they match."""
-    from aiida.engine.daemon.client import DaemonClient
+    """Return an error message if the daemon and current package versions differ, or None if they match."""
+    from aiida.engine.daemon.environment import validate_package_versions as validate
 
-    current_packages = DaemonClient._get_package_version_snapshot()
-    validated = DaemonClient._validate_package_version_snapshot(current_packages)
-    if validated is None:
-        return None
-    change_lines = format_package_state_change_lines(env_info['packages'], validated)
-    if not change_lines:
-        return None
-
-    header = (
-        'The daemon was started with different package versions than currently installed. '
-        'Running processes may use the old versions and behave unexpectedly. '
-        'Run `verdi daemon restart` to pick up the new versions.'
-    )
-    return '\n'.join([header, *change_lines])
+    return validate(env_info)
 
 
 def validate_daemon_env(client: DaemonClient) -> str | None:
-    """Return an error message if the daemon environment differs from the current one, or None if they match."""
-    env_info = client._get_daemon_env_info()
-    if env_info is None:
-        return None
+    """Return an error message if the daemon environment differs, or None if it matches."""
+    from aiida.engine.daemon.environment import validate_daemon_env as validate
 
-    if (error := validate_python_binary(env_info)) is not None:
-        return error
-
-    return validate_package_versions(env_info)
+    return validate(client)
