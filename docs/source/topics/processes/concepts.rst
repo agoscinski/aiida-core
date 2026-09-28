@@ -156,7 +156,7 @@ In order to reconstruct the process from a `checkpoint`, the daemon worker has t
 It does so from the name the checkpoint recorded, which resolves where the class has an :ref:`associated entry point<how-to:plugin-codes:entry-points>` or where :ref:`its module path<how-to:faq:process-not-importable-daemon>` is on the ``PYTHONPATH`` of the daemon workers.
 Where neither reaches it, as for a class defined in a notebook cell, the class is pickled with `cloudpickle <https://github.com/cloudpipe/cloudpickle>`_ and written to a ``checkpoint_classes`` directory beside the ``container`` of the profile's storage, and the checkpoint records the SHA-256 digest of those bytes beside the name, which a load falls back to where the bytes no longer unpickle.
 The modules the class needs and the worker lacks are carried alongside it, worked out from the import paths the daemon recorded when it started.
-Submitting such a class is refused while the daemon runs a different environment, since the modules cannot be worked out from paths leading to another installation and the process would fail in the worker instead.
+Broker submission of any process class is refused when the running daemon has a different Python binary or package versions, or its import paths resolve a different AiiDA installation.
 
 All the daemon runners, when they are launched, subscribe to the process queue and RabbitMQ will distribute the continuation tasks to them as they come in, making sure that each task is only sent to one runner at a time.
 The receiving daemon runner can restore the process instance in memory from the checkpoint that was stored in the database and continue the execution.

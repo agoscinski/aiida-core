@@ -113,53 +113,20 @@ class NotebookProc(Proc):
     """Stands in for a process class defined in a notebook cell, once ``unresolvable_in_main`` has relabelled it."""
 
 
-@pytest.fixture
-def a_class_no_worker_could_load(monkeypatch, unresolvable_in_main):
-    """Return a process class in ``__main__``, with the daemon recording paths that lead somewhere else.
-
-    Together those are the one situation `Runner.submit` refuses: the class has no name a worker resolves, so it
-    has to travel, and nothing believable is recorded about which modules that worker already has.
-    """
-    from aiida.engine.processes import _class_identity
-
-    monkeypatch.setattr(_class_identity, 'get_daemon_import_paths', lambda: ('/somewhere/else',))
-
-    return unresolvable_in_main(NotebookProc)
-
-
 @pytest.mark.requires_broker
-def test_submit_refuses_a_class_the_worker_could_not_load(manager, a_class_no_worker_could_load):
-    """Only submission depends on the daemon's environment, so only submission carries the check.
-
-    Running the same process here needs nothing of it, which is why this cannot live where the checkpoint is
-    written: that runs for both.
-    """
-    runner = manager.create_runner(broker_submit=True, poll_interval=0.5)
-
-    try:
-        with pytest.raises(ConfigurationError, match=r'.*verdi daemon restart.*'):
-            runner.submit(a_class_no_worker_could_load, a=Str('input'))
-    finally:
-        runner.close()
-
-
-@pytest.mark.requires_broker
-def test_submit_refused_before_a_node_exists(manager, a_class_no_worker_could_load):
-    """A refusal leaves no trace, which is why the check runs before the process is instantiated.
-
-    Instantiating stores the node and writes its first checkpoint, so checking afterwards left a `Created` node,
-    its checkpoint and the class's file behind on every attempt, and a user hits this repeatedly until the daemon
-    is restarted.
-    """
+@pytest.mark.parametrize('process', [Proc, NotebookProc])
+def test_submit_refuses_daemon_drift_before_a_node_exists(manager, monkeypatch, process):
+    """A known environment mismatch refuses every process class before storing its node."""
+    from aiida.engine import runners
     from aiida.orm import ProcessNode, QueryBuilder
 
-    before: int = QueryBuilder().append(ProcessNode).count()
+    monkeypatch.setattr(runners, 'validate_submission_environment', lambda: 'Run `verdi daemon restart`')
+    before = QueryBuilder().append(ProcessNode).count()
     runner = manager.create_runner(broker_submit=True, poll_interval=0.5)
 
     try:
-        for _ in range(2):
-            with pytest.raises(ConfigurationError):
-                runner.submit(a_class_no_worker_could_load, a=Str('input'))
+        with pytest.raises(ConfigurationError, match='verdi daemon restart'):
+            runner.submit(process, a=Str('input'))
     finally:
         runner.close()
 

@@ -18,7 +18,6 @@ import pytest
 
 from aiida import orm
 from aiida.common import callables, loaders
-from aiida.common.exceptions import ConfigurationError
 from aiida.engine import calcfunction
 from aiida.engine.processes import _class_identity
 from aiida.engine.processes.persistence import CheckpointSerializable
@@ -316,33 +315,8 @@ def test_the_refusal_to_carry_is_reported_once_per_path_list(caplog: pytest.LogC
     assert caplog.text.count('do not lead back to the files') == 1
 
 
-def submit_check_for(cls, monkeypatch, worker_paths):
-    """Run the policy's check against a worker searching ``worker_paths``.
-
-    That ``Runner.submit`` is what calls it is pinned by ``test_submit_refuses_a_class_the_worker_could_not_load``,
-    since nothing here would notice the call going missing.
-    """
-    monkeypatch.setattr(_class_identity, 'get_daemon_import_paths', lambda: worker_paths)
-
-    _class_identity.identity_policy.refuse_if_the_worker_cannot_load(value=cls, loader=loaders.get_object_loader())
-
-
-def test_a_class_that_has_to_travel_refuses_a_daemon_from_another_installation(monkeypatch: pytest.MonkeyPatch):
-    """Carrying a class whose modules cannot be worked out defers the failure to the worker, where the cause is an
-    import error naming a module the submitter never mentioned. The submission is refused instead, where the
-    ``verdi daemon restart`` that fixes it can still be run.
-    """
-
-    cls = notebook_class(monkeypatch)
-
-    with pytest.raises(ConfigurationError, match=r'.*lead to another installation.*verdi daemon restart.*'):
-        submit_check_for(cls, monkeypatch, ('/somewhere/else',))
-
-
 def test_a_class_that_has_to_travel_is_still_recorded_for_a_local_run(monkeypatch: pytest.MonkeyPatch):
-    """Recording runs for a process running here too, where the daemon's environment decides nothing. Refusing
-    there would take every locally run class defined in a test or a cell with it.
-    """
+    """Recording a class for a local run does not depend on the submission drift check."""
 
     cls = notebook_class(monkeypatch)
 
@@ -350,27 +324,3 @@ def test_a_class_that_has_to_travel_is_still_recorded_for_a_local_run(monkeypatc
 
     assert identity.name == '__main__:NotebookClass'
     assert identity.class_bytes is not None
-
-
-def test_a_name_the_worker_resolves_survives_a_daemon_from_another_installation(monkeypatch: pytest.MonkeyPatch):
-    """The refusal has to reach only the classes that have to travel. Everything with a name behaves as it always
-    did against such a daemon, which is what keeps an ordinary plugin submittable while one is misconfigured.
-    """
-    submit_check_for(ImportableSerializable, monkeypatch, ('/somewhere/else',))  # does not raise
-
-
-def test_nothing_recorded_about_the_worker_refuses_nothing(monkeypatch: pytest.MonkeyPatch):
-    """A daemon may yet be started from here, so submitting before starting one keeps working."""
-
-    cls = notebook_class(monkeypatch)
-
-    submit_check_for(cls, monkeypatch, None)  # does not raise
-
-
-def test_a_daemon_from_this_installation_refuses_nothing(monkeypatch: pytest.MonkeyPatch):
-    """The ordinary case, and the one a refusal must never reach: a class defined in a cell submits to a daemon
-    started from here, because the modules it needs are worked out from that daemon's own paths.
-    """
-    cls = notebook_class(monkeypatch)
-
-    submit_check_for(cls, monkeypatch, tuple(sys.path))  # does not raise

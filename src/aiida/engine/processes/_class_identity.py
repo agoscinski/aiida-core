@@ -26,7 +26,6 @@ from functools import partial
 from types import ModuleType
 
 from aiida.common import callables, loaders
-from aiida.common.exceptions import ConfigurationError
 from aiida.common.log import AIIDA_LOGGER
 from aiida.engine.daemon.client import get_daemon_import_paths
 
@@ -54,28 +53,6 @@ class _WarnOnce:
     def reset(self) -> None:
         """Forget which keys have been emitted, so that a test can watch a warning it has already provoked."""
         self._seen.clear()
-
-
-@dataclasses.dataclass(frozen=True)
-class _RecordPlan:
-    """What a checkpoint is to record for a class, decided before anything is pickled.
-
-    Both what gets written and whether a submission is refused follow from this, so the ordering of the checks
-    behind it lives in one place.
-    """
-
-    name: str
-    """The identifier the loader produced, or a module and qualified name where it produced none."""
-
-    carry: dict[str, ModuleType] | None
-    """The modules to write alongside the class, or ``None`` to keep the name and carry nothing."""
-
-    modules_unknown: bool
-    """Whether the class has to travel and the modules it needs cannot be worked out.
-
-    A worker handed such a checkpoint fails on an import the submission never mentioned, which is why
-    :meth:`_IdentityPolicy.refuse_if_the_worker_cannot_load` exists.
-    """
 
 
 @dataclasses.dataclass(frozen=True)
@@ -182,26 +159,17 @@ class _IdentityPolicy:
 
         return callables.modules_unimportable_by(can_import=partial(callables.module_resolves_in, search_paths=paths))
 
-    @staticmethod
-    def _identifier_of(*, value: type, loader: loaders.ObjectLoader) -> str | None:
-        """Return the identifier the loader builds for ``value``, or ``None`` where it builds none."""
-        with contextlib.suppress(ImportError, AttributeError):
-            return loader.identify_object(obj=value)
-
-        return None
-
-    def _plan_for(self, *, value: type, loader: loaders.ObjectLoader) -> _RecordPlan:
-        """Return what a checkpoint is to record for ``value``, before anything is pickled.
+    def recorded_for(self, *, value: type, loader: loaders.ObjectLoader) -> ClassIdentity:
+        """Record how the worker is to get ``value`` back.
 
         Its identifier suffices whenever the interpreter reading this back resolves that identifier to the same
         object. A class defined in a notebook or a script has no such identifier, since its module is the entry point
         of whichever interpreter is running, so the class travels in the checkpoint instead, together with the
         modules it needs and that worker lacks.
-
-        The identifier is what gets checked, because a process built from a function is identified by that function,
-        while the class built for it carries a name of its own that nothing refers to.
         """
-        identifier: str | None = self._identifier_of(value=value, loader=loader)
+        identifier: str | None = None
+        with contextlib.suppress(ImportError, AttributeError):
+            identifier = loader.identify_object(obj=value)
 
         # Written unverified, so that a checkpoint still records what it holds when read by a human. A class the
         # loader cannot identify at all still gets a name here; the process class bytes are what bring it back.
@@ -209,7 +177,7 @@ class _IdentityPolicy:
 
         if identifier is not None and self._resolves_for_worker(identifier=identifier):
             LOGGER.debug('`%s` resolves for the worker, so the checkpoint records it and carries no class', identifier)
-            return _RecordPlan(name=name, carry=None, modules_unknown=False)
+            return ClassIdentity(name=name, class_bytes=None)
 
         paths: tuple[str, ...] | None = get_daemon_import_paths()
         needed: dict[str, ModuleType] | None = self._modules_to_carry(paths=paths)
@@ -220,7 +188,7 @@ class _IdentityPolicy:
             # only where some interpreter could follow it: ``__main__`` resolves elsewhere, and a nested qualified
             # name is one the loader's own ``module:name`` form cannot express.
             LOGGER.debug('nothing believable is recorded about the worker, so `%s` travels as a name', identifier)
-            return _RecordPlan(name=name, carry=None, modules_unknown=False)
+            return ClassIdentity(name=name, class_bytes=None)
 
         if needed is None and paths is None:
             # A class travelling with no modules is the one case that neither refuses nor carries what it needs: a
@@ -234,40 +202,10 @@ class _IdentityPolicy:
                 name,
             )
 
-        return _RecordPlan(
-            name=name,
-            carry={} if needed is None else needed,
-            # A daemon that recorded nothing leaves nothing to contradict, and one may yet start from here.
-            modules_unknown=needed is None and paths is not None,
-        )
-
-    def refuse_if_the_worker_cannot_load(self, *, value: type, loader: loaders.ObjectLoader) -> None:
-        """Raise where submitting ``value`` would put an unloadable class in front of a worker.
-
-        :raises ConfigurationError: if the class has to travel and the modules it needs cannot be worked out.
-        """
-        if not self._plan_for(value=value, loader=loader).modules_unknown:
-            return
-
-        msg = (
-            f'`{value.__module__}:{value.__qualname__}` has no name a daemon worker resolves, so its class has to '
-            f'travel in the checkpoint, and the modules it needs cannot be worked out: the import paths recorded '
-            f'for the daemon lead to another installation. Run `verdi daemon restart` from this environment, or '
-            f'give the class an entry point.'
-        )
-        raise ConfigurationError(msg)
-
-    def recorded_for(self, *, value: type, loader: loaders.ObjectLoader) -> ClassIdentity:
-        """Record how the worker is to get ``value`` back."""
-        plan: _RecordPlan = self._plan_for(value=value, loader=loader)
-        name: str = plan.name
-
-        if plan.carry is None:
-            return ClassIdentity(name=name, class_bytes=None)
-
         # ``cloudpickle`` writes a class that no module can provide by value, once it is given what to carry.
+        carry: dict[str, ModuleType] = {} if needed is None else needed
         try:
-            class_bytes: bytes = callables.dumps(value=value, carry=plan.carry.values())
+            class_bytes: bytes = callables.dumps(value=value, carry=carry.values())
         except TypeError as exception:
             # A class defined inside a function closes over whatever that function held, which may be a node, and
             # nodes cannot be pickled. Keeping the name leaves such a process exactly as it was, working wherever
@@ -287,7 +225,7 @@ class _IdentityPolicy:
             'the class `%s` travels in the checkpoint as %d bytes, carrying %d modules',
             name,
             len(class_bytes),
-            len(plan.carry),
+            len(carry),
         )
 
         return ClassIdentity(name=name, class_bytes=class_bytes)
