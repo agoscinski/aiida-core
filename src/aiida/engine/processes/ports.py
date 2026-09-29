@@ -21,8 +21,7 @@ from aiida.common.links import validate_link_label
 from aiida.engine.processes.generic import ports
 from aiida.engine.processes.generic.ports import breadcrumbs_to_port
 from aiida.engine.processes.structured import build, fields_of, is_a_plain_class, marked_whole
-from aiida.orm import Bool, Data, Dict, EnumData, Float, Int, List, Node, Str, to_aiida_type
-from aiida.orm.nodes.data.base import BaseType
+from aiida.orm import Bool, Data, Dict, EnumData, Float, Int, List, Node, Str, from_aiida_type, to_aiida_type
 from aiida.orm.nodes.data.jsonable import JsonableData
 
 __all__ = (
@@ -371,11 +370,7 @@ def _unwrapped(value: t.Any) -> t.Any:
 
 def _plain(value: t.Any) -> t.Any:
     """Return the plain Python value a node holds, where it holds one, and the node itself where it does not."""
-    if isinstance(value, EnumData):
-        # The member rather than its value, since the class it belongs to is what was asked for.
-        return value.get_member()
-
-    return value.value if isinstance(value, BaseType) else value
+    return from_aiida_type(value)
 
 
 def as_written(annotation: t.Any, value: t.Any) -> t.Any:
