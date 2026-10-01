@@ -22,7 +22,17 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from aiida.engine.processes.graphs.build import task
-from aiida.engine.processes.graphs.spec import Dependency, Endpoint, GraphSpec, ProcessTask, SubgraphTask
+from aiida.engine.processes.graphs.spec import (
+    CONDITION_PORT,
+    BranchTask,
+    Dependency,
+    Endpoint,
+    GraphSpec,
+    LoopTask,
+    MapGraphTask,
+    ProcessTask,
+    SubgraphTask,
+)
 
 __all__ = ('UnsupportedSyntax', 'parse_graph', 'register_graph', 'register_task')
 
@@ -87,7 +97,7 @@ class _Reference:
 class _Compiler:
     key: str
     stack: tuple[str, ...]
-    tasks: list[ProcessTask | SubgraphTask] = field(default_factory=list)
+    tasks: list[ProcessTask | SubgraphTask | BranchTask | LoopTask | MapGraphTask] = field(default_factory=list)
     dependencies: list[Dependency] = field(default_factory=list)
     inputs: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
     names: dict[str, _Reference] = field(default_factory=dict)
@@ -117,14 +127,14 @@ class _Compiler:
             msg = f'{self.key}: graph must end in a return'
             raise UnsupportedSyntax(msg)
         for statement in statements[:-1]:
-            if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
-                self.reject(statement, 'only single-name assignments are supported')
-            target = statement.targets[0]
-            if not isinstance(target, ast.Name) or target.id in self.names:
-                self.reject(statement, 'assignment must bind a new name')
-            if not isinstance(statement.value, ast.Call):
-                self.reject(statement.value, 'graph assignments must call a registered task or graph')
-            self.names[target.id] = self.call(statement.value)
+            if isinstance(statement, ast.If):
+                self.branch(statement)
+            elif isinstance(statement, ast.While):
+                self.loop(statement)
+            elif isinstance(statement, ast.For):
+                self.map(statement)
+            else:
+                self.assignment(statement)
         result = statements[-1].value
         if result is None:
             self.reject(statements[-1], 'return must name a task or graph input')
@@ -138,6 +148,136 @@ class _Compiler:
             outputs={output.port: Endpoint(task=output.task, port=output.port)},
             identifier=self.key.partition(':')[2],
         )
+
+    def assignment(self, statement: ast.stmt, *, rebind: bool = False) -> str:
+        if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+            self.reject(statement, 'only single-name assignments are supported')
+        target = statement.targets[0]
+        if not isinstance(target, ast.Name) or (target.id in self.names and not rebind):
+            self.reject(statement, 'assignment must bind a new name')
+        if not isinstance(statement.value, ast.Call):
+            self.reject(statement.value, 'graph assignments must call a registered task or graph')
+        self.names[target.id] = self.call(statement.value)
+        return target.id
+
+    def _body(self, outputs: dict[str, _Reference]) -> GraphSpec:
+        return GraphSpec(
+            tasks=tuple(self.tasks),
+            dependencies=tuple(self.dependencies),
+            inputs={name: tuple(targets) for name, targets in self.inputs.items()},
+            outputs={name: Endpoint(task=ref.task, port=ref.port) for name, ref in outputs.items()},
+        )
+
+    def _region(self, statements: list[ast.stmt], *, item: str | None = None) -> _Compiler:
+        # Names read in the body become inputs of the nested graph. Calls are not values.
+        assigned = {
+            target.id
+            for stmt in statements
+            if isinstance(stmt, ast.Assign)
+            for target in stmt.targets
+            if isinstance(target, ast.Name)
+        }
+        callees = {id(node.func) for stmt in statements for node in ast.walk(stmt) if isinstance(node, ast.Call)}
+        reads = {
+            node.id
+            for stmt in statements
+            for node in ast.walk(stmt)
+            if isinstance(node, ast.Name)
+            and isinstance(node.ctx, ast.Load)
+            and node.id not in assigned
+            and node.id != item
+            and id(node) not in callees
+        }
+        names = reads | ({item} if item is not None else set())
+        child = _Compiler(self.key, self.stack)
+        for name in sorted(names):
+            if name != item and name not in self.names:
+                self.reject(statements[0], f'unbound name {name!r}')
+            child.inputs[name] = []
+            child.names[name] = _Reference(None, name)
+        return child
+
+    def _wire(
+        self, instance: str, port: str, value: _Reference | int | float | str | bool, given: dict[str, t.Any]
+    ) -> None:
+        if not isinstance(value, _Reference):
+            given[port] = value
+        elif value.task is None:
+            self.inputs[value.port].append((instance, port))
+        else:
+            self.dependencies.append(Dependency(value.task, instance, value.port, port))
+
+    def _place(self, child: _Compiler, instance: str, given: dict[str, t.Any]) -> None:
+        for name in child.inputs:
+            if name in self.names:
+                self._wire(instance, name, self.names[name], given)
+
+    def branch(self, statement: ast.If) -> None:
+        if not statement.orelse or len(statement.body) != 1 or len(statement.orelse) != 1:
+            self.reject(statement, 'if requires one assignment to the same name on each side')
+        sides = []
+        for statements in (statement.body, statement.orelse):
+            child = self._region(statements)
+            name = child.assignment(statements[0])
+            sides.append((name, child, child._body({'result': child.names[name]})))
+        if sides[0][0] != sides[1][0] or sides[0][0] in self.names:
+            self.reject(statement, 'if requires one new name shared by both sides')
+        if CONDITION_PORT in sides[0][2].inputs or CONDITION_PORT in sides[1][2].inputs:
+            self.reject(statement, 'condition conflicts with a branch input')
+        instance = f'branch_{len(self.tasks) + 1}'
+        given: dict[str, t.Any] = {}
+        self._wire(instance, CONDITION_PORT, self.value(statement.test), given)
+        for name in sorted(set(sides[0][1].inputs) | set(sides[1][1].inputs)):
+            self._wire(instance, name, self.names[name], given)
+        self.tasks.append(BranchTask(name=instance, inputs=given, body=sides[0][2], otherwise=sides[1][2]))
+        self.names[sides[0][0]] = _Reference(instance, 'result')
+
+    def loop(self, statement: ast.While) -> None:
+        if statement.orelse or not isinstance(statement.test, ast.Name) or statement.test.id not in self.names:
+            self.reject(statement, 'while requires a bound condition name and no else')
+        condition = statement.test.id
+        child = self._region(statement.body)
+        # Loop state is read from the previous iteration, including values rebound in the body.
+        assigned = {
+            node.targets[0].id
+            for node in statement.body
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+        }
+        for name in assigned:
+            if name not in self.names:
+                self.reject(statement, f'loop state {name!r} must be initialized before the loop')
+            child.inputs.setdefault(name, [])
+            child.names[name] = _Reference(None, name)
+        if condition not in assigned:
+            self.reject(statement, 'while body must update its condition')
+        for node in statement.body:
+            child.assignment(node, rebind=True)
+        outputs = {name: child.names[name] for name in assigned}
+        body = child._body(outputs)
+        instance = f'loop_{len(self.tasks) + 1}'
+        given: dict[str, t.Any] = {}
+        self._place(child, instance, given)
+        self.tasks.append(LoopTask(name=instance, inputs=given, body=body, condition_port=condition))
+        for name in assigned:
+            self.names[name] = _Reference(instance, name)
+
+    def map(self, statement: ast.For) -> None:
+        if statement.orelse or not isinstance(statement.target, ast.Name) or len(statement.body) != 1:
+            self.reject(statement, 'for requires a single item name and one assignment without else')
+        item = statement.target.id
+        if item in self.names:
+            self.reject(statement.target, 'loop item shadows a bound name')
+        child = self._region(statement.body, item=item)
+        result = child.assignment(statement.body[0])
+        if result in self.names or result == item:
+            self.reject(statement.body[0], 'loop result must bind a new name')
+        body = child._body({'result': child.names[result]})
+        instance = f'each_{len(self.tasks) + 1}'
+        given: dict[str, t.Any] = {}
+        self._wire(instance, item, self.value(statement.iter), given)
+        self._place(child, instance, given)
+        self.tasks.append(MapGraphTask(name=instance, inputs=given, body=body, item_port=item))
+        self.names[result] = _Reference(instance, 'result')
 
     def call(self, expression: ast.expr) -> _Reference:
         if not isinstance(expression, ast.Call) or not isinstance(expression.func, ast.Name):
@@ -176,13 +316,7 @@ class _Compiler:
             if port in given or port not in ports:
                 self.reject(keyword, f'duplicate or unknown input {port!r} of {name!r}')
             value = self.value(keyword.value)
-            if isinstance(value, _Reference):
-                if value.task is None:
-                    self.inputs[value.port].append((instance, port))
-                else:
-                    self.dependencies.append(Dependency(value.task, instance, value.port, port))
-            else:
-                given[port] = value
+            self._wire(instance, port, value, given)
         self.tasks.append(make_task(given))
         return _Reference(instance, next(iter(outputs)))
 

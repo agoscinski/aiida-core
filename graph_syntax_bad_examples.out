@@ -30,7 +30,7 @@ computed_argument:
                      ^
 
 conditional:
-/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:67:5: __main__:conditional: only single-name assignments are supported
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:67:5: __main__:conditional: if requires one assignment to the same name on each side
         if x:
         ^
 
