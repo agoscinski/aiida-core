@@ -33,6 +33,7 @@ from aiida.engine.processes.graphs.spec import (
     ProcessTask,
     SubgraphTask,
 )
+from aiida.engine.processes.ports import infer_valid_type_from_type_annotation
 
 __all__ = ('UnsupportedSyntax', 'parse_graph', 'register_graph', 'register_task')
 
@@ -54,6 +55,7 @@ class _SourceLocation:
 _LOCATIONS: dict[str, _SourceLocation] = {}
 _TASKS: dict[str, t.Any] = {}
 _GRAPHS: set[str] = set()
+_GRAPH_HINTS: dict[str, dict[str, t.Any]] = {}
 
 
 def _key(function: Callable[..., t.Any]) -> str:
@@ -83,7 +85,9 @@ def register_task(function: Callable[..., t.Any]) -> t.Any:
 
 def register_graph(function: Callable[..., t.Any]) -> Callable[..., t.Any]:
     """Save a graph's source without executing its body."""
-    _GRAPHS.add(_register(function))
+    key = _register(function)
+    _GRAPHS.add(key)
+    _GRAPH_HINTS[key] = t.get_type_hints(function)
     return function
 
 
@@ -141,12 +145,18 @@ class _Compiler:
         output = self.value(result, allow_call=True)
         if not isinstance(output, _Reference):
             self.reject(result, 'return must name a task or graph input')
+        hints = _GRAPH_HINTS[self.key]
+        output_hint = infer_valid_type_from_type_annotation(hints.get('return'))
         return GraphSpec(
             tasks=tuple(self.tasks),
             dependencies=tuple(self.dependencies),
             inputs={name: tuple(targets) for name, targets in self.inputs.items()},
             outputs={output.port: Endpoint(task=output.task, port=output.port)},
             identifier=self.key.partition(':')[2],
+            input_typehints={
+                name: hint for name in self.inputs if (hint := infer_valid_type_from_type_annotation(hints.get(name)))
+            },
+            output_typehints={output.port: output_hint} if output_hint else {},
         )
 
     def assignment(self, statement: ast.stmt, *, rebind: bool = False) -> str:
