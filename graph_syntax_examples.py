@@ -8,13 +8,23 @@
 ###########################################################################
 """Minimal, single-output graph syntax compiled without executing graph bodies.
 
-Run ``uv run python graph_syntax_examples.py`` to print the declarations.
+Run ``uv run python graph_syntax_examples.py parse|show|run`` to print the
+GraphSpec, show its task wiring, or execute it using an AiiDA profile.
+``show`` is the default. From Python, call ``parse_graph(single_step)`` and pass
+the result to ``show_graph(spec)`` or ``run_graph(spec, x=2, y=3)``. Execution
+returns AiiDA data nodes; mapped outputs are dictionaries of nodes.
 """
 
 from __future__ import annotations
 
-from aiida.engine import GraphSpec, parse_graph
+import argparse
+import typing as t
+from collections.abc import Callable
+
+from aiida.engine import GraphProcess, GraphSpec, parse_graph, run_get_node
+from aiida.engine.processes.graphs.display import format_graph
 from aiida.engine.processes.graphs.source import graph, task
+from aiida.manage import load_profile
 
 
 @task
@@ -85,8 +95,41 @@ def add_to_each(values: list[int], offset: int) -> list[int]:
     return result  # A collection of results, one per item in values.
 
 
+def show_graph(declaration: GraphSpec) -> None:
+    """Print a readable view of a parsed graph without executing it."""
+    print(format_graph(declaration))
+
+
+def run_graph(declaration: GraphSpec, **inputs: t.Any) -> dict[str, t.Any]:
+    """Execute a parsed graph with the given inputs using the default AiiDA profile."""
+    load_profile()
+    results, node = run_get_node(GraphProcess, **GraphProcess.launch_inputs(declaration, inputs))
+    if not node.is_finished_ok:
+        msg = f'Graph {declaration.identifier} failed: {node.exit_message}'
+        raise RuntimeError(msg)
+    return dict(results)
+
+
 if __name__ == '__main__':
-    for example in (single_step, two_steps, diamond, nested, choose, countdown, add_to_each):
-        declaration: GraphSpec = parse_graph(example)
-        print(example.__name__, declaration.to_dict())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('mode', nargs='?', choices=('parse', 'show', 'run'), default='show')
+    args = parser.parse_args()
+
+    examples: tuple[tuple[Callable[..., t.Any], dict[str, t.Any]], ...] = (
+        (single_step, {'x': 2, 'y': 3}),
+        (two_steps, {'x': 2, 'y': 3}),
+        (diamond, {'x': 2}),
+        (nested, {'x': 2, 'y': 3}),
+        (choose, {'x': 2, 'flag': True}),
+        (countdown, {'x': 3, 'keep_going': True}),
+        (add_to_each, {'values': [1, 2, 3], 'offset': 10}),
+    )
+    for example, inputs in examples:
+        declaration = parse_graph(example)
+        if args.mode == 'parse':
+            print(example.__name__, declaration)
+        elif args.mode == 'show':
+            show_graph(declaration)
+        else:
+            print(example.__name__, run_graph(declaration, **inputs))
     # GraphSpec stores task references and port wiring, not Python annotations.
