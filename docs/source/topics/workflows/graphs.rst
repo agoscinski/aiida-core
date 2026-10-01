@@ -111,21 +111,23 @@ from the source code without executing the graph function:
 
 .. code-block:: python
 
-    from aiida.engine import parse_graph, register_graph, register_task
+    from aiida.engine import parse_graph
+    from aiida.engine.processes.graphs.source import graph, taskh
 
-    @register_task
+    @taskh
     def add(x: int, y: int) -> int:
         return x + y
 
-    @register_graph
+    @graph
     def add_twice(x: int, y: int) -> int:
         first = add(x=x, y=y)
         return add(x=first, y=y)
 
     declaration = parse_graph(add_twice)
 
-These decorators capture source when a module is imported; definitions must be
-at module scope. The parser reads a graph's assignments and calls in source
+The source decorators are imported from a separate module to distinguish
+``graph`` from the graph-builder decorator exported by ``aiida.engine``.
+They capture source when a module is imported; definitions must be at module scope. The parser reads a graph's assignments and calls in source
 order, resolving only tasks and graphs registered in the same module. Task
 bodies are not parsed. It accepts single-name assignments to registered calls,
 keyword arguments that are graph inputs, task outputs or scalar literals, and a

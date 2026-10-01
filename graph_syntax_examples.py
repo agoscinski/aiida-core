@@ -13,54 +13,55 @@ Run ``uv run python graph_syntax_examples.py`` to print the declarations.
 
 from __future__ import annotations
 
-from aiida.engine import GraphSpec, parse_graph, register_graph, register_task
+from aiida.engine import GraphSpec, parse_graph
+from aiida.engine.processes.graphs.source import graph, taskh
 
 
-@register_task
+@taskh
 def add(x: int, y: int) -> int:
     return x + y
 
 
-@register_task
+@taskh
 def multiply(x: int, y: int) -> int:
     return x * y
 
 
-@register_task
+@taskh
 def decrement(x: int) -> int:
     return x - 1
 
 
-@register_task
+@taskh
 def positive(x: int) -> bool:
     return x > 0
 
 
-@register_graph
+@graph
 def single_step(x: int, y: int) -> int:
     return add(x=x, y=y)
 
 
-@register_graph
+@graph
 def two_steps(x: int, y: int) -> int:
     first = add(x=x, y=y)
     return multiply(x=first, y=y)
 
 
-@register_graph
+@graph
 def diamond(x: int) -> int:
     left = add(x=x, y=1)
     right = multiply(x=x, y=2)
     return add(x=left, y=right)
 
 
-@register_graph
+@graph
 def nested(x: int, y: int) -> int:
     first = two_steps(x=x, y=y)
     return add(x=first, y=y)
 
 
-@register_graph
+@graph
 def choose(x: int, flag: bool) -> int:
     if flag:
         selected = add(x=x, y=1)
@@ -69,7 +70,7 @@ def choose(x: int, flag: bool) -> int:
     return selected
 
 
-@register_graph
+@graph
 def countdown(x: int, keep_going: bool) -> int:
     while keep_going:
         x = decrement(x=x)
@@ -77,7 +78,7 @@ def countdown(x: int, keep_going: bool) -> int:
     return x
 
 
-@register_graph
+@graph
 def add_to_each(values: list[int], offset: int) -> list[int]:
     for value in values:
         result = add(x=value, y=offset)

@@ -19,29 +19,28 @@ from aiida.engine import (
     SubgraphTask,
     UnsupportedSyntax,
     parse_graph,
-    register_graph,
-    register_task,
 )
+from aiida.engine.processes.graphs.source import graph, taskh
 
 
-@register_task
+@taskh
 def sum_two(x: int, y: int) -> int:
     return x + y
 
 
-@register_graph
+@graph
 def chain(x: int, y: int) -> int:
     first = sum_two(x=x, y=y)
     return sum_two(x=first, y=y)
 
 
-@register_graph
+@graph
 def outer(x: int, y: int) -> int:
     inner = chain(x=x, y=y)
     return sum_two(x=inner, y=x)
 
 
-@register_graph
+@graph
 def recursive(x: int) -> int:
     return recursive(x=x)
 
@@ -53,39 +52,39 @@ def not_registered(x: int) -> int:
 missing = 1  # A Python global is deliberately not a graph input.
 
 
-@register_graph
+@graph
 def unknown(x: int) -> int:
     return not_registered(x=x)
 
 
-@register_graph
+@graph
 def arbitrary_code(x: int) -> int:
     print('this body must not run')
     return sum_two(x=x, y=1)
 
 
-@register_graph
+@graph
 def unbound(x: int) -> int:
     return sum_two(x=x, y=missing)
 
 
-@register_graph
+@graph
 def bad_assignment(x: int) -> int:
     a = 0
     return sum_two(x=x, y=a)
 
 
-@register_task
+@taskh
 def positive(x: int) -> bool:
     return x > 0
 
 
-@register_task
+@taskh
 def decrement(x: int) -> int:
     return x - 1
 
 
-@register_graph
+@graph
 def choose(x: int, flag: bool) -> int:
     if flag:
         selected = sum_two(x=x, y=1)
@@ -94,7 +93,7 @@ def choose(x: int, flag: bool) -> int:
     return sum_two(x=selected, y=x)
 
 
-@register_graph
+@graph
 def count(x: int, keep_going: bool) -> int:
     while keep_going:
         x = decrement(x=x)
@@ -102,28 +101,28 @@ def count(x: int, keep_going: bool) -> int:
     return x
 
 
-@register_graph
+@graph
 def transform(values: list[int], y: int) -> list[int]:
     for value in values:
         result = sum_two(x=value, y=y)
     return result
 
 
-@register_graph
+@graph
 def missing_else(x: int, flag: bool) -> int:
     if flag:
         chosen = sum_two(x=x, y=1)
     return chosen
 
 
-@register_graph
+@graph
 def unchanged_condition(x: int, flag: bool) -> int:
     while flag:
         x = decrement(x=x)
     return x
 
 
-@register_graph
+@graph
 def unsupported_iteration(values: list[int]) -> int:
     for value in values:
         result = decrement(x=value)

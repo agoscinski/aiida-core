@@ -112,8 +112,6 @@ __all__ = (
     'monitor',
     'parse_graph',
     'process_handler',
-    'register_graph',
-    'register_task',
     'rerun_from',
     'return_',
     'select',

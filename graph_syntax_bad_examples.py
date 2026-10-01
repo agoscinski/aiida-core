@@ -16,10 +16,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from aiida.engine import UnsupportedSyntax, parse_graph, register_graph, register_task
+from aiida.engine import UnsupportedSyntax, parse_graph
+from aiida.engine.processes.graphs.source import graph, taskh
 
 
-@register_task
+@taskh
 def add(x: int, y: int) -> int:
     return x + y
 
@@ -31,59 +32,59 @@ def not_registered(x: int) -> int:
 outside_value = 10  # Globals are not graph inputs, even if Python can see them.
 
 
-@register_graph
+@graph
 def constant_assignment(x: int) -> int:
     value = 0
     return add(x=x, y=value)
 
 
-@register_graph
+@graph
 def call_unregistered(x: int) -> int:
     return not_registered(x=x)
 
 
-@register_graph
+@graph
 def call_positional(x: int) -> int:
     return add(x, 1)
 
 
-@register_graph
+@graph
 def wrong_input(x: int) -> int:
     return add(z=x, y=1)
 
 
-@register_graph
+@graph
 def read_global(x: int) -> int:
     return add(x=x, y=outside_value)
 
 
-@register_graph
+@graph
 def computed_argument(x: int) -> int:
     return add(x=x + 1, y=2)
 
 
-@register_graph
+@graph
 def conditional(x: int) -> int:
     if x:
         return add(x=x, y=1)
     return add(x=x, y=2)
 
 
-@register_graph
+@graph
 def if_without_else(x: int, flag: bool) -> int:
     if flag:
         selected = add(x=x, y=1)
     return selected
 
 
-@register_graph
+@graph
 def while_without_condition_update(x: int, keep_going: bool) -> int:
     while keep_going:
         x = add(x=x, y=1)
     return x
 
 
-@register_graph
+@graph
 def for_with_multiple_assignments(values: list[int]) -> int:
     for value in values:
         first = add(x=value, y=1)
@@ -91,12 +92,12 @@ def for_with_multiple_assignments(values: list[int]) -> int:
     return result
 
 
-@register_graph
+@graph
 def recursive(x: int) -> int:
     return recursive(x=x)
 
 
-@register_graph
+@graph
 def nested_invalid(x: int) -> int:
     return wrong_input(x=x)
 

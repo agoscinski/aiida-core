@@ -21,7 +21,7 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from aiida.engine.processes.graphs.build import task
+from aiida.engine.processes.graphs.build import task as build_task
 from aiida.engine.processes.graphs.spec import (
     CONDITION_PORT,
     BranchTask,
@@ -35,7 +35,9 @@ from aiida.engine.processes.graphs.spec import (
 )
 from aiida.engine.processes.ports import infer_valid_type_from_type_annotation
 
-__all__ = ('UnsupportedSyntax', 'parse_graph', 'register_graph', 'register_task')
+# The source decorators are imported explicitly from this module, since ``graph``
+# would otherwise shadow the graph-builder decorator exported by ``aiida.engine``.
+__all__ = ('UnsupportedSyntax', 'parse_graph')
 
 
 class UnsupportedSyntax(ValueError):  # noqa: N818 - keep the prototype's exception name
@@ -75,15 +77,15 @@ def _register(function: Callable[..., t.Any]) -> str:
     return key
 
 
-def register_task(function: Callable[..., t.Any]) -> t.Any:
+def taskh(function: Callable[..., t.Any]) -> t.Any:
     """Register a Python function as an AiiDA task and save its source."""
     key = _register(function)
-    decorated = task(function)
+    decorated = build_task(function)
     _TASKS[key] = decorated
     return decorated
 
 
-def register_graph(function: Callable[..., t.Any]) -> Callable[..., t.Any]:
+def graph(function: Callable[..., t.Any]) -> Callable[..., t.Any]:
     """Save a graph's source without executing its body."""
     key = _register(function)
     _GRAPHS.add(key)
