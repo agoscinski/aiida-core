@@ -1,0 +1,233 @@
+###########################################################################
+# Copyright (c), The AiiDA team. All rights reserved.                     #
+# This file is part of the AiiDA code.                                    #
+#                                                                         #
+# The code is hosted on GitHub at https://github.com/aiidateam/aiida-core #
+# For further information on the license, see the LICENSE.txt file        #
+# For further information please visit http://www.aiida.net               #
+###########################################################################
+"""Strict AST-to-GraphSpec compiler for single-output task graphs.
+
+The decorators capture definitions, but graph bodies are never executed by this parser.
+"""
+
+from __future__ import annotations
+
+import ast
+import inspect
+import textwrap
+import typing as t
+from collections import Counter
+from collections.abc import Callable
+from dataclasses import dataclass, field
+
+from aiida.engine.processes.graphs.build import task
+from aiida.engine.processes.graphs.spec import Dependency, Endpoint, GraphSpec, ProcessTask, SubgraphTask
+
+__all__ = ('UnsupportedSyntax', 'parse_graph', 'register_graph', 'register_task')
+
+
+class UnsupportedSyntax(ValueError):  # noqa: N818 - keep the prototype's exception name
+    """A registered graph contains syntax the source parser cannot represent."""
+
+
+# Keys are module:name. Sources are captured at decoration time, not looked up later.
+SOURCES: dict[str, str] = {}
+
+
+@dataclass(frozen=True)
+class _SourceLocation:
+    filename: str
+    first_line: int
+
+
+_LOCATIONS: dict[str, _SourceLocation] = {}
+_TASKS: dict[str, t.Any] = {}
+_GRAPHS: set[str] = set()
+
+
+def _key(function: Callable[..., t.Any]) -> str:
+    if function.__qualname__ != function.__name__:
+        raise UnsupportedSyntax('Registered functions must be defined at module scope')
+    return f'{function.__module__}:{function.__name__}'
+
+
+def _register(function: Callable[..., t.Any]) -> str:
+    key = _key(function)
+    if key in SOURCES:
+        msg = f'Duplicate registered function {key}'
+        raise UnsupportedSyntax(msg)
+    lines, first_line = inspect.getsourcelines(function)
+    SOURCES[key] = textwrap.dedent(''.join(lines))
+    _LOCATIONS[key] = _SourceLocation(inspect.getsourcefile(function) or '<unknown>', first_line)
+    return key
+
+
+def register_task(function: Callable[..., t.Any]) -> t.Any:
+    """Register a Python function as an AiiDA task and save its source."""
+    key = _register(function)
+    decorated = task(function)
+    _TASKS[key] = decorated
+    return decorated
+
+
+def register_graph(function: Callable[..., t.Any]) -> Callable[..., t.Any]:
+    """Save a graph's source without executing its body."""
+    _GRAPHS.add(_register(function))
+    return function
+
+
+@dataclass(frozen=True)
+class _Reference:
+    task: str | None  # None denotes a graph input.
+    port: str
+
+
+@dataclass
+class _Compiler:
+    key: str
+    stack: tuple[str, ...]
+    tasks: list[ProcessTask | SubgraphTask] = field(default_factory=list)
+    dependencies: list[Dependency] = field(default_factory=list)
+    inputs: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
+    names: dict[str, _Reference] = field(default_factory=dict)
+    used: Counter[str] = field(default_factory=Counter)
+
+    def compile(self) -> GraphSpec:
+        source = SOURCES[self.key]
+        module = ast.parse(source)
+        if len(module.body) != 1 or not isinstance(module.body[0], ast.FunctionDef):
+            msg = f'{self.key}: expected one function definition'
+            raise UnsupportedSyntax(msg)
+        function = module.body[0]
+        if function.args.posonlyargs or function.args.kwonlyargs or function.args.vararg or function.args.kwarg:
+            msg = f'{self.key}: only ordinary positional parameters are supported'
+            raise UnsupportedSyntax(msg)
+        if function.args.defaults or any(default is not None for default in function.args.kw_defaults):
+            msg = f'{self.key}: parameter defaults are not supported'
+            raise UnsupportedSyntax(msg)
+        for arg in function.args.args:
+            self.inputs[arg.arg] = []
+            self.names[arg.arg] = _Reference(None, arg.arg)
+        statements = function.body
+        if statements and isinstance(statements[0], ast.Expr) and isinstance(statements[0].value, ast.Constant):
+            if isinstance(statements[0].value.value, str):
+                statements = statements[1:]
+        if not statements or not isinstance(statements[-1], ast.Return):
+            msg = f'{self.key}: graph must end in a return'
+            raise UnsupportedSyntax(msg)
+        for statement in statements[:-1]:
+            if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+                self.reject(statement, 'only single-name assignments are supported')
+            target = statement.targets[0]
+            if not isinstance(target, ast.Name) or target.id in self.names:
+                self.reject(statement, 'assignment must bind a new name')
+            if not isinstance(statement.value, ast.Call):
+                self.reject(statement.value, 'graph assignments must call a registered task or graph')
+            self.names[target.id] = self.call(statement.value)
+        result = statements[-1].value
+        if result is None:
+            self.reject(statements[-1], 'return must name a task or graph input')
+        output = self.value(result, allow_call=True)
+        if not isinstance(output, _Reference):
+            self.reject(result, 'return must name a task or graph input')
+        return GraphSpec(
+            tasks=tuple(self.tasks),
+            dependencies=tuple(self.dependencies),
+            inputs={name: tuple(targets) for name, targets in self.inputs.items()},
+            outputs={output.port: Endpoint(task=output.task, port=output.port)},
+            identifier=self.key.partition(':')[2],
+        )
+
+    def call(self, expression: ast.expr) -> _Reference:
+        if not isinstance(expression, ast.Call) or not isinstance(expression.func, ast.Name):
+            self.reject(expression, 'only direct calls to registered tasks or graphs are supported')
+        if expression.args or any(keyword.arg is None for keyword in expression.keywords):
+            self.reject(expression, 'calls require named arguments without unpacking')
+        name = expression.func.id
+        key = f'{self.key.partition(":")[0]}:{name}'
+        if key not in SOURCES or (key not in _TASKS and key not in _GRAPHS):
+            self.reject(expression, f'unregistered call {name!r}')
+        if name in self.names:
+            self.reject(expression, f'call target {name!r} is shadowed')
+        self.used[name] += 1
+        instance = name if self.used[name] == 1 else f'{name}_{self.used[name]}'
+        if key in _GRAPHS:
+            body = _compile(key, self.stack)
+            ports = body.inputs
+            outputs = body.outputs
+
+            def make_task(inputs: dict[str, t.Any]) -> ProcessTask | SubgraphTask:
+                return SubgraphTask(name=instance, inputs=inputs, body=body)
+        else:
+            spec = _TASKS[key].task_spec
+            ports = spec.inputs
+            outputs = spec.outputs
+
+            def make_task(inputs: dict[str, t.Any]) -> ProcessTask | SubgraphTask:
+                return ProcessTask(name=instance, inputs=inputs, spec=spec)
+
+        if len(outputs) != 1:
+            self.reject(expression, f'{name!r} must declare exactly one output')
+        given: dict[str, t.Any] = {}
+        for keyword in expression.keywords:
+            port = keyword.arg
+            assert port is not None
+            if port in given or port not in ports:
+                self.reject(keyword, f'duplicate or unknown input {port!r} of {name!r}')
+            value = self.value(keyword.value)
+            if isinstance(value, _Reference):
+                if value.task is None:
+                    self.inputs[value.port].append((instance, port))
+                else:
+                    self.dependencies.append(Dependency(value.task, instance, value.port, port))
+            else:
+                given[port] = value
+        self.tasks.append(make_task(given))
+        return _Reference(instance, next(iter(outputs)))
+
+    def value(self, expression: ast.expr, *, allow_call: bool = False) -> _Reference | int | float | str | bool:
+        if isinstance(expression, ast.Name):
+            if expression.id not in self.names:
+                self.reject(expression, f'unbound name {expression.id!r}')
+            return self.names[expression.id]
+        if isinstance(expression, ast.Constant) and isinstance(expression.value, (int, float, str, bool)):
+            return expression.value
+        if allow_call and isinstance(expression, ast.Call):
+            return self.call(expression)
+        self.reject(expression, 'unsupported expression')
+
+    def reject(self, node: ast.AST, reason: str) -> t.NoReturn:
+        """Point at the offending node in the original file, not just the extracted function."""
+        source = SOURCES[self.key].splitlines()
+        location = _LOCATIONS[self.key]
+        line = getattr(node, 'lineno', None)
+        column = getattr(node, 'col_offset', None)
+        if line is None or column is None or line > len(source):
+            msg = f'{location.filename}: {self.key}: {reason}: {ast.unparse(node)}'
+            raise UnsupportedSyntax(msg)
+
+        text = source[line - 1]
+        # AST columns are UTF-8 byte offsets; a displayed caret needs a character offset.
+        before = text.encode('utf-8')[:column].decode('utf-8', errors='ignore')
+        position = len(before)
+        msg = (
+            f'{location.filename}:{location.first_line + line - 1}:{position + 1}: '
+            f'{self.key}: {reason}\n    {text}\n    {" " * position}^'
+        )
+        raise UnsupportedSyntax(msg)
+
+
+def _compile(key: str, stack: tuple[str, ...]) -> GraphSpec:
+    if key not in _GRAPHS:
+        msg = f'Graph {key} is not registered'
+        raise UnsupportedSyntax(msg)
+    if key in stack:
+        msg = f'Recursive graph call: {" -> ".join((*stack, key))}'
+        raise UnsupportedSyntax(msg)
+    return _Compiler(key, (*stack, key)).compile()
+
+
+def parse_graph(function: Callable[..., t.Any]) -> GraphSpec:
+    """Compile a registered graph and its registered callees into a GraphSpec."""
+    return _compile(_key(function), ())
