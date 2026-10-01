@@ -14,25 +14,25 @@ Run ``uv run python graph_syntax_examples.py`` to print the declarations.
 from __future__ import annotations
 
 from aiida.engine import GraphSpec, parse_graph
-from aiida.engine.processes.graphs.source import graph, taskh
+from aiida.engine.processes.graphs.source import graph, task
 
 
-@taskh
+@task
 def add(x: int, y: int) -> int:
     return x + y
 
 
-@taskh
+@task
 def multiply(x: int, y: int) -> int:
     return x * y
 
 
-@taskh
+@task
 def decrement(x: int) -> int:
     return x - 1
 
 
-@taskh
+@task
 def positive(x: int) -> bool:
     return x > 0
 

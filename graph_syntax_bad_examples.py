@@ -17,10 +17,10 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from aiida.engine import UnsupportedSyntax, parse_graph
-from aiida.engine.processes.graphs.source import graph, taskh
+from aiida.engine.processes.graphs.source import graph, task
 
 
-@taskh
+@task
 def add(x: int, y: int) -> int:
     return x + y
 

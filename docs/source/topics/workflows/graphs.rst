@@ -112,9 +112,9 @@ from the source code without executing the graph function:
 .. code-block:: python
 
     from aiida.engine import parse_graph
-    from aiida.engine.processes.graphs.source import graph, taskh
+    from aiida.engine.processes.graphs.source import graph, task
 
-    @taskh
+    @task
     def add(x: int, y: int) -> int:
         return x + y
 

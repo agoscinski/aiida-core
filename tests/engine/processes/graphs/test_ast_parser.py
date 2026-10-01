@@ -20,10 +20,10 @@ from aiida.engine import (
     UnsupportedSyntax,
     parse_graph,
 )
-from aiida.engine.processes.graphs.source import graph, taskh
+from aiida.engine.processes.graphs.source import graph, task
 
 
-@taskh
+@task
 def sum_two(x: int, y: int) -> int:
     return x + y
 
@@ -74,12 +74,12 @@ def bad_assignment(x: int) -> int:
     return sum_two(x=x, y=a)
 
 
-@taskh
+@task
 def positive(x: int) -> bool:
     return x > 0
 
 
-@taskh
+@task
 def decrement(x: int) -> int:
     return x - 1
 

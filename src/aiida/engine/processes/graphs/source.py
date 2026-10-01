@@ -77,7 +77,7 @@ def _register(function: Callable[..., t.Any]) -> str:
     return key
 
 
-def taskh(function: Callable[..., t.Any]) -> t.Any:
+def task(function: Callable[..., t.Any]) -> t.Any:
     """Register a Python function as an AiiDA task and save its source."""
     key = _register(function)
     decorated = build_task(function)
