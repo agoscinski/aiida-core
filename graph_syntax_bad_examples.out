@@ -1,0 +1,43 @@
+
+constant_assignment:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:36:13: __main__:constant_assignment: graph assignments must call a registered task or graph
+        value = 0
+                ^
+
+call_unregistered:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:42:12: __main__:call_unregistered: unregistered call 'not_registered'
+        return not_registered(x=x)
+               ^
+
+call_positional:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:47:12: __main__:call_positional: calls require named arguments without unpacking
+        return add(x, 1)
+               ^
+
+wrong_input:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:52:16: __main__:wrong_input: duplicate or unknown input 'z' of 'add'
+        return add(z=x, y=1)
+                   ^
+
+read_global:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:57:23: __main__:read_global: unbound name 'outside_value'
+        return add(x=x, y=outside_value)
+                          ^
+
+computed_argument:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:62:18: __main__:computed_argument: unsupported expression
+        return add(x=x + 1, y=2)
+                     ^
+
+conditional:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:67:5: __main__:conditional: only single-name assignments are supported
+        if x:
+        ^
+
+recursive:
+Recursive graph call: __main__:recursive -> __main__:recursive
+
+nested_invalid:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:52:16: __main__:wrong_input: duplicate or unknown input 'z' of 'add'
+        return add(z=x, y=1)
+                   ^
