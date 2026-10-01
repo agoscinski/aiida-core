@@ -26,6 +26,16 @@ def multiply(x: int, y: int) -> int:
     return x * y
 
 
+@register_task
+def decrement(x: int) -> int:
+    return x - 1
+
+
+@register_task
+def positive(x: int) -> bool:
+    return x > 0
+
+
 @register_graph
 def single_step(x: int, y: int) -> int:
     return add(x=x, y=y)
@@ -50,8 +60,32 @@ def nested(x: int, y: int) -> int:
     return add(x=first, y=y)
 
 
+@register_graph
+def choose(x: int, flag: bool) -> int:
+    if flag:
+        selected = add(x=x, y=1)
+    else:
+        selected = multiply(x=x, y=2)
+    return selected
+
+
+@register_graph
+def countdown(x: int, keep_going: bool) -> int:
+    while keep_going:
+        x = decrement(x=x)
+        keep_going = positive(x=x)
+    return x
+
+
+@register_graph
+def add_to_each(values: list[int], offset: int) -> list[int]:
+    for value in values:
+        result = add(x=value, y=offset)
+    return result  # A collection of results, one per item in values.
+
+
 if __name__ == '__main__':
-    for example in (single_step, two_steps, diamond, nested):
+    for example in (single_step, two_steps, diamond, nested, choose, countdown, add_to_each):
         declaration: GraphSpec = parse_graph(example)
         print(example.__name__, declaration.to_dict())
     # GraphSpec stores task references and port wiring, not Python annotations.

@@ -34,6 +34,21 @@ conditional:
         if x:
         ^
 
+if_without_else:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:74:5: __main__:if_without_else: if requires one assignment to the same name on each side
+        if flag:
+        ^
+
+while_without_condition_update:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:81:5: __main__:while_without_condition_update: while body must update its condition
+        while keep_going:
+        ^
+
+for_with_multiple_assignments:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:88:5: __main__:for_with_multiple_assignments: for requires a single item name and one assignment without else
+        for value in values:
+        ^
+
 recursive:
 Recursive graph call: __main__:recursive -> __main__:recursive
 

@@ -70,6 +70,28 @@ def conditional(x: int) -> int:
 
 
 @register_graph
+def if_without_else(x: int, flag: bool) -> int:
+    if flag:
+        selected = add(x=x, y=1)
+    return selected
+
+
+@register_graph
+def while_without_condition_update(x: int, keep_going: bool) -> int:
+    while keep_going:
+        x = add(x=x, y=1)
+    return x
+
+
+@register_graph
+def for_with_multiple_assignments(values: list[int]) -> int:
+    for value in values:
+        first = add(x=value, y=1)
+        result = add(x=first, y=1)
+    return result
+
+
+@register_graph
 def recursive(x: int) -> int:
     return recursive(x=x)
 
@@ -87,6 +109,9 @@ EXAMPLES: tuple[Callable[..., int], ...] = (
     read_global,
     computed_argument,
     conditional,
+    if_without_else,
+    while_without_condition_update,
+    for_with_multiple_assignments,
     recursive,
     nested_invalid,
 )
