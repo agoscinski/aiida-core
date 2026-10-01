@@ -1,0 +1,58 @@
+
+constant_assignment:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:37:13: __main__:constant_assignment: graph assignments must call a registered task or graph
+        value = 0
+                ^
+
+call_unregistered:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:43:12: __main__:call_unregistered: unregistered call 'not_registered'
+        return not_registered(x=x)
+               ^
+
+call_positional:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:48:12: __main__:call_positional: calls require named arguments without unpacking
+        return add(x, 1)
+               ^
+
+wrong_input:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:53:16: __main__:wrong_input: duplicate or unknown input 'z' of 'add'
+        return add(z=x, y=1)
+                   ^
+
+read_global:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:58:23: __main__:read_global: unbound name 'outside_value'
+        return add(x=x, y=outside_value)
+                          ^
+
+computed_argument:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:63:18: __main__:computed_argument: unsupported expression
+        return add(x=x + 1, y=2)
+                     ^
+
+conditional:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:68:5: __main__:conditional: if requires one assignment to the same name on each side
+        if x:
+        ^
+
+if_without_else:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:75:5: __main__:if_without_else: if requires one assignment to the same name on each side
+        if flag:
+        ^
+
+while_without_condition_update:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:82:5: __main__:while_without_condition_update: while body must update its condition
+        while keep_going:
+        ^
+
+for_with_multiple_assignments:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:89:5: __main__:for_with_multiple_assignments: for requires a single item name and one assignment without else
+        for value in values:
+        ^
+
+recursive:
+Recursive graph call: __main__:recursive -> __main__:recursive
+
+nested_invalid:
+/Users/alexgo/code/aiida-core/worktree/wg-authoring/graph_syntax_bad_examples.py:53:16: __main__:wrong_input: duplicate or unknown input 'z' of 'add'
+        return add(z=x, y=1)
+                   ^

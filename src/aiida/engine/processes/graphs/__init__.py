@@ -17,6 +17,7 @@ from aiida.engine.processes.graphs.handlers import *
 from aiida.engine.processes.graphs.monitors import *
 from aiida.engine.processes.graphs.process import *
 from aiida.engine.processes.graphs.run import *
+from aiida.engine.processes.graphs.source import *
 from aiida.engine.processes.graphs.spec import *
 
 # fmt: on
