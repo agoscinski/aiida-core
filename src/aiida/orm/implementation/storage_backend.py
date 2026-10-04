@@ -13,7 +13,7 @@ from __future__ import annotations
 import abc
 import typing as t
 from collections.abc import Iterable
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, nullcontext
 
 from aiida.common.log import AIIDA_LOGGER
 
@@ -29,6 +29,7 @@ if t.TYPE_CHECKING:
         BackendComputerCollection,
         BackendGroupCollection,
         BackendLogCollection,
+        BackendNode,
         BackendNodeCollection,
         BackendQueryBuilder,
         BackendUserCollection,
@@ -61,6 +62,15 @@ class StorageBackend(abc.ABC):
     """
 
     read_only = False
+    _batch_writes = False
+
+    def _deferred_writes(self, node: BackendNode) -> AbstractContextManager[None]:
+        """Establish execution ownership where the backend supports staged writes."""
+        return nullcontext()
+
+    def _flush_deferred_writes(self, node: BackendNode | None = None) -> AbstractContextManager[None]:
+        """Persist execution-local writes at an explicit engine boundary."""
+        return nullcontext()
 
     @classmethod
     @abc.abstractmethod

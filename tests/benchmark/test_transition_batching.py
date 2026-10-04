@@ -59,7 +59,7 @@ def test_paired_transition_batching(benchmark, backend, process_class, runner, m
             commits.clear()
             inputs = {'iterations': Int(4)} if process_class is WorkchainLoop else {}
             with monkeypatch.context() as policy:
-                policy.setattr(runner, '_batch_transitions', batch)
+                policy.setattr(backend, '_batch_writes', batch)
                 start = time.monotonic()
                 result = runner.run_get_node(process_class, **inputs)
                 elapsed = time.monotonic() - start

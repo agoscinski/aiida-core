@@ -19,7 +19,7 @@ import logging
 import traceback
 import typing as t
 from collections.abc import Iterable, Iterator, Mapping, MutableMapping
-from contextlib import ExitStack, nullcontext
+from contextlib import AbstractContextManager, ExitStack, nullcontext
 from types import TracebackType
 from uuid import UUID
 
@@ -416,6 +416,17 @@ class Process(ProcessBase):
             self._task = None
 
     @override
+    async def step(self) -> None:
+        """Establish storage ownership while executing a process step."""
+        scope = (
+            self.node.backend._deferred_writes(self.node.backend_entity)
+            if self.metadata.store_provenance
+            else nullcontext()
+        )
+        with scope:
+            await super().step()
+
+    @override
     async def step_until_terminated(self) -> None:
         """Keep a greenback portal open for as long as this process is being stepped.
 
@@ -469,8 +480,8 @@ class Process(ProcessBase):
     def on_entered(self, from_state: process_states.State | None) -> None:
         """After entering a new state, persist its outputs and state and save a checkpoint."""
 
-        batch_transitions = self.runner._batch_transitions and self.metadata.store_provenance
-        if batch_transitions and self.node.backend.in_transaction:
+        batch_writes = self.node.backend._batch_writes and self.metadata.store_provenance
+        if batch_writes and self.node.backend.in_transaction:
             msg = 'Process transition batching cannot run inside an explicit caller transaction.'
             raise exceptions.InvalidOperation(msg)
 
@@ -478,11 +489,13 @@ class Process(ProcessBase):
             # The process is already excepted so simply update the process state on the node and let the process
             # complete the state transition to the terminal state. If another exception is raised during this exception
             # handling, the process transitioning is cut short and never makes it to the terminal state.
-            self.node.set_process_state(self._state.LABEL)
+            scope = self._storage_boundary()
+            with scope:
+                self.node.set_process_state(self._state.LABEL)
             super().on_entered(from_state)
             return
 
-        if batch_transitions:
+        if batch_writes:
             self._persist_transition()
             super().on_entered(from_state)
             return
@@ -506,6 +519,12 @@ class Process(ProcessBase):
         # attached.
         super().on_entered(from_state)
 
+    def _storage_boundary(self) -> AbstractContextManager[None]:
+        """Ask storage to flush only this execution's pending metadata."""
+        if self.node.backend._batch_writes and self.metadata.store_provenance:
+            return self.node.backend._flush_deferred_writes(self.node.backend_entity)
+        return nullcontext()
+
     def _persist_transition(self) -> None:
         """Commit one engine-controlled transition without spanning process execution.
 
@@ -513,7 +532,6 @@ class Process(ProcessBase):
         ``finally`` does. Commit failures instead propagate without replaying the
         batch: a lost acknowledgement may mean it has already committed.
         """
-        backend = self.node.backend
         state = self._state.LABEL
         assert isinstance(state, ProcessState)
         output_failed = False
@@ -527,8 +545,7 @@ class Process(ProcessBase):
                     output_failed = True
                     raise
 
-                with backend.transaction():
-                    self.node.backend_entity.lock()
+                with self._storage_boundary():
                     try:
                         self.update_outputs()
                     except BaseException:
@@ -539,26 +556,26 @@ class Process(ProcessBase):
         except BaseException:
             if output_failed:
                 # The failed output batch and its Python state have rolled back.
-                with backend.transaction():
-                    self.node.backend_entity.lock()
+                with self._storage_boundary():
                     self.node.set_process_state(state)
             raise
 
     @override
     def on_terminated(self) -> None:
         """Called when a Process enters a terminal state."""
-        super().on_terminated()
-        if self._enable_persistence:
-            try:
-                assert self.runner.persister is not None
-                self.runner.persister.delete_checkpoint(self.pid)
-            except Exception as error:
-                self.logger.exception('Failed to delete checkpoint: %s', error)
+        with self._storage_boundary():
+            super().on_terminated()
+            if self._enable_persistence:
+                try:
+                    assert self.runner.persister is not None
+                    self.runner.persister.delete_checkpoint(self.pid)
+                except Exception as error:
+                    self.logger.exception('Failed to delete checkpoint: %s', error)
 
-        try:
-            self.node.seal()
-        except exceptions.ModificationNotAllowed:
-            pass
+            try:
+                self.node.seal()
+            except exceptions.ModificationNotAllowed:
+                pass
 
     @override
     def on_except(self, exc_info: tuple[t.Any, Exception, TracebackType]) -> None:
@@ -603,15 +620,17 @@ class Process(ProcessBase):
         :param msg: message
 
         """
-        super().on_paused(msg)
-        self._save_checkpoint()
-        self.node.pause()
+        with self._storage_boundary():
+            super().on_paused(msg)
+            self._save_checkpoint(use_savepoint=True)
+            self.node.pause()
 
     @override
     def on_playing(self) -> None:
         """The Process was unpaused so remove the paused attribute on the process node"""
-        super().on_playing()
-        self.node.unpause()
+        with self._storage_boundary():
+            super().on_playing()
+            self.node.unpause()
 
     @override
     def on_output_emitting(self, output_port: str, value: t.Any) -> None:

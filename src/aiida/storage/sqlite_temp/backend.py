@@ -17,7 +17,7 @@ import shutil
 import typing as t
 import weakref
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
 from tempfile import mkdtemp
 
@@ -31,11 +31,15 @@ from aiida.manage.configuration import Profile
 from aiida.orm.entities import EntityTypes
 from aiida.orm.implementation import BackendEntity, StorageBackend
 from aiida.repository.backend.sandbox import SandboxRepositoryBackend
+from aiida.storage.psql_dos.orm.batching import DeferredWrites
 from aiida.storage.sqlite_zip import models, orm
 from aiida.storage.sqlite_zip.migrator import get_schema_version_head
 from aiida.storage.sqlite_zip.utils import create_sqla_engine
 
 if t.TYPE_CHECKING:
+    from sqlite3 import Connection
+
+    from aiida.orm.implementation import BackendNode
     from aiida.repository.backend.abstract import InfoDictType
 
 __all__ = ('SqliteTempBackend',)
@@ -133,6 +137,8 @@ class SqliteTempBackend(StorageBackend):
     def __init__(self, profile: Profile):
         super().__init__(profile)
         self._resources = _TempBackendResources()
+        self._batch_writes = True
+        self._deferred = DeferredWrites(self)
         self._resources.repo = SandboxShaRepositoryBackend(profile.storage_config['filepath'])
         self._finalizer = weakref.finalize(self, _finalize_backend, self._resources, repr(self))
         self._globals: dict[str, tuple[t.Any, str | None]] = {}
@@ -188,13 +194,35 @@ class SqliteTempBackend(StorageBackend):
             models.SqliteBase.metadata.create_all(engine)
             self._session = Session(engine, future=True)
             self._session.add(models.DbUser(email=self.profile.default_user_email or 'user@email.com'))  # type: ignore[operator]
-            self._session.commit()
+            self._commit()
         return self._session
 
     def get_repository(self) -> SandboxShaRepositoryBackend:
         if self._closed or not self._repo:
             raise ClosedStorage(str(self))
         return self._repo
+
+    def _deferred_writes(self, node: BackendNode) -> AbstractContextManager[None]:
+        """Let storage own metadata staging for the currently executing node."""
+        assert isinstance(node, orm.SqliteNode)
+        return self._deferred.scope(node.bare_model)
+
+    def _flush_deferred_writes(self, node: BackendNode | None = None) -> AbstractContextManager[None]:
+        """Commit pending metadata together with the engine's boundary writes."""
+        if node is not None:
+            assert isinstance(node, orm.SqliteNode)
+        return self._deferred.boundary(node.bare_model if node is not None else None)
+
+    def _commit(self) -> None:
+        """Finish pending writes without committing an enclosing transaction."""
+        session = self.get_session()
+        if session.in_nested_transaction():
+            session.flush()
+            return
+        if self._deferred.defer_commit():
+            self._deferred.release_read_transaction()
+            return
+        session.commit()
 
     @property
     def in_transaction(self) -> bool:
@@ -208,14 +236,23 @@ class SqliteTempBackend(StorageBackend):
         entering. Transactions can be nested.
         """
         session = self.get_session()
-        if session.in_transaction():
+        if session.in_nested_transaction():
             with session.begin_nested():
                 yield session
-            session.commit()
-        else:
-            with session.begin():
-                with session.begin_nested():
-                    yield session
+            return
+
+        # SQLite must begin a physical transaction before the first savepoint.
+        connection = session.connection()
+        driver = t.cast('Connection', connection.connection.driver_connection)
+        if not driver.in_transaction:
+            connection.exec_driver_sql('BEGIN')
+        try:
+            with session.begin_nested():
+                yield session
+            self._commit()
+        except BaseException:
+            session.rollback()
+            raise
 
     def _clear(self) -> None:
         raise NotImplementedError

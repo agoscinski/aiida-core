@@ -6,7 +6,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Atomic process transition persistence controlled by private engine policy."""
+"""Atomic process transition persistence controlled by private storage policy."""
 
 import asyncio
 import io
@@ -44,9 +44,9 @@ class OutputCalculation(Process):
 
 
 @pytest.fixture
-def enable_batching(runner, monkeypatch):
-    """Enable the experimental engine policy without changing process inputs."""
-    monkeypatch.setattr(runner, '_batch_transitions', True)
+def enable_batching(backend, monkeypatch):
+    """Ensure storage batching is enabled without changing process inputs."""
+    monkeypatch.setattr(backend, '_batch_writes', True)
 
 
 @pytest.fixture
@@ -101,16 +101,17 @@ def test_transition_commits_before_notification(process, backend, monkeypatch):
     try:
         assert restored.state is ProcessState.CREATED
         assert 'batch_transitions' not in restored.metadata
-        assert restored.runner._batch_transitions is True
+        assert restored.node.backend._batch_writes is True
         assert restored.outputs['result'].pk == process.outputs['result'].pk
         assert restored.node.outputs.result.base.repository.get_object_content('result.txt', mode='rb') == b'result'
     finally:
         restored.close()
 
 
-def test_batching_is_not_a_process_input(runner):
-    """The user-facing builder and inputs cannot configure engine persistence."""
-    assert runner._batch_transitions is False
+def test_batching_is_not_a_process_input(runner, backend):
+    """The user-facing builder and inputs cannot configure storage persistence."""
+    assert backend._batch_writes is True
+    assert not hasattr(runner, '_batch_transitions')
     assert 'batch_transitions' not in OutputCalculation.spec().inputs['metadata']
     with pytest.raises(ValueError):
         OutputCalculation(runner=runner, inputs={'metadata': {'batch_transitions': True}})
@@ -129,15 +130,15 @@ def test_ordinary_orm_writes_remain_immediate(backend, enable_batching):
         assert persisted.label == 'immediately visible'
 
 
-def test_checkpoint_restoration_uses_current_runner_policy(process, runner):
-    """A checkpoint must not enable batching on a different worker's runner."""
+def test_checkpoint_restoration_uses_current_storage_policy(process, runner, backend, monkeypatch):
+    """Restoration uses storage policy, not a flag persisted in the checkpoint."""
     process.on_entered(None)
     payload = runner.persister.load_checkpoint(process.pid)
     worker = Runner(loop=runner.loop, persister=runner.persister)
+    monkeypatch.setattr(backend, '_batch_writes', False)
     restored = payload.decode(CheckpointContext(runner=worker))
     try:
-        assert runner._batch_transitions is True
-        assert worker._batch_transitions is False
+        assert restored.node.backend._batch_writes is False
         assert restored.runner is worker
         assert 'batch_transitions' not in restored.metadata
         assert restored.node.outputs.result.value == 7
@@ -147,9 +148,9 @@ def test_checkpoint_restoration_uses_current_runner_policy(process, runner):
 
 
 @pytest.mark.parametrize('batch', [False, True])
-def test_complete_process_and_sealing(batch, runner, monkeypatch):
+def test_complete_process_and_sealing(batch, runner, backend, monkeypatch):
     """Terminal cleanup and sealing retain their existing ordering and behavior."""
-    monkeypatch.setattr(runner, '_batch_transitions', batch)
+    monkeypatch.setattr(backend, '_batch_writes', batch)
     result = run_get_node(OutputCalculation)
     assert result.node.is_finished_ok
     assert result.node.is_sealed

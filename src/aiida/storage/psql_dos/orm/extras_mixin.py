@@ -38,8 +38,9 @@ class ExtrasMixin:
         if self.is_stored:
             value = clean_value(value)
 
-        self.model.extras[key] = value
-        self._flush_if_stored({'extras'})
+        extras = self.model.extras
+        extras[key] = value
+        self.model.extras = extras
 
     def set_extra_many(self, extras: dict[str, t.Any]) -> None:
         for key in extras:
@@ -48,10 +49,9 @@ class ExtrasMixin:
         if self.is_stored:
             extras = {key: clean_value(value) for key, value in extras.items()}
 
-        for key, value in extras.items():
-            self.bare_model.extras[key] = value
-
-        self._flush_if_stored({'extras'})
+        values = self.model.extras
+        values.update(extras)
+        self.model.extras = values
 
     def reset_extras(self, extras: dict[str, t.Any]) -> None:
         for key in extras:
@@ -60,17 +60,16 @@ class ExtrasMixin:
         if self.is_stored:
             extras = clean_value(extras)
 
-        self.bare_model.extras = extras
-        self._flush_if_stored({'extras'})
+        self.model.extras = extras
 
     def delete_extra(self, key: str) -> None:
+        extras = self.model.extras
         try:
-            self.model.extras.pop(key)
+            extras.pop(key)
         except KeyError as exception:
             msg = f'extra `{exception}` does not exist'
             raise AttributeError(msg) from exception
-        else:
-            self._flush_if_stored({'extras'})
+        self.model.extras = extras
 
     def delete_extra_many(self, keys: Iterable[str]) -> None:
         non_existing_keys = [key for key in keys if key not in self.model.extras]
@@ -79,14 +78,13 @@ class ExtrasMixin:
             msg = f'extras `{", ".join(non_existing_keys)}` do not exist'
             raise AttributeError(msg)
 
+        values = self.model.extras
         for key in keys:
-            self.bare_model.extras.pop(key)
-
-        self._flush_if_stored({'extras'})
+            values.pop(key)
+        self.model.extras = values
 
     def clear_extras(self) -> None:
         self.model.extras = {}
-        self._flush_if_stored({'extras'})
 
     def extras_items(self) -> Iterable[tuple[str, t.Any]]:
         yield from self.model.extras.items()

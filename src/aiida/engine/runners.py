@@ -84,9 +84,6 @@ class Runner:
         self._loop = loop if loop else get_or_create_event_loop()
         self._poll_interval = poll_interval
         self._broker_submit = broker_submit
-        # Experimental engine policy, never a process input or a backend-wide switch.
-        # Pending writes remain confined to each synchronous transition transaction.
-        self._batch_transitions: bool = False
         self._transport = transports.TransportQueue(self._loop)
         self._job_manager = manager.JobManager(self._transport)
         self._persister = persister
