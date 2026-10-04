@@ -41,6 +41,7 @@ class DbNode(Base):
     uuid = Column(UUID(as_uuid=True), default=get_new_uuid, nullable=False, unique=True)
     node_type = Column(String(255), default='', nullable=False, index=True)
     process_type = Column(String(255), index=True)
+    process_state_change_timestamp = Column(DateTime(timezone=True), nullable=True, index=True)
     label = Column(String(255), nullable=False, default='', index=True)
     description = Column(Text(), nullable=False, default='')
     ctime = Column(DateTime(timezone=True), default=timezone.now, nullable=False, index=True)

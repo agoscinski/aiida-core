@@ -318,6 +318,51 @@ def test_with_db_setting(uninitialised_profile):
         assert inspect(migrator.connection).has_table('db_dbsetting')
 
 
+def test_process_transition_timestamp(uninitialised_profile):
+    """Keep historical times unknown and delete only the obsolete activity settings."""
+    with SqliteDosMigrator(uninitialised_profile) as migrator:
+        migrator.migrate_up('main@main_0002')
+        SqliteBase.metadata.tables['db_dbsetting'].create(migrator.connection)
+        migrator.connection.execute(
+            text(
+                'INSERT INTO db_dbsetting (key, val, description, time) VALUES '
+                "(:key, '\"2026-01-01T00:00:00+00:00\"', '', '2026-01-01')"
+            ),
+            [{'key': key} for key in ('process|state_change|calculation', 'process|state_change|work', 'other')],
+        )
+        migrator.connection.execute(
+            text("INSERT INTO db_dbuser (email, first_name, last_name, institution) VALUES ('a@b.c', '', '', '')")
+        )
+        migrator.connection.execute(
+            text(
+                'INSERT INTO db_dbnode (uuid, node_type, label, description, ctime, mtime, user_id, '
+                'attributes, extras, repository_metadata) VALUES '
+                "(:uuid, 'process.calculation.CalculationNode.', '', '', '2026-01-01', '2026-01-02', "
+                "1, '{\"process_state\": \"finished\"}', '{}', '{}')"
+            ),
+            {'uuid': get_new_uuid()},
+        )
+        migrator.connection.commit()
+        migrator.migrate_up('main@main_0003')
+        schema = inspect(migrator.connection)
+        column = next(col for col in schema.get_columns('db_dbnode') if col['name'] == 'process_state_change_timestamp')
+        assert column['nullable']
+        assert any(
+            index['column_names'] == ['process_state_change_timestamp'] for index in schema.get_indexes('db_dbnode')
+        )
+        row = migrator.connection.execute(
+            text('SELECT process_state_change_timestamp, attributes FROM db_dbnode')
+        ).one()
+        assert row[0] is None
+        assert json.loads(row[1]) == {'process_state': 'finished'}
+        assert migrator.connection.execute(text('SELECT key FROM db_dbsetting')).scalars().all() == ['other']
+        migrator.connection.commit()
+        migrator.migrate_down('main_0002')
+        assert 'process_state_change_timestamp' not in {
+            col['name'] for col in inspect(migrator.connection).get_columns('db_dbnode')
+        }
+
+
 def test_downgrade(uninitialised_profile):
     """Test downgrading from ``main_0003`` to ``main_0002``."""
     with SqliteDosMigrator(uninitialised_profile) as migrator:

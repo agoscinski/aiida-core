@@ -24,13 +24,10 @@ from aiida.engine.processes.events import get_or_create_event_loop
 if t.TYPE_CHECKING:
     from aiida.engine.processes import Process, ProcessBuilder
     from aiida.engine.runners import Runner
-    from aiida.orm import ProcessNode
 
 __all__ = ('InterruptableFuture', 'interruptable_task', 'is_process_function')
 
 LOGGER = logging.getLogger(__name__)
-PROCESS_STATE_CHANGE_KEY = 'process|state_change|{}'
-PROCESS_STATE_CHANGE_DESCRIPTION = 'The last time a process of type {}, changed state'
 
 
 def prepare_inputs(inputs: dict[str, t.Any] | None = None, **kwargs: t.Any) -> dict[str, t.Any]:
@@ -291,58 +288,17 @@ def loop_scope(loop) -> Iterator[None]:
         asyncio.set_event_loop(current)
 
 
-def set_process_state_change_timestamp(node: ProcessNode) -> None:
-    """Set the global setting that reflects the last time a process changed state, for the process type
-    of the given process, to the current timestamp. The process type will be determined based on
-    the class of the calculation node it has as its database container.
-
-    :param process: the Process instance that changed its state
-    """
-    from sqlalchemy.exc import OperationalError
-
-    from aiida.common import timezone
-    from aiida.manage import get_manager
-    from aiida.orm import CalculationNode, ProcessNode, WorkflowNode
-
-    if isinstance(node, CalculationNode):
-        process_type = 'calculation'
-    elif isinstance(node, WorkflowNode):
-        process_type = 'work'
-    elif isinstance(node, ProcessNode):
-        # This will only occur for testing, as in general users cannot launch plain Process classes
-        return
-    else:
-        msg = f'unsupported calculation node type {type(node)}'  # type: ignore[unreachable]
-        raise ValueError(msg)
-
-    key = PROCESS_STATE_CHANGE_KEY.format(process_type)
-    description = PROCESS_STATE_CHANGE_DESCRIPTION.format(process_type)
-    value = timezone.now().isoformat()
-
-    backend = get_manager().get_profile_storage()
-
-    try:
-        backend.set_global_variable(key, value, description)
-    except OperationalError:
-        # This typically happens for SQLite-based storage plugins like ``core.sqlite_dos``. Since this is merely an
-        # update of a timestamp that is likely to be updated soon again, just ignoring the failed update is not a
-        # problem.
-        LOGGER.info(
-            f'Failed to write global variable `{key}` to `{value}` because the database was locked. If the storage '
-            'plugin being used is `core.sqlite_dos` this is to be expected and can be safely ignored.'
-        )
-
-
 def get_process_state_change_timestamp(process_type: str | None = None) -> datetime | None:
-    """Get the global setting that reflects the last time a process of the given process type changed its state.
-    The returned value will be the corresponding timestamp or None if the setting does not exist.
+    """Query the most recent recorded process state transition.
+
+    Historical processes without a recorded transition timestamp are excluded.
 
     :param process_type: optional process type for which to get the latest state change timestamp.
         Valid process types are either 'calculation' or 'work'. If not specified, last timestamp for all
         known process types will be returned.
     :return: a timestamp or None
     """
-    from aiida.manage import get_manager
+    from aiida.orm import CalculationNode, ProcessNode, QueryBuilder, WorkflowNode
 
     valid_process_types = ['calculation', 'work']
 
@@ -350,29 +306,15 @@ def get_process_state_change_timestamp(process_type: str | None = None) -> datet
         msg = f'invalid value for process_type, valid values are {", ".join(valid_process_types)}'
         raise ValueError(msg)
 
-    if process_type is None:
-        process_types = valid_process_types
-    else:
-        process_types = [process_type]
-
-    timestamps: list[datetime] = []
-
-    backend = get_manager().get_profile_storage()
-
-    for process_type_key in process_types:
-        key = PROCESS_STATE_CHANGE_KEY.format(process_type_key)
-        try:
-            try:
-                timestamp = backend.get_global_variable(key)
-            except NotImplementedError:
-                pass
-            else:
-                if timestamp is not None:
-                    timestamps.append(datetime.fromisoformat(str(timestamp)))
-        except KeyError:
-            continue
-
-    if not timestamps:
-        return None
-
-    return max(timestamps)
+    node_class = (
+        ProcessNode if process_type is None else {'calculation': CalculationNode, 'work': WorkflowNode}[process_type]
+    )
+    field = 'process_state_change_timestamp'
+    result = (
+        QueryBuilder()
+        .append(node_class, tag='process', filters={field: {'!==': None}}, project=field)
+        .order_by({'process': {field: 'desc'}})
+        .limit(1)
+        .first(flat=True)
+    )
+    return result

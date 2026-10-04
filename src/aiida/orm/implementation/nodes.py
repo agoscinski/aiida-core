@@ -166,6 +166,16 @@ class BackendNode(BackendEntity, BackendEntityExtrasMixin, metaclass=abc.ABCMeta
         :return: the mtime
         """
 
+    @property
+    @abc.abstractmethod
+    def process_state_change_timestamp(self) -> datetime | None:
+        """Return the last process state transition time, if known."""
+
+    @process_state_change_timestamp.setter
+    @abc.abstractmethod
+    def process_state_change_timestamp(self, value: datetime | None) -> None:
+        """Set the process state transition time."""
+
     @abc.abstractmethod
     def add_incoming(self, source: 'BackendNode', link_type, link_label):
         """Add a link of the given type from a given node to ourself.
