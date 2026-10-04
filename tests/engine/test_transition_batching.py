@@ -8,6 +8,7 @@
 ###########################################################################
 """Atomic, explicitly opted-in process transition persistence."""
 
+import asyncio
 import io
 
 import pytest
@@ -18,9 +19,11 @@ from aiida import orm
 from aiida.common import exceptions
 from aiida.common.links import LinkType
 from aiida.common.processes import ProcessState
-from aiida.engine import Process, run_get_node
+from aiida.engine import Process, WorkChain, run_get_node
 from aiida.engine.processes.generic.process import Process as ProcessBase
 from aiida.engine.processes.persistence import CheckpointPayload
+from aiida.engine.processes.states import Wait
+from aiida.manage.caching import enable_caching
 from aiida.storage.psql_dos.models.node import DbLink, DbNode
 from tests.utils.processes import DummyProcess
 
@@ -249,6 +252,156 @@ def test_explicit_caller_transaction_rejected(process, backend):
             process.on_entered(None)
     assert process.node.process_state is ProcessState.RUNNING
     assert not process.outputs['result'].is_stored
+
+
+def test_authoritative_metadata_preserves_external_controls(process, backend):
+    """Refreshing at the boundary preserves flags committed by a control client."""
+    engine = backend.get_session().get_bind()
+    with Session(engine) as external:
+        node = external.get(DbNode, process.pid)
+        node.attributes = {**node.attributes, 'paused': True, 'external_control': 'keep'}
+        external.commit()
+    process.on_entered(None)
+    assert process.node.paused
+    assert process.node.base.attributes.get('external_control') == 'keep'
+    assert process.node.outputs.result.value == 7
+
+
+def test_independent_processes_on_one_event_loop(runner):
+    """Concurrent tasks retain their own outputs and checkpoints, without a buffer."""
+    processes = [OutputCalculation(runner=runner, inputs={'metadata': {'batch_transitions': True}}) for _ in range(3)]
+
+    async def execute():
+        await asyncio.gather(*(process.step_until_terminated() for process in processes))
+
+    try:
+        runner.loop.run_until_complete(execute())
+        outputs = []
+        for process in processes:
+            assert process.node.is_finished_ok
+            assert process.node.is_sealed
+            assert process.node.checkpoint is None
+            outputs.append(process.node.outputs.result.pk)
+        assert len(set(outputs)) == 3
+    finally:
+        for process in processes:
+            process.close()
+
+
+class ParentWorkChain(WorkChain):
+    """Dispatch a child and return its committed result."""
+
+    @classmethod
+    def define(cls, spec):
+        super().define(spec)
+        spec.output('result', valid_type=orm.Int)
+        spec.outline(cls.launch_child, cls.return_result)
+
+    def launch_child(self):
+        return self.to_context(child=self.submit(OutputCalculation, metadata={'batch_transitions': True}))
+
+    def return_result(self):
+        assert self.ctx.child.is_finished_ok
+        self.out('result', self.ctx.child.outputs.result)
+
+
+def test_child_dispatch_and_parent_wakeup(runner):
+    """A real parent resumes with committed child results and provenance."""
+    result = run_get_node(ParentWorkChain, metadata={'batch_transitions': True})
+    assert result.node.is_finished_ok
+    child = result.node.called[0]
+    assert child.is_finished_ok
+    assert child.is_sealed
+    assert child.caller.pk == result.node.pk
+    assert result.node.outputs.result.pk == child.outputs.result.pk
+
+
+def test_missed_terminal_notification_recovers_through_polling(runner, monkeypatch):
+    """No outbox is needed for the existing finish-callback polling fallback."""
+    process = OutputCalculation(runner=runner, inputs={'metadata': {'batch_transitions': True}})
+    monkeypatch.setattr(runner, '_poll_interval', 0.01)
+    if process._communicator is not None:
+        monkeypatch.setattr(process._communicator, 'broadcast_send', lambda **kwargs: None)
+
+    async def execute():
+        finished = runner.loop.create_future()
+        runner.call_on_process_finish(process.pid, lambda: finished.set_result(True))
+        await process.step_until_terminated()
+        assert await asyncio.wait_for(finished, timeout=5)
+
+    try:
+        runner.loop.run_until_complete(execute())
+        assert process.node.is_finished_ok
+        assert process.node.outputs.result.value == 7
+    finally:
+        process.close()
+
+
+def test_local_calcjob_and_cached_replay(aiida_code_installed):
+    """Exercise real task boundaries, retrieval, sealing and process caching locally."""
+    from aiida.calculations.arithmetic.add import ArithmeticAddCalculation
+
+    inputs = {
+        'code': aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash'),
+        'x': orm.Int(1),
+        'y': orm.Int(2),
+        'metadata': {'batch_transitions': True},
+    }
+    source = run_get_node(ArithmeticAddCalculation, **inputs)
+    assert source.node.is_finished_ok
+    assert source.node.is_sealed
+    assert source.node.checkpoint is None
+    assert source.result['sum'].value == 3
+    assert source.node.get_job_id()
+    with enable_caching():
+        cached = run_get_node(ArithmeticAddCalculation, **inputs)
+    assert cached.node.is_finished_ok
+    assert cached.node.is_sealed
+    assert cached.node.base.caching.get_cache_source() == source.node.uuid
+    assert cached.result['sum'].value == 3
+
+
+class WaitingProcess(DummyProcess):
+    """Wait between explicit transitions without holding a database transaction."""
+
+    async def run(self):
+        return Wait(self.finish)
+
+    def finish(self):
+        pass
+
+
+def test_waiting_reentry_batches_without_timestamp_change(runner, backend):
+    """The flush boundary is re-entry, not a change of the persisted state label."""
+    process = WaitingProcess(runner=runner, inputs={'metadata': {'batch_transitions': True}})
+    try:
+        while process.state is not ProcessState.WAITING:
+            runner.loop.run_until_complete(process.step())
+        timestamp = process.node.backend_entity.process_state_change_timestamp
+        output = orm.Int(8).store()
+        process.out('result', output)
+        assert not backend.in_transaction
+        process.on_entered(process._state)
+        assert not backend.in_transaction
+        assert process.node.process_state is ProcessState.WAITING
+        assert process.node.backend_entity.process_state_change_timestamp == timestamp
+        assert process.node.outputs.result.pk == output.pk
+        assert process.node.checkpoint
+    finally:
+        process.close()
+
+
+def test_pause_acknowledgement_and_resume(runner):
+    """Phase one leaves immediate pause/resume acknowledgement semantics intact."""
+    process = DummyProcess(runner=runner, inputs={'metadata': {'batch_transitions': True}})
+    try:
+        assert process.pause() is True
+        assert process.node.paused
+        assert process.node.checkpoint
+        assert process.play() is True
+        assert not process.node.paused
+    finally:
+        process.close()
 
 
 def test_unstored_provenance_bypasses_batching(runner):
