@@ -107,6 +107,17 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
         clone._model = sqla_utils.ModelWrapper(self.MODEL_CLASS(**arguments), self.backend)
         return clone
 
+    def lock(self) -> None:
+        """Refresh authoritative values, locking the row on PostgreSQL.
+
+        SQLite serializes writers instead; a conflicting snapshot fails rather
+        than being silently replayed. No retry is performed here.
+        """
+        if not self.backend.in_transaction or not self.is_stored:
+            msg = 'Locking a node requires a stored node and an explicit transaction.'
+            raise exceptions.InvalidOperation(msg)
+        self.backend.get_session().refresh(self.bare_model, with_for_update=True)
+
     @contextmanager
     def store_scope(self) -> Iterator[None]:
         """Restore the original unstored model after an enclosing transaction fails."""
