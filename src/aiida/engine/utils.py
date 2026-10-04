@@ -17,7 +17,6 @@ import inspect
 import logging
 import typing as t
 from collections.abc import Awaitable, Callable, Iterator
-from datetime import datetime
 
 from aiida.engine.processes.events import get_or_create_event_loop
 
@@ -286,35 +285,3 @@ def loop_scope(loop) -> Iterator[None]:
         yield
     finally:
         asyncio.set_event_loop(current)
-
-
-def get_process_state_change_timestamp(process_type: str | None = None) -> datetime | None:
-    """Query the most recent recorded process state transition.
-
-    Historical processes without a recorded transition timestamp are excluded.
-
-    :param process_type: optional process type for which to get the latest state change timestamp.
-        Valid process types are either 'calculation' or 'work'. If not specified, last timestamp for all
-        known process types will be returned.
-    :return: a timestamp or None
-    """
-    from aiida.orm import CalculationNode, ProcessNode, QueryBuilder, WorkflowNode
-
-    valid_process_types = ['calculation', 'work']
-
-    if process_type is not None and process_type not in valid_process_types:
-        msg = f'invalid value for process_type, valid values are {", ".join(valid_process_types)}'
-        raise ValueError(msg)
-
-    node_class = (
-        ProcessNode if process_type is None else {'calculation': CalculationNode, 'work': WorkflowNode}[process_type]
-    )
-    field = 'process_state_change_timestamp'
-    result = (
-        QueryBuilder()
-        .append(node_class, tag='process', filters={field: {'!==': None}}, project=field)
-        .order_by({'process': {field: 'desc'}})
-        .limit(1)
-        .first(flat=True)
-    )
-    return result
