@@ -9,7 +9,9 @@
 """SqlAlchemy implementation of the `BackendNode` and `BackendNodeCollection` classes."""
 
 import typing as t
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
+from copy import deepcopy
 from datetime import datetime
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -104,6 +106,25 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
         clone.__init__(self.backend, self.node_type, self.user)
         clone._model = sqla_utils.ModelWrapper(self.MODEL_CLASS(**arguments), self.backend)
         return clone
+
+    @contextmanager
+    def store_scope(self) -> Iterator[None]:
+        """Restore the original unstored model after an enclosing transaction fails."""
+        if self.is_stored:
+            yield
+            return
+
+        model = self.bare_model
+        values = {column.key: deepcopy(getattr(model, column.key)) for column in model.__table__.columns}
+        snapshot = self.MODEL_CLASS(**values, user=model.user, dbcomputer=model.dbcomputer)
+        try:
+            yield
+        except BaseException:
+            # SQLAlchemy rollback makes inserted models transient but leaves their
+            # generated primary keys behind. Keep the entity (and its ORM adapters)
+            # while replacing that model with its pre-store state.
+            self._model = sqla_utils.ModelWrapper(snapshot, self.backend)
+            raise
 
     @property
     def ctime(self):
