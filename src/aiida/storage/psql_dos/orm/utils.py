@@ -113,15 +113,19 @@ class ModelWrapper:
 
         :raises `aiida.common.IntegrityError`: if a database integrity error is raised during the save.
         """
+        in_transaction = self._in_transaction()
         try:
             self.session.add(self._model)
-            if not self._in_transaction():
+            if not in_transaction:
                 self.session.commit()
             else:
                 self.session.flush()
         except IntegrityError as exception:
-            self.session.rollback()
-            raise exceptions.IntegrityError(str(exception))
+            # The enclosing savepoint owns rollback in an explicit transaction.
+            # Rolling back the session here would discard the caller's writes too.
+            if not in_transaction:
+                self.session.rollback()
+            raise exceptions.IntegrityError(str(exception)) from exception
 
     def _is_mutable_model_field(self, field):
         """Return whether the field is a mutable field of the model.
