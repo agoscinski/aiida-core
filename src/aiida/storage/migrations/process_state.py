@@ -21,9 +21,12 @@ def add_process_state_change_timestamp() -> None:
     Exact transition times cannot be recovered from node modification times or the
     shared settings, so historical timestamps remain unknown.
     """
-    op.add_column('db_dbnode', sa.Column(COLUMN, sa.DateTime(timezone=True), nullable=True))
-    op.create_index(INDEX, 'db_dbnode', [COLUMN])
     connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    if COLUMN not in {column['name'] for column in inspector.get_columns('db_dbnode')}:
+        op.add_column('db_dbnode', sa.Column(COLUMN, sa.DateTime(timezone=True), nullable=True))
+    if INDEX not in {index['name'] for index in inspector.get_indexes('db_dbnode')}:
+        op.create_index(INDEX, 'db_dbnode', [COLUMN])
     if sa.inspect(connection).has_table('db_dbsetting'):
         connection.execute(
             sa.text(
