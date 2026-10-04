@@ -93,12 +93,6 @@ class Process(ProcessBase):
             help='If set to `False` provenance will not be stored in the database.',
         )
         spec.input(
-            f'{spec.metadata_key}.batch_transitions',
-            valid_type=bool,
-            default=False,
-            help='Experimental: atomically persist outputs, state and checkpoints at transitions on SQL backends.',
-        )
-        spec.input(
             f'{spec.metadata_key}.description',
             valid_type=str,
             required=False,
@@ -475,7 +469,7 @@ class Process(ProcessBase):
     def on_entered(self, from_state: process_states.State | None) -> None:
         """After entering a new state, persist its outputs and state and save a checkpoint."""
 
-        batch_transitions = self.metadata.get('batch_transitions', False) and self.metadata.store_provenance
+        batch_transitions = self.runner._batch_transitions and self.metadata.store_provenance
         if batch_transitions and self.node.backend.in_transaction:
             msg = 'Process transition batching cannot run inside an explicit caller transaction.'
             raise exceptions.InvalidOperation(msg)
@@ -513,7 +507,7 @@ class Process(ProcessBase):
         super().on_entered(from_state)
 
     def _persist_transition(self) -> None:
-        """Commit one opted-in transition without spanning process execution.
+        """Commit one engine-controlled transition without spanning process execution.
 
         Output failure still records the attempted state, as the immediate path's
         ``finally`` does. Commit failures instead propagate without replaying the
@@ -837,7 +831,7 @@ class Process(ProcessBase):
     def _setup_metadata(self, metadata: dict) -> None:
         """Store the metadata on the ProcessNode."""
         for name, value in metadata.items():
-            if name in ['store_provenance', 'dry_run', 'call_link_label', 'disable_cache', 'batch_transitions']:
+            if name in ['store_provenance', 'dry_run', 'call_link_label', 'disable_cache']:
                 continue
 
             if name == 'label':

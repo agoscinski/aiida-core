@@ -22,7 +22,6 @@ import time
 import pytest
 from sqlalchemy import event
 
-from aiida.engine import run_get_node
 from aiida.orm import Int
 from tests.benchmark.test_engine import WorkchainLoop
 from tests.engine.test_transition_batching import OutputCalculation, ParentWorkChain
@@ -30,7 +29,7 @@ from tests.engine.test_transition_batching import OutputCalculation, ParentWorkC
 
 @pytest.mark.parametrize('process_class', [WorkchainLoop, OutputCalculation, ParentWorkChain])
 @pytest.mark.benchmark(group='transition-batching')
-def test_paired_transition_batching(benchmark, backend, process_class):
+def test_paired_transition_batching(benchmark, backend, process_class, runner, monkeypatch):
     """Compare equivalent grouping without deriving speedups from waiting time."""
     session = backend.get_session()
     engine = session.get_bind()
@@ -59,9 +58,11 @@ def test_paired_transition_batching(benchmark, backend, process_class):
         for batch in order:
             commits.clear()
             inputs = {'iterations': Int(4)} if process_class is WorkchainLoop else {}
-            start = time.monotonic()
-            result = run_get_node(process_class, metadata={'batch_transitions': batch}, **inputs)
-            elapsed = time.monotonic() - start
+            with monkeypatch.context() as policy:
+                policy.setattr(runner, '_batch_transitions', batch)
+                start = time.monotonic()
+                result = runner.run_get_node(process_class, **inputs)
+                elapsed = time.monotonic() - start
             acknowledgement = sum(commits)
             # Capture metrics before correctness checks perform additional queries.
             samples[batch].append(

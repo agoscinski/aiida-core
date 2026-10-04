@@ -6,7 +6,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Atomic, explicitly opted-in process transition persistence."""
+"""Atomic process transition persistence controlled by private engine policy."""
 
 import asyncio
 import io
@@ -21,8 +21,9 @@ from aiida.common.links import LinkType
 from aiida.common.processes import ProcessState
 from aiida.engine import Process, WorkChain, run_get_node
 from aiida.engine.processes.generic.process import Process as ProcessBase
-from aiida.engine.processes.persistence import CheckpointPayload
+from aiida.engine.processes.persistence import CheckpointContext, CheckpointPayload
 from aiida.engine.processes.states import Wait
+from aiida.engine.runners import Runner
 from aiida.manage.caching import enable_caching
 from aiida.storage.psql_dos.models.node import DbLink, DbNode
 from tests.utils.processes import DummyProcess
@@ -43,9 +44,15 @@ class OutputCalculation(Process):
 
 
 @pytest.fixture
-def process(runner):
+def enable_batching(runner, monkeypatch):
+    """Enable the experimental engine policy without changing process inputs."""
+    monkeypatch.setattr(runner, '_batch_transitions', True)
+
+
+@pytest.fixture
+def process(runner, enable_batching):
     """A process with a pending new output and a previously persisted state."""
-    process = OutputCalculation(runner=runner, inputs={'metadata': {'batch_transitions': True}})
+    process = OutputCalculation(runner=runner)
     output = orm.Int(7)
     output.base.repository.put_object_from_filelike(io.BytesIO(b'result'), 'result.txt')
     process.out('result', output)
@@ -93,17 +100,57 @@ def test_transition_commits_before_notification(process, backend, monkeypatch):
     restored = payload.decode()
     try:
         assert restored.state is ProcessState.CREATED
-        assert restored.metadata.batch_transitions is True
+        assert 'batch_transitions' not in restored.metadata
+        assert restored.runner._batch_transitions is True
         assert restored.outputs['result'].pk == process.outputs['result'].pk
         assert restored.node.outputs.result.base.repository.get_object_content('result.txt', mode='rb') == b'result'
     finally:
         restored.close()
 
 
+def test_batching_is_not_a_process_input(runner):
+    """The user-facing builder and inputs cannot configure engine persistence."""
+    assert runner._batch_transitions is False
+    assert 'batch_transitions' not in OutputCalculation.spec().inputs['metadata']
+    with pytest.raises(ValueError):
+        OutputCalculation(runner=runner, inputs={'metadata': {'batch_transitions': True}})
+
+
+def test_ordinary_orm_writes_remain_immediate(backend, enable_batching):
+    """An enabled engine policy must not defer unrelated Python/CLI ORM writes."""
+    node = orm.Int(5).store()
+    node.base.extras.set('external', True)
+    node.label = 'immediately visible'
+    assert not backend.in_transaction
+    with Session(backend.get_session().get_bind()) as external:
+        persisted = external.get(DbNode, node.pk)
+        assert persisted.attributes['value'] == 5
+        assert persisted.extras['external'] is True
+        assert persisted.label == 'immediately visible'
+
+
+def test_checkpoint_restoration_uses_current_runner_policy(process, runner):
+    """A checkpoint must not enable batching on a different worker's runner."""
+    process.on_entered(None)
+    payload = runner.persister.load_checkpoint(process.pid)
+    worker = Runner(loop=runner.loop, persister=runner.persister)
+    restored = payload.decode(CheckpointContext(runner=worker))
+    try:
+        assert runner._batch_transitions is True
+        assert worker._batch_transitions is False
+        assert restored.runner is worker
+        assert 'batch_transitions' not in restored.metadata
+        assert restored.node.outputs.result.value == 7
+    finally:
+        restored.close()
+        worker.close()
+
+
 @pytest.mark.parametrize('batch', [False, True])
-def test_complete_process_and_sealing(batch, runner):
+def test_complete_process_and_sealing(batch, runner, monkeypatch):
     """Terminal cleanup and sealing retain their existing ordering and behavior."""
-    result = run_get_node(OutputCalculation, metadata={'batch_transitions': batch})
+    monkeypatch.setattr(runner, '_batch_transitions', batch)
+    result = run_get_node(OutputCalculation)
     assert result.node.is_finished_ok
     assert result.node.is_sealed
     assert result.node.checkpoint is None
@@ -267,9 +314,9 @@ def test_authoritative_metadata_preserves_external_controls(process, backend):
     assert process.node.outputs.result.value == 7
 
 
-def test_independent_processes_on_one_event_loop(runner):
+def test_independent_processes_on_one_event_loop(runner, enable_batching):
     """Concurrent tasks retain their own outputs and checkpoints, without a buffer."""
-    processes = [OutputCalculation(runner=runner, inputs={'metadata': {'batch_transitions': True}}) for _ in range(3)]
+    processes = [OutputCalculation(runner=runner) for _ in range(3)]
 
     async def execute():
         await asyncio.gather(*(process.step_until_terminated() for process in processes))
@@ -298,16 +345,16 @@ class ParentWorkChain(WorkChain):
         spec.outline(cls.launch_child, cls.return_result)
 
     def launch_child(self):
-        return self.to_context(child=self.submit(OutputCalculation, metadata={'batch_transitions': True}))
+        return self.to_context(child=self.submit(OutputCalculation))
 
     def return_result(self):
         assert self.ctx.child.is_finished_ok
         self.out('result', self.ctx.child.outputs.result)
 
 
-def test_child_dispatch_and_parent_wakeup(runner):
+def test_child_dispatch_and_parent_wakeup(runner, enable_batching):
     """A real parent resumes with committed child results and provenance."""
-    result = run_get_node(ParentWorkChain, metadata={'batch_transitions': True})
+    result = run_get_node(ParentWorkChain)
     assert result.node.is_finished_ok
     child = result.node.called[0]
     assert child.is_finished_ok
@@ -316,9 +363,9 @@ def test_child_dispatch_and_parent_wakeup(runner):
     assert result.node.outputs.result.pk == child.outputs.result.pk
 
 
-def test_missed_terminal_notification_recovers_through_polling(runner, monkeypatch):
+def test_missed_terminal_notification_recovers_through_polling(runner, monkeypatch, enable_batching):
     """No outbox is needed for the existing finish-callback polling fallback."""
-    process = OutputCalculation(runner=runner, inputs={'metadata': {'batch_transitions': True}})
+    process = OutputCalculation(runner=runner)
     monkeypatch.setattr(runner, '_poll_interval', 0.01)
     if process._communicator is not None:
         monkeypatch.setattr(process._communicator, 'broadcast_send', lambda **kwargs: None)
@@ -337,7 +384,7 @@ def test_missed_terminal_notification_recovers_through_polling(runner, monkeypat
         process.close()
 
 
-def test_local_calcjob_and_cached_replay(aiida_code_installed):
+def test_local_calcjob_and_cached_replay(aiida_code_installed, enable_batching):
     """Exercise real task boundaries, retrieval, sealing and process caching locally."""
     from aiida.calculations.arithmetic.add import ArithmeticAddCalculation
 
@@ -345,7 +392,6 @@ def test_local_calcjob_and_cached_replay(aiida_code_installed):
         'code': aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash'),
         'x': orm.Int(1),
         'y': orm.Int(2),
-        'metadata': {'batch_transitions': True},
     }
     source = run_get_node(ArithmeticAddCalculation, **inputs)
     assert source.node.is_finished_ok
@@ -371,9 +417,9 @@ class WaitingProcess(DummyProcess):
         pass
 
 
-def test_waiting_reentry_batches_without_timestamp_change(runner, backend):
+def test_waiting_reentry_batches_without_timestamp_change(runner, backend, enable_batching):
     """The flush boundary is re-entry, not a change of the persisted state label."""
-    process = WaitingProcess(runner=runner, inputs={'metadata': {'batch_transitions': True}})
+    process = WaitingProcess(runner=runner)
     try:
         while process.state is not ProcessState.WAITING:
             runner.loop.run_until_complete(process.step())
@@ -391,9 +437,9 @@ def test_waiting_reentry_batches_without_timestamp_change(runner, backend):
         process.close()
 
 
-def test_pause_acknowledgement_and_resume(runner):
+def test_pause_acknowledgement_and_resume(runner, enable_batching):
     """Phase one leaves immediate pause/resume acknowledgement semantics intact."""
-    process = DummyProcess(runner=runner, inputs={'metadata': {'batch_transitions': True}})
+    process = DummyProcess(runner=runner)
     try:
         assert process.pause() is True
         assert process.node.paused
@@ -404,9 +450,9 @@ def test_pause_acknowledgement_and_resume(runner):
         process.close()
 
 
-def test_unstored_provenance_bypasses_batching(runner):
-    """Opt-in must not accidentally store a provenance-disabled process."""
-    process = DummyProcess(runner=runner, inputs={'metadata': {'batch_transitions': True, 'store_provenance': False}})
+def test_unstored_provenance_bypasses_batching(runner, enable_batching):
+    """The engine policy must not accidentally store a provenance-disabled process."""
+    process = DummyProcess(runner=runner, inputs={'metadata': {'store_provenance': False}})
     try:
         process.on_entered(None)
         assert not process.node.is_stored
