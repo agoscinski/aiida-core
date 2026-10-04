@@ -21,6 +21,8 @@ pk: QbNumericField('pk', dtype=<class 'int'>, doc='The primary key of the entity
 prepend_text: QbStrField('attributes.prepend_text', dtype=<class 'str'>, doc='Bash
   commands that should be prepended to the run line in all submit scripts for this
   code')
+process_state_change_timestamp: QbNumericField('process_state_change_timestamp', dtype=datetime.datetime
+  | None, doc='The last process state transition time, if known; null for data nodes')
 process_type: QbStrField('process_type', dtype=str | None, doc='The process type of
   the node')
 repository_metadata: QbDictField('repository_metadata', dtype=dict[str, typing.Any],

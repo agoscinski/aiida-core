@@ -23,6 +23,8 @@ process_label: QbStrField('attributes.process_label', dtype=str | None, doc='The
   label')
 process_state: QbStrField('attributes.process_state', dtype=str | None, doc='The process
   state enum')
+process_state_change_timestamp: QbNumericField('process_state_change_timestamp', dtype=datetime.datetime
+  | None, doc='The last process state transition time, if known; null for data nodes')
 process_status: QbStrField('attributes.process_status', dtype=str | None, doc='The
   process status is a generic status message')
 process_type: QbStrField('process_type', dtype=str | None, doc='The process type of

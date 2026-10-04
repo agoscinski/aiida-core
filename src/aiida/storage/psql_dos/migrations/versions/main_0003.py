@@ -134,10 +134,11 @@ def _migrate_code_hidden_extra(conn):
 def upgrade():
     """Migrations for the upgrade."""
     conn = op.get_bind()
+    # Alter the node table before data updates queue deferred foreign-key triggers.
+    add_process_state_change_timestamp()
     migrate_ssh_transports(conn)
     _migrate_legacy_codes(conn)
     _migrate_code_hidden_extra(conn)
-    add_process_state_change_timestamp()
 
 
 def downgrade():

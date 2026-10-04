@@ -11,6 +11,8 @@ mtime: QbNumericField('mtime', dtype=<class 'datetime.datetime'>, doc='The modif
 node_type: QbStrField('node_type', dtype=typing.Literal['data.core.numeric.NumericType.'],
   doc='The type of the node.')
 pk: QbNumericField('pk', dtype=<class 'int'>, doc='The primary key of the entity')
+process_state_change_timestamp: QbNumericField('process_state_change_timestamp', dtype=datetime.datetime
+  | None, doc='The last process state transition time, if known; null for data nodes')
 process_type: QbStrField('process_type', dtype=str | None, doc='The process type of
   the node')
 repository_metadata: QbDictField('repository_metadata', dtype=dict[str, typing.Any],

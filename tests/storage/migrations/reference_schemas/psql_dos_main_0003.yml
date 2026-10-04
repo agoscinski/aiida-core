@@ -244,6 +244,10 @@ columns:
     name: user_id
     nullable: false
     type: INTEGER
+  - default: null
+    name: process_state_change_timestamp
+    nullable: true
+    type: TIMESTAMP
   db_dbsetting:
   - default: nextval('db_dbsetting_id_seq'::regclass)
     name: id
@@ -872,6 +876,12 @@ indexes:
     dialect_options:
       postgresql_include: []
     name: ix_db_dbnode_db_dbnode_node_type
+    unique: false
+  - column_names:
+    - process_state_change_timestamp
+    dialect_options:
+      postgresql_include: []
+    name: ix_db_dbnode_db_dbnode_process_state_change_timestamp
     unique: false
   - column_names:
     - process_type
