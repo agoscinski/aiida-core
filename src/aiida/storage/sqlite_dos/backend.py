@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import pathlib
 import typing as t
+from collections.abc import Iterator
+from contextlib import contextmanager
 from functools import cached_property, lru_cache
 from pathlib import Path
 from shutil import rmtree
@@ -21,7 +23,7 @@ from alembic.config import Config
 from disk_objectstore import Container, backup_utils
 from pydantic import field_validator
 from sqlalchemy import insert, inspect, select
-from sqlalchemy.orm import scoped_session, sessionmaker
+from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
 from aiida.common import exceptions
 from aiida.common.log import AIIDA_LOGGER
@@ -39,6 +41,8 @@ from aiida.storage.sqlite_zip.backend import validate_sqlite_version
 from aiida.storage.sqlite_zip.utils import create_sqla_engine
 
 if t.TYPE_CHECKING:
+    from sqlite3 import Connection
+
     from disk_objectstore import Container
 
     from aiida.orm.entities import EntityTypes
@@ -264,6 +268,22 @@ class SqliteDosStorage(PsqlDosBackend):
         """
         engine = create_sqla_engine(self.filepath_database)
         self._session_factory = scoped_session(sessionmaker(bind=engine, future=True, expire_on_commit=True))
+
+    @contextmanager
+    def transaction(self) -> Iterator[Session]:
+        """Start a physical transaction before opening the first savepoint.
+
+        SQLite's legacy driver does not begin transactions for SAVEPOINT. Without
+        BEGIN, releasing the outer savepoint commits before ``Session.commit``,
+        breaking rollback on commit failure and durable acknowledgement ordering.
+        """
+        if not self.in_transaction:
+            connection = self.get_session().connection()
+            driver = t.cast('Connection', connection.connection.driver_connection)
+            if not driver.in_transaction:
+                connection.exec_driver_sql('BEGIN')
+        with super().transaction() as session:
+            yield session
 
     def delete(self) -> None:  # type: ignore[override]
         """Delete the storage and all the data."""

@@ -123,6 +123,25 @@ def test_unstored_node_scope_restores_local_state(backend, error):
     assert process.outputs.result.pk == output.pk
 
 
+def test_commit_failure_rolls_back_savepoints(backend):
+    """Releasing a savepoint is not an implicit durable commit on SQLite."""
+    node = orm.Int(1).store()
+    original = node.base.extras.all
+    engine = backend.get_session().get_bind()
+
+    def fail(connection):
+        raise RuntimeError('commit failed')
+
+    event.listen(engine, 'commit', fail)
+    try:
+        with pytest.raises(RuntimeError, match='commit failed'):
+            with backend.transaction():
+                node.base.extras.set('temporary', True)
+    finally:
+        event.remove(engine, 'commit', fail)
+    assert node.base.extras.all == original
+
+
 def test_stored_node_scope_does_not_reset_identity(backend):
     """Existing nodes rely on SQLAlchemy's expiry, not unstored-node restoration."""
     output = orm.Int(1).store()
