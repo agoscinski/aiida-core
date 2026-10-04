@@ -295,16 +295,20 @@ class PsqlDosBackend(StorageBackend):
         entering. Transactions can be nested.
         """
         session = self.get_session()
-        if session.in_transaction():
-            with session.begin_nested() as savepoint:
+        if session.in_nested_transaction():
+            with session.begin_nested():
                 yield session
-                savepoint.commit()
+            return
+
+        # SQLAlchemy also autobegins transactions for reads. Only an AiiDA transaction
+        # (represented by a savepoint) owns the commit, not an arbitrary session read.
+        try:
+            with session.begin_nested():
+                yield session
             session.commit()
-        else:
-            with session.begin():
-                with session.begin_nested() as savepoint:
-                    yield session
-                    savepoint.commit()
+        except BaseException:
+            session.rollback()
+            raise
 
     @property
     def in_transaction(self) -> bool:
