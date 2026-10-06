@@ -586,6 +586,21 @@ def _lower_value(
         except KeyError:
             _reject(state, expression, f'unknown or undeclared namespace field {path!r}')
         return _Reference(parent.task, path, shape)
+    if isinstance(expression, ast.Subscript):
+        parent = _lower_value(state, expression.value, allow_call=allow_call)
+        if not isinstance(parent, _Reference):
+            _reject(state, expression, 'selection must name a task output or declared input namespace')
+        key = expression.slice
+        if not isinstance(key, ast.Constant) or not isinstance(key.value, str):
+            _reject(state, expression, 'keyed selection requires a string literal, for example outputs["value"]')
+        if not isinstance(parent.shape, NamespaceShape):
+            _reject(state, expression, 'selection requires a declared namespace')
+        path = f'{parent.port}.{key.value}' if parent.port else key.value
+        try:
+            shape = parent.shape.select(key.value)
+        except KeyError:
+            _reject(state, expression, f'unknown or undeclared namespace field {path!r}')
+        return _Reference(parent.task, path, shape)
     if isinstance(expression, ast.Name):
         if expression.id not in state.names:
             _reject(state, expression, f'unbound name {expression.id!r}')
