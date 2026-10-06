@@ -143,12 +143,15 @@ class ProcessSpec(spec.ProcessSpec):
         :param node_types: translate Python leaf types to ORM types.
         :param kwargs: options for the collection namespace.
         """
-        arguments = t.get_args(annotation)
+        from aiida.engine.processes.port_model import without_optional
+
+        unwrapped = without_optional(annotation)
+        arguments = t.get_args(unwrapped)
         item = arguments[0] if arguments else Data
         entry = None
         if fields_of(item) is not None:
             entry_spec = ProcessSpec()
-            entry_spec.input_namespace_from('entry', item, node_types=node_types)
+            entry_spec.input_namespace_from('entry', without_optional(item), node_types=node_types)
             entry = entry_spec.inputs['entry']
         valid_type = infer_valid_type_from_type_annotation(item, stored=node_types) or (Data,)
         self.input_namespace(
@@ -188,12 +191,15 @@ class ProcessSpec(spec.ProcessSpec):
             name = f'{prefix}{field.name}'
 
             if _takes_many(field.annotation):
-                arguments = t.get_args(field.annotation)
+                from aiida.engine.processes.port_model import without_optional
+
+                unwrapped_field = without_optional(field.annotation)
+                arguments = t.get_args(unwrapped_field)
                 item = arguments[0] if arguments else Data
                 entry = None
                 if fields_of(item) is not None:
                     entry_spec = ProcessSpec()
-                    entry_spec.outputs_from(item)
+                    entry_spec.outputs_from(without_optional(item))
                     entry = entry_spec.outputs
                 valid_type = infer_valid_type_from_type_annotation(item)
                 self.output_namespace(

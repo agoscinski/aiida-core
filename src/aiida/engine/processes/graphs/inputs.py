@@ -142,6 +142,8 @@ def prepare_inputs(namespace: PortNamespace, given: Mapping[str, t.Any], identif
     def visit(port: InputPort | PortNamespace, value: t.Any, path: str) -> t.Any:
         absent_namespace = False
         missing_before = len(missing)
+        if value is None and isinstance(port, PortNamespace) and not port.required:
+            return UNSPECIFIED
         if value is UNSPECIFIED:
             if port.has_default():
                 default = port.default

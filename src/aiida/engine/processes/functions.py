@@ -501,10 +501,18 @@ class FunctionProcess(Process):
                 if parameter.kind in [parameter.VAR_POSITIONAL, parameter.VAR_KEYWORD]:
                     continue
 
+                from aiida.engine.processes.port_model import without_optional
+
                 annotation = annotations.get(parameter.name)
                 value_annotation = annotation
-                if not cls.NODE_INPUT_TYPES and _takes_many(annotation) and t.get_args(annotation):
-                    value_annotation = t.get_args(annotation)[0]
+                unwrapped_annotation = without_optional(annotation) if annotation is not None else None
+                if (
+                    not cls.NODE_INPUT_TYPES
+                    and unwrapped_annotation is not None
+                    and _takes_many(unwrapped_annotation)
+                    and t.get_args(unwrapped_annotation)
+                ):
+                    value_annotation = t.get_args(t.cast(t.Any, unwrapped_annotation))[0]
                 valid_type = infer_valid_type_from_type_annotation(value_annotation, stored=cls.NODE_INPUT_TYPES) or (
                     Data,
                 )

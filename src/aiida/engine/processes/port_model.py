@@ -15,7 +15,17 @@ import typing as t
 
 from typing_extensions import Self, dataclass_transform
 
-__all__ = ('Field', 'PortField', 'PortModel', 'as_dict', 'build', 'fields_of', 'is_structured', 'without_marks')
+__all__ = (
+    'Field',
+    'PortField',
+    'PortModel',
+    'as_dict',
+    'build',
+    'fields_of',
+    'is_structured',
+    'without_marks',
+    'without_optional',
+)
 
 UNSPECIFIED = object()
 
@@ -85,9 +95,28 @@ def is_a_plain_class(annotation: t.Any) -> bool:
     return isinstance(annotation, type) and t.get_origin(annotation) is None
 
 
+def without_optional(annotation: t.Any) -> t.Any:
+    """Return the non-``None`` member of an optional union, or the annotation itself.
+
+    Only a union of one other type and ``None`` is unwrapped, which is what ``T | None`` and
+    ``Optional[T]`` both spell. Anything else is returned unchanged, so genuine unions keep
+    their leaf contract instead of silently becoming a namespace.
+    """
+    from types import UnionType
+
+    annotation = without_marks(annotation)
+    if t.get_origin(annotation) in (t.Union, UnionType):
+        members = [member for member in t.get_args(annotation) if member is not type(None)]
+        if len(members) == 1 and len(t.get_args(annotation)) == 2:
+            return without_marks(members[0])
+    return annotation
+
+
 def is_structured(annotation: t.Any) -> bool:
     """Return whether an annotation declares a PortModel namespace."""
-    return is_a_plain_class(annotation) and issubclass(annotation, PortModel)
+    return is_a_plain_class(without_optional(annotation)) and issubclass(
+        without_optional(annotation), PortModel
+    )
 
 
 def fields_of(annotation: t.Any) -> tuple[Field, ...] | None:
@@ -95,6 +124,7 @@ def fields_of(annotation: t.Any) -> tuple[Field, ...] | None:
 
     :param annotation: the parameter or return annotation.
     """
+    annotation = without_optional(annotation)
     if not is_structured(annotation):
         return None
     hints = t.get_type_hints(annotation, include_extras=True)

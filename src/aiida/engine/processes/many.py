@@ -24,4 +24,14 @@ class Many(dict[str, _ManyType]):
 
 def _takes_many(annotation: t.Any) -> bool:
     """Return whether an annotation declares a keyed collection of ports."""
+    from aiida.engine.processes.port_model import without_marks, without_optional
+
+    annotation = without_optional(without_marks(annotation))
     return annotation is Many or t.get_origin(annotation) is Many
+
+
+def without_many_optional(annotation: t.Any) -> t.Any:
+    """Return a ``Many`` annotation without an outer optional union."""
+    from aiida.engine.processes.port_model import without_optional
+
+    return without_optional(annotation)
