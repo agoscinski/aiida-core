@@ -769,6 +769,9 @@ class FunctionProcess(Process):
         :param result: the value returned by the wrapped function.
         :raises TypeError: if the value cannot be attached to an output port.
         """
+        held = as_dict(result)
+        if held is not None:
+            result = held
         if isinstance(result, Data):
             self.out(self.SINGLE_OUTPUT_LINKNAME, result)
         elif isinstance(result, collections.abc.Mapping):
