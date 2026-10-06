@@ -23,6 +23,9 @@ __all__ = (
     'build',
     'fields_of',
     'is_structured',
+    'is_typeddict_annotation',
+    'namespace_fields_of',
+    'typeddict_fields_of',
     'without_marks',
     'without_optional',
 )
@@ -114,9 +117,7 @@ def without_optional(annotation: t.Any) -> t.Any:
 
 def is_structured(annotation: t.Any) -> bool:
     """Return whether an annotation declares a PortModel namespace."""
-    return is_a_plain_class(without_optional(annotation)) and issubclass(
-        without_optional(annotation), PortModel
-    )
+    return is_a_plain_class(without_optional(annotation)) and issubclass(without_optional(annotation), PortModel)
 
 
 def fields_of(annotation: t.Any) -> tuple[Field, ...] | None:
@@ -152,11 +153,56 @@ def is_typeddict_annotation(annotation: t.Any) -> bool:
             return bool(is_typeddict(candidate))
         except TypeError:
             return False
-    return (
-        isinstance(candidate, type)
-        and issubclass(candidate, dict)
-        and hasattr(candidate, '__required_keys__')
-    )
+    return isinstance(candidate, type) and issubclass(candidate, dict) and hasattr(candidate, '__required_keys__')
+
+
+def typeddict_fields_of(annotation: t.Any) -> tuple[Field, ...] | None:
+    """Read a ``TypedDict`` declaration as namespace fields, or return None for other annotations.
+
+    Requiredness comes from the ``TypedDict`` itself: fields in ``__required_keys__`` are required,
+    the rest default to ``None`` like an optional ``PortModel`` field. ``Required``/``NotRequired``
+    wrappers name the inner type. A ``total=False`` mapping is therefore an all-optional namespace.
+
+    :param annotation: the parameter or return annotation.
+    """
+    candidate = without_optional(annotation)
+    if not is_typeddict_annotation(candidate):
+        return None
+    try:
+        hints = t.get_type_hints(candidate, include_extras=True)
+    except Exception:
+        hints = dict(getattr(candidate, '__annotations__', {}))
+    required_keys = frozenset(getattr(candidate, '__required_keys__', ()))
+    markers = {
+        marker for marker in (getattr(t, 'Required', None), getattr(t, 'NotRequired', None)) if marker is not None
+    }
+    fields = []
+    for name, declared in hints.items():
+        unmarked = without_marks(declared)
+        if markers and t.get_origin(unmarked) in markers and t.get_args(unmarked):
+            unmarked = without_marks(t.get_args(unmarked)[0])
+        required = name in required_keys
+        fields.append(
+            Field(
+                name=name,
+                annotation=unmarked,
+                default=UNSPECIFIED if required else None,
+                help=_port_help(unmarked),
+            )
+        )
+    return tuple(fields)
+
+
+def namespace_fields_of(annotation: t.Any) -> tuple[Field, ...] | None:
+    """Read a ``PortModel`` or ``TypedDict`` declaration as namespace fields.
+
+    A ``TypedDict`` is the plain-mapping spelling of the same contract: fixed string keys with
+    declared value types. Either one declares a namespace of ports; anything else returns ``None``.
+
+    :param annotation: the parameter or return annotation.
+    """
+    fields = fields_of(annotation)
+    return fields if fields is not None else typeddict_fields_of(annotation)
 
 
 def as_dict(value: t.Any) -> dict[str, t.Any] | None:

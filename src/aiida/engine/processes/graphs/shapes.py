@@ -19,7 +19,7 @@ from types import UnionType
 
 from aiida.common.loaders import get_object_loader
 from aiida.engine.processes.many import _takes_many
-from aiida.engine.processes.port_model import UNSPECIFIED, _port_help, as_dict, fields_of, without_marks
+from aiida.engine.processes.port_model import UNSPECIFIED, _port_help, as_dict, without_marks
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -75,19 +75,15 @@ def shape_for_annotation(
     annotation: object, *, required: bool = True, default: object = UNSPECIFIED, help: str | None = None
 ) -> Shape:
     """Capture a Python declaration without constructing engine input or output ports."""
-    from aiida.engine.processes.port_model import is_typeddict_annotation, without_optional
+    from aiida.engine.processes.port_model import namespace_fields_of, without_optional
 
-    if is_typeddict_annotation(annotation):
-        name = getattr(annotation, '__name__', annotation)
-        msg = f'`{name}` is a TypedDict, which declares no ports. Use a `PortModel` with the same fields.'
-        raise TypeError(msg)
     options: _Options = {'required': required, 'default': default, 'help': help or _port_help(annotation)}
     unwrapped = without_optional(without_marks(annotation))
     if _takes_many(unwrapped):
         args = t.get_args(unwrapped)
         return ManyShape(entry=shape_for_annotation(args[0] if args else None), **options)
-    annotation = unwrapped if fields_of(unwrapped) is not None else without_marks(annotation)
-    fields = fields_of(annotation)
+    annotation = unwrapped if namespace_fields_of(unwrapped) is not None else without_marks(annotation)
+    fields = namespace_fields_of(annotation)
     if fields is not None:
         return NamespaceShape(
             fields=tuple(

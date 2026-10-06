@@ -16,7 +16,7 @@ import typing as t
 from aiida.engine.processes.exit_code import ExitCode, ExitCodesNamespace
 from aiida.engine.processes.generic import spec
 from aiida.engine.processes.many import _takes_many
-from aiida.engine.processes.port_model import Field, fields_of
+from aiida.engine.processes.port_model import Field, namespace_fields_of
 from aiida.engine.processes.ports import (
     CalcJobOutputPort,
     InputPort,
@@ -104,12 +104,12 @@ class ProcessSpec(spec.ProcessSpec):
         :param kwargs: passed on to the namespace itself, ``required`` and ``help`` among them.
         :raises TypeError: if the structured type is not one this knows how to read.
         """
-        fields = fields_of(container)
+        fields = namespace_fields_of(container)
 
         if fields is None:
             msg = (
                 f'`{getattr(container, "__name__", container)}` is not a structured type, so there is nothing '
-                f'to declare `{name}` from. Use a `PortModel`.'
+                f'to declare `{name}` from. Use a `PortModel` or a `TypedDict`.'
             )
             raise TypeError(msg)
 
@@ -124,7 +124,7 @@ class ProcessSpec(spec.ProcessSpec):
                 )
                 continue
 
-            if fields_of(field.annotation) is not None:
+            if namespace_fields_of(field.annotation) is not None:
                 self.input_namespace_from(
                     under, field.annotation, node_types=node_types, required=field.required, help=field.help
                 )
@@ -149,7 +149,7 @@ class ProcessSpec(spec.ProcessSpec):
         arguments = t.get_args(unwrapped)
         item = arguments[0] if arguments else Data
         entry = None
-        if fields_of(item) is not None:
+        if namespace_fields_of(item) is not None:
             entry_spec = ProcessSpec()
             entry_spec.input_namespace_from('entry', without_optional(item), node_types=node_types)
             entry = entry_spec.inputs['entry']
@@ -175,12 +175,12 @@ class ProcessSpec(spec.ProcessSpec):
         :param prefix: the namespace to declare them under, empty for the top level.
         :raises TypeError: if the structured type is not one this knows how to read.
         """
-        fields = fields_of(container)
+        fields = namespace_fields_of(container)
 
         if fields is None:
             msg = (
                 f'`{getattr(container, "__name__", container)}` is not a structured type, so there is nothing '
-                f'to declare the outputs from. Use a `PortModel`.'
+                f'to declare the outputs from. Use a `PortModel` or a `TypedDict`.'
             )
             raise TypeError(msg)
 
@@ -197,7 +197,7 @@ class ProcessSpec(spec.ProcessSpec):
                 arguments = t.get_args(unwrapped_field)
                 item = arguments[0] if arguments else Data
                 entry = None
-                if fields_of(item) is not None:
+                if namespace_fields_of(item) is not None:
                     entry_spec = ProcessSpec()
                     entry_spec.outputs_from(without_optional(item))
                     entry = entry_spec.outputs
@@ -212,7 +212,7 @@ class ProcessSpec(spec.ProcessSpec):
                 )
                 continue
 
-            if fields_of(field.annotation) is not None:
+            if namespace_fields_of(field.annotation) is not None:
                 self.output_namespace(name, required=field.required, help=field.help)
                 self.outputs_from(field.annotation, prefix=f'{name}{self.namespace_separator}')
                 continue

@@ -24,7 +24,7 @@ from aiida.engine.processes.graphs.bindings import validate_bound_tasks
 from aiida.engine.processes.graphs.handlers import TaskWorkChain, launch_under_namespace
 from aiida.engine.processes.graphs.run import GraphRun, Start
 from aiida.engine.processes.graphs.spec import GraphSpec, ProcessTask
-from aiida.engine.processes.port_model import PortModel, fields_of, is_structured
+from aiida.engine.processes.port_model import PortModel, fields_of, namespace_fields_of
 from aiida.engine.processes.ports import PortNamespace
 from aiida.engine.processes.process import Process
 from aiida.engine.processes.process_spec import ProcessSpec
@@ -52,9 +52,9 @@ class TaskProcess(FunctionProcess):
     def _out_result(self, result: t.Any) -> None:
         outputs = self.spec().outputs
         annotation = get_annotations(self._func, eval_str=True).get('return')
-        if isinstance(result, PortModel) or is_structured(annotation):
+        if isinstance(result, PortModel) or namespace_fields_of(annotation) is not None:
             if outputs.dynamic:
-                msg = 'Task namespaces require a PortModel output declaration.'
+                msg = 'Task namespaces require a PortModel or TypedDict output declaration.'
                 raise TypeError(msg)
             result = _stored(result, outputs)
         elif outputs.dynamic:
@@ -95,10 +95,14 @@ def _stored(value: t.Any, port: t.Any, *, allow_mapping: bool = False) -> t.Any:
             return stored
 
         fields = fields_of(type(value))
-        if fields is None and allow_mapping and isinstance(value, Mapping):
+        if fields is None and isinstance(value, Mapping):
+            # A plain mapping for a fixed namespace: a TypedDict-shaped value, or one field of it.
+            # Undeclared names still fail when attached, which is where dynamic outputs are refused.
             return {name: _stored(item, port.get(name), allow_mapping=True) for name, item in value.items()}
         if fields is None:
-            msg = f'Task output namespace `{port.name}` requires PortModel values, got {type(value).__name__}.'
+            msg = (
+                f'Task output namespace `{port.name}` requires PortModel or mapping values, got {type(value).__name__}.'
+            )
             raise TypeError(msg)
         stored = {}
         for field in fields:

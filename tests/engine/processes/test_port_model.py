@@ -29,7 +29,15 @@ from aiida.engine import (
 from aiida.engine import (
     task_execution as task,
 )
-from aiida.engine.processes.port_model import as_dict, build, fields_of, is_structured
+from aiida.engine.processes.port_model import (
+    UNSPECIFIED,
+    as_dict,
+    build,
+    fields_of,
+    is_structured,
+    namespace_fields_of,
+    typeddict_fields_of,
+)
 from aiida.orm import Dict, Float, Int, JsonableData, load_node
 
 
@@ -268,19 +276,15 @@ def test_port_model_inheritance_defaults_and_constructor():
         first.steps = 20
 
 
-def test_typed_dict_and_named_tuple_do_not_declare_namespaces():
-    class Dictionary(t.TypedDict):
-        steps: int
-
+def test_named_tuple_does_not_declare_a_namespace():
     class Tuple(t.NamedTuple):
         steps: int
 
-    for container in (Dictionary, Tuple):
-        assert fields_of(container) is None
-        assert not is_structured(container)
-        assert as_dict(container(steps=1)) is None
-        with pytest.raises(TypeError, match='Use a `PortModel`'):
-            ProcessSpec().input_namespace_from('given', container)
+    assert fields_of(Tuple) is None
+    assert not is_structured(Tuple)
+    assert as_dict(Tuple(steps=1)) is None
+    with pytest.raises(TypeError, match='Use a `PortModel`'):
+        ProcessSpec().input_namespace_from('given', Tuple)
 
 
 def test_arbitrary_dataclasses_do_not_declare_namespaces():
@@ -630,3 +634,44 @@ def test_opaque_parameter_stays_an_orm_node():
     assert results['seen'] == 0.25
     assert node.inputs.config.uuid == value.uuid
     assert node.base.links.get_incoming().all_link_labels() == ['config']
+
+
+class ScreeningPayload(t.TypedDict):
+    filled: dict
+    empty: dict
+
+
+class PartialPayload(t.TypedDict, total=False):
+    filled: dict
+    label: str
+
+
+def test_typeddict_fields_match_portmodel_contract():
+    assert typeddict_fields_of(int) is None
+    fields = {item.name: item for item in typeddict_fields_of(ScreeningPayload) or ()}
+    assert set(fields) == {'filled', 'empty'}
+    assert all(item.required for item in fields.values())
+    assert all(item.default is UNSPECIFIED for item in fields.values())
+    partial = {item.name: item for item in typeddict_fields_of(PartialPayload) or ()}
+    assert not partial['filled'].required
+    assert partial['filled'].default is None
+    assert namespace_fields_of(ScreeningPayload) is not None
+    assert namespace_fields_of(int) is None
+
+
+@task
+def echo_payload(payload: ScreeningPayload) -> ScreeningPayload:
+    return {'filled': dict(payload['filled']), 'empty': dict(payload['empty'])}
+
+
+def test_typeddict_task_declares_namespaces():
+    spec = echo_payload.process_class.spec()
+    assert set(spec.inputs['payload']) == {'filled', 'empty'}
+    assert set(spec.outputs) == {'filled', 'empty'}
+
+
+def test_typeddict_task_roundtrip():
+    results, node = run_get_node(echo_payload, payload={'filled': {'up': [0.5]}, 'empty': {}})
+    assert node.is_finished_ok, node.exit_message
+    assert results['filled'].get_dict() == {'up': [0.5]}
+    assert results['empty'].get_dict() == {}

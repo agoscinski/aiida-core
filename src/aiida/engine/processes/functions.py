@@ -369,8 +369,12 @@ def _declare_output_ports(outputs: t.Sequence[str] | type | None, return_annotat
     if return_annotation is None or return_annotation is type(None):
         return False
 
-    if fields_of(return_annotation) is not None:
-        spec.outputs_from(return_annotation)
+    from aiida.engine.processes.port_model import namespace_fields_of
+
+    if namespace_fields_of(return_annotation) is not None:
+        from aiida.engine.processes.port_model import without_optional
+
+        spec.outputs_from(without_optional(return_annotation))
         return True
 
     spec.output(
@@ -492,18 +496,7 @@ class FunctionProcess(Process):
 
             super(generated, cls).define(spec)  # type: ignore[arg-type]
 
-            from aiida.engine.processes.port_model import is_typeddict_annotation
-
             named = _declare_input_types(inputs, spec, signature, node_types=cls.NODE_INPUT_TYPES)
-
-            for annotation_name, annotation_value in annotations.items():
-                if is_typeddict_annotation(annotation_value):
-                    name = getattr(annotation_value, '__name__', annotation_value)
-                    msg = (
-                        f'`{name}` is a TypedDict, which declares no ports. Use a `PortModel` with the same '
-                        f'fields for parameter `{annotation_name}`.'
-                    )
-                    raise TypeError(msg)
 
             for parameter in signature.parameters.values():
                 if parameter.name in named:
@@ -512,7 +505,7 @@ class FunctionProcess(Process):
                 if parameter.kind in [parameter.VAR_POSITIONAL, parameter.VAR_KEYWORD]:
                     continue
 
-                from aiida.engine.processes.port_model import without_optional
+                from aiida.engine.processes.port_model import namespace_fields_of, without_optional
 
                 annotation = annotations.get(parameter.name)
                 value_annotation = annotation
@@ -569,10 +562,10 @@ class FunctionProcess(Process):
                     )
                     continue
 
-                if is_structured(without_marks(annotation)):
+                if namespace_fields_of(annotation) is not None:
                     spec.input_namespace_from(
                         parameter.name,
-                        without_marks(annotation),
+                        without_optional(without_marks(annotation)),
                         node_types=cls.NODE_INPUT_TYPES,
                         required=default is UNSPECIFIED,
                         help=help_string,
