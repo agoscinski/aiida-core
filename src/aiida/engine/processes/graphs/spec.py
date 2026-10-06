@@ -583,6 +583,9 @@ class BodyTask(GraphTask):
     def has_outputs(self) -> bool:
         return bool(self.body.outputs)
 
+    def takes_namespace(self, port: str) -> bool:
+        return has_namespace(self.body.input_spec(), port)
+
     def produces_namespace(self, port: str) -> bool:
         return self.body.output_namespace is not None and has_namespace(self.body.output_spec(), port)
 
@@ -635,6 +638,9 @@ class BranchControl(BodyTask):
 
     def accepts(self, port: str) -> bool:
         return port == self.condition_port or any(port in branch.inputs for branch in self.branches)
+
+    def takes_namespace(self, port: str) -> bool:
+        return any(has_namespace(branch.input_spec(), port) for branch in self.branches)
 
     def produces(self, port: str) -> bool:
         return port in self.body.outputs
