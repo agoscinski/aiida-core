@@ -75,8 +75,12 @@ def shape_for_annotation(
     annotation: object, *, required: bool = True, default: object = UNSPECIFIED, help: str | None = None
 ) -> Shape:
     """Capture a Python declaration without constructing engine input or output ports."""
-    from aiida.engine.processes.port_model import without_optional
+    from aiida.engine.processes.port_model import is_typeddict_annotation, without_optional
 
+    if is_typeddict_annotation(annotation):
+        name = getattr(annotation, '__name__', annotation)
+        msg = f'`{name}` is a TypedDict, which declares no ports. Use a `PortModel` with the same fields.'
+        raise TypeError(msg)
     options: _Options = {'required': required, 'default': default, 'help': help or _port_help(annotation)}
     unwrapped = without_optional(without_marks(annotation))
     if _takes_many(unwrapped):

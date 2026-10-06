@@ -492,7 +492,18 @@ class FunctionProcess(Process):
 
             super(generated, cls).define(spec)  # type: ignore[arg-type]
 
+            from aiida.engine.processes.port_model import is_typeddict_annotation
+
             named = _declare_input_types(inputs, spec, signature, node_types=cls.NODE_INPUT_TYPES)
+
+            for annotation_name, annotation_value in annotations.items():
+                if is_typeddict_annotation(annotation_value):
+                    name = getattr(annotation_value, '__name__', annotation_value)
+                    msg = (
+                        f'`{name}` is a TypedDict, which declares no ports. Use a `PortModel` with the same '
+                        f'fields for parameter `{annotation_name}`.'
+                    )
+                    raise TypeError(msg)
 
             for parameter in signature.parameters.values():
                 if parameter.name in named:

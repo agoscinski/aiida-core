@@ -143,6 +143,22 @@ def fields_of(annotation: t.Any) -> tuple[Field, ...] | None:
     return tuple(fields)
 
 
+def is_typeddict_annotation(annotation: t.Any) -> bool:
+    """Return whether an annotation is a ``TypedDict``, which declares no ports."""
+    candidate = without_optional(annotation) if annotation is not None else None
+    is_typeddict = getattr(t, 'is_typeddict', None)
+    if callable(is_typeddict):
+        try:
+            return bool(is_typeddict(candidate))
+        except TypeError:
+            return False
+    return (
+        isinstance(candidate, type)
+        and issubclass(candidate, dict)
+        and hasattr(candidate, '__required_keys__')
+    )
+
+
 def as_dict(value: t.Any) -> dict[str, t.Any] | None:
     """Return a model's namespace values, or None for other values.
 
