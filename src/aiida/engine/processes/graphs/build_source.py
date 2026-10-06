@@ -34,8 +34,8 @@ from aiida.engine.processes.graphs.shapes import (
     NamespaceShape,
     Shape,
     dump_shape,
+    json_default,
     shape_for_annotation,
-    shape_for_annotations,
 )
 from aiida.engine.processes.graphs.source_bindings import resolve_binding, task_spec_for
 from aiida.engine.processes.graphs.spec import (
@@ -211,6 +211,20 @@ class _LoweringState:
         return self.definition.key
 
 
+def _literal_default(state: _LoweringState, node: ast.expr) -> object:
+    """Evaluate a graph parameter default, which must be a finite JSON literal."""
+    try:
+        value = ast.literal_eval(node)
+    except (ValueError, TypeError, SyntaxError) as exception:
+        msg = f'{state.key}: parameter defaults must be JSON literals, or move the default into a PortModel field'
+        raise UnsupportedSyntax(msg) from exception
+    try:
+        return json_default(value)
+    except TypeError as exception:
+        msg = f'{state.key}: parameter defaults must be finite JSON values'
+        raise UnsupportedSyntax(msg) from exception
+
+
 def _parse_function(definition: _SourceDefinition) -> ast.FunctionDef:
     module = ast.parse(definition.source)
     if len(module.body) != 1 or not isinstance(module.body[0], ast.FunctionDef):
@@ -221,14 +235,29 @@ def _parse_function(definition: _SourceDefinition) -> ast.FunctionDef:
 
 def _lower_function(state: _LoweringState) -> GraphSpec:
     function = _parse_function(state.definition)
-    if function.args.posonlyargs or function.args.kwonlyargs or function.args.vararg or function.args.kwarg:
-        msg = f'{state.key}: only ordinary positional parameters are supported'
+    if function.args.posonlyargs or function.args.vararg or function.args.kwarg:
+        msg = f'{state.key}: only ordinary positional or keyword-only parameters are supported'
         raise UnsupportedSyntax(msg)
-    if function.args.defaults or any(default is not None for default in function.args.kw_defaults):
-        msg = f'{state.key}: parameter defaults are not supported'
-        raise UnsupportedSyntax(msg)
-    boundary = shape_for_annotations(state.definition.hints, tuple(arg.arg for arg in function.args.args))
-    for arg in function.args.args:
+    parameters = (*function.args.args, *function.args.kwonlyargs)
+    defaults: dict[str, object] = {}
+    for arg, default in zip(
+        function.args.args[-len(function.args.defaults) :] if function.args.defaults else (),
+        function.args.defaults,
+        strict=True,
+    ):
+        defaults[arg.arg] = _literal_default(state, default)
+    for arg, default in zip(function.args.kwonlyargs, function.args.kw_defaults, strict=True):
+        if default is not None:
+            defaults[arg.arg] = _literal_default(state, default)
+    fields = []
+    for arg in parameters:
+        hint = state.definition.hints.get(arg.arg)
+        if arg.arg in defaults:
+            fields.append((arg.arg, shape_for_annotation(hint, required=False, default=defaults[arg.arg])))
+        else:
+            fields.append((arg.arg, shape_for_annotation(hint)))
+    boundary = NamespaceShape(fields=tuple(fields))
+    for arg in parameters:
         state.inputs[arg.arg] = []
         shape = boundary.select(arg.arg)
         state.names[arg.arg] = _Reference(None, arg.arg, shape)

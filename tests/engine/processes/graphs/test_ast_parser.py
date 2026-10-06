@@ -223,17 +223,21 @@ def none_default(x: int | None = None) -> int:
 @pytest.mark.parametrize(
     'handle, message',
     [
-        (positional_only, 'only ordinary positional parameters are supported'),
-        (keyword_only, 'only ordinary positional parameters are supported'),
-        (variadic_args, 'only ordinary positional parameters are supported'),
-        (variadic_kwargs, 'only ordinary positional parameters are supported'),
-        (default_parameter, 'parameter defaults are not supported'),
-        (none_default, 'parameter defaults are not supported'),
+        (positional_only, 'only ordinary positional or keyword-only parameters are supported'),
+        (variadic_args, 'only ordinary positional or keyword-only parameters are supported'),
+        (variadic_kwargs, 'only ordinary positional or keyword-only parameters are supported'),
     ],
 )
 def test_source_signature_restrictions_are_explicit(handle, message):
     with pytest.raises(UnsupportedSyntax, match=message):
         handle.build()
+
+
+def test_source_keyword_only_and_defaults_are_supported():
+    assert keyword_only.build().input_spec()['x'].required
+    assert default_parameter.build().prepare_inputs({}) == {'x': 1}
+    assert not default_parameter.build().input_spec()['x'].required
+    assert none_default.build().input_spec()['x'].valid_type == (int, type(None))
 
 
 def test_control_flow_rejections():
