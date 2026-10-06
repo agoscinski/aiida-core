@@ -743,7 +743,12 @@ class FunctionProcess(Process):
 
         for name, parameter in inspect.signature(self._func).parameters.items():
             if parameter.kind in [parameter.POSITIONAL_ONLY, parameter.POSITIONAL_OR_KEYWORD]:
-                args.append(inputs.pop(name))
+                if name in inputs:
+                    args.append(inputs.pop(name))
+                elif parameter.default is not parameter.empty:
+                    args.append(parameter.default)
+                else:
+                    args.append(inputs.pop(name))
             elif parameter.kind is parameter.VAR_POSITIONAL:
                 for key in [key for key in inputs.keys() if key.startswith(f'{name}_')]:
                     args.append(inputs.pop(key))
