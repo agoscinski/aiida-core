@@ -338,14 +338,22 @@ class PsqlDosMigrator:
             metadata = MetaData()
             metadata.reflect(bind=self.connection)
 
-            # The ``sorted_tables`` property returns the tables sorted by their foreign-key dependencies, with those
-            # that are dependent on others first. Iterate over the list in reverse to ensure that the tables with
-            # the independent rows are deleted first.
-            for schema_table in reversed(metadata.sorted_tables):
-                if schema_table.name in exclude_tables:
-                    continue
-                self.connection.execute(schema_table.delete())
-            self.connection.commit()
+            # Run all deletes inside a single explicit transaction so that deferred foreign keys -
+            # including the self-referential ownership reference on ``db_dbnode`` - are only checked at
+            # commit time. Without this, drivers that commit each statement separately (e.g. SQLite)
+            # enforce the constraints per statement and wiping rows with ownership edges fails.
+            if self.connection.in_transaction():
+                transaction = self.connection.begin_nested()
+            else:
+                transaction = self.connection.begin()
+            with transaction:
+                # The ``sorted_tables`` property returns the tables sorted by their foreign-key dependencies,
+                # with those that are dependent on others first. Iterate over the list in reverse to ensure that
+                # the tables with the independent rows are deleted first.
+                for schema_table in reversed(metadata.sorted_tables):
+                    if schema_table.name in exclude_tables:
+                        continue
+                    self.connection.execute(schema_table.delete())
 
     def migrate(self) -> None:
         """Migrate the storage for this profile to the head version.
