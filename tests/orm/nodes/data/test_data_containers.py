@@ -324,7 +324,8 @@ def test_equality_and_hash_are_uuid_identity():
     """Independent copies are unequal even with matching content; hashing is UUID-based."""
     container = DataList([Int(1)])
     clone = container.clone()
-    assert clone == clone
+    same = clone
+    assert clone == same
     assert container != clone
     assert container.__hash__() == int(UUID(container.uuid))
     assert hash(container) == hash(UUID(container.uuid))
