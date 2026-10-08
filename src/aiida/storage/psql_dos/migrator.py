@@ -356,6 +356,11 @@ class PsqlDosMigrator:
                     if schema_table.name in exclude_tables:
                         continue
                     self.connection.execute(schema_table.delete())
+            # Committing the savepoint alone does not persist the deletes when joining an already-open
+            # transaction, so commit the enclosing transaction as well. This preserves the previous behavior,
+            # which unconditionally committed after the deletes.
+            if self.connection.in_transaction():
+                self.connection.commit()
 
     def migrate(self) -> None:
         """Migrate the storage for this profile to the head version.
