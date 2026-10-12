@@ -93,7 +93,7 @@ class TestRegisterProcessHandler:
         child = ProcessNode()
         child.set_process_state(ProcessState.FINISHED)
         child.set_exit_status(400)
-        process = ArithmeticAddBaseWorkChain()
+        process = ArithmeticAddBaseWorkChain(enable_persistence=False)
         process.setup()
         process.ctx.iteration = 1
         process.ctx.children = [child]
@@ -165,7 +165,7 @@ class TestRegisterProcessHandler:
                 return ProcessHandlerReport()
 
         # Create dummy process instance
-        process = ArithmeticAddBaseWorkChain()
+        process = ArithmeticAddBaseWorkChain(enable_persistence=False)
 
         # Loop over all handlers, which should be just the one, and call it with the two different nodes
         for handler in process.get_process_handlers():
@@ -219,7 +219,7 @@ class TestRegisterProcessHandler:
         child = ProcessNode()
         child.set_process_state(ProcessState.FINISHED)
 
-        process = SomeWorkChain()
+        process = SomeWorkChain(enable_persistence=False)
         process.setup()
         process.ctx.iteration = 1
         process.ctx.children = [child]

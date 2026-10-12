@@ -25,6 +25,16 @@ from aiida.manage import enable_caching, get_manager
 from aiida.orm import Bool, Float, Int, Str, load_node
 
 
+@pytest.fixture(autouse=True)
+def nonpersistent_runner(manager):
+    """Local test workflows cannot be imported for automatic checkpoint recovery.
+
+    Serialization tests in this module create their bundles explicitly; automatic
+    checkpoint persistence is covered by the transition and daemon tests.
+    """
+    manager.set_runner(manager.create_runner(with_persistence=False))
+
+
 def run_until_paused(proc):
     """Set up a future that will be resolved when process is paused"""
     listener = plumpy.ProcessListener()
@@ -417,7 +427,7 @@ class TestWorkchain:
                 self.out('not_allowed', orm.Int(2))
 
         with pytest.raises(ValueError):
-            _, node = launch.run_get_node(IllegalWorkChain)
+            _, node = launch.run_get_node(IllegalWorkChain(enable_persistence=False))
 
         node = (
             orm.QueryBuilder().append(orm.ProcessNode, tag='node').order_by({'node': {'id': 'desc'}}).first(flat=True)
@@ -524,7 +534,7 @@ class TestWorkchain:
             def run_step(self):
                 pass
 
-        launch.run(TestWorkChain)
+        launch.run(TestWorkChain(enable_persistence=False))
         assert any('The conditional predicate `predicate` returned `true`' in str(r.message) for r in recwarn)
 
     def test_invalid_while_predicate(self, recwarn):
@@ -544,7 +554,7 @@ class TestWorkchain:
                 # Need to return an exit code to abort the workchain, otherwise we would be stuck in an infinite loop
                 return ExitCode(1)
 
-        launch.run(TestWorkChain)
+        launch.run(TestWorkChain(enable_persistence=False))
         assert any('The conditional predicate `predicate` returned `true`' in str(r.message) for r in recwarn)
 
     def test_malformed_outline(self):
@@ -1093,6 +1103,8 @@ class TestWorkchain:
         builder.a = Int(1)
         builder.b = Int(2)
 
+        manager = get_manager()
+        manager.set_runner(manager.create_runner())
         node = submit_and_await(builder)
         assert node.is_finished_ok
         assert node.outputs.out_member == 3
@@ -1535,7 +1547,7 @@ class TestWorkChainExpose:
             def step1(self):
                 pass
 
-        launch.run(Child)
+        launch.run(Child(enable_persistence=False))
 
     def test_expose_process_function(self):
         """Test that process functions can be exposed and the port attributes are preserved."""
@@ -1590,12 +1602,12 @@ class TestWorkChainMisc:
     @staticmethod
     def test_run_pointless_workchain():
         """Running the pointless workchain should not incur any exceptions"""
-        launch.run(TestWorkChainMisc.PointlessWorkChain)
+        launch.run(TestWorkChainMisc.PointlessWorkChain(enable_persistence=False))
 
     def test_global_submit_raises(self):
         """Using top-level submit should raise."""
         with pytest.raises(exceptions.InvalidOperation):
-            launch.run(TestWorkChainMisc.IllegalSubmitWorkChain)
+            launch.run(TestWorkChainMisc.IllegalSubmitWorkChain(enable_persistence=False))
 
 
 @pytest.mark.requires_broker
@@ -1636,7 +1648,7 @@ class TestDefaultUniqueness:
         nodes.
         """
         inputs = {'child_one': {}, 'child_two': {}}
-        _, node = launch.run.get_node(TestDefaultUniqueness.Parent, **inputs)
+        _, node = launch.run.get_node(TestDefaultUniqueness.Parent(inputs=inputs, enable_persistence=False))
 
         nodes = node.base.links.get_incoming().all_nodes()
         uuids = {n.uuid for n in nodes}

@@ -11,6 +11,7 @@
 import pytest
 
 from aiida import orm
+from aiida.common.links import LinkType
 from aiida.orm import Data, load_node
 
 
@@ -68,6 +69,30 @@ class TestNodeBasicSQLA:
                 load_node()
         finally:
             session.rollback()
+
+    @pytest.mark.parametrize('rollback', [False, True])
+    def test_link_transaction(self, rollback):
+        """Adding a link between stored nodes must respect the enclosing transaction."""
+        calculation = orm.CalcJobNode().store()
+        output = orm.FolderData().store()
+
+        def add_link():
+            with self.backend.transaction():
+                output.base.links.add_incoming(calculation, LinkType.CREATE, 'retrieved')
+                assert calculation.base.links.get_outgoing().all_link_labels() == ['retrieved']
+                if rollback:
+                    msg = 'Rollback link creation'
+                    raise RuntimeError(msg)
+
+        if rollback:
+            with pytest.raises(RuntimeError, match='Rollback link creation'):
+                add_link()
+        else:
+            add_link()
+
+        assert load_node(calculation.pk).base.links.get_outgoing().all_link_labels() == (
+            [] if rollback else ['retrieved']
+        )
 
     def test_multiple_node_creation(self):
         """This test checks that a node is not added automatically to the session

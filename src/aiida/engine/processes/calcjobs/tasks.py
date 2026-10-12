@@ -13,8 +13,9 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
-import tempfile
 from collections.abc import Callable
+from contextlib import AsyncExitStack
+from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Any
 
 import plumpy
@@ -36,11 +37,13 @@ from aiida.schedulers.datastructures import JobState
 
 from ..process import ProcessState
 from .monitors import CalcJobMonitorAction, CalcJobMonitorResult, CalcJobMonitors
+from .retrieval import TemporaryRetrieval
 
 if TYPE_CHECKING:
     from .calcjob import CalcJob
 
 UPLOAD_COMMAND = 'upload'
+UNSTASH_COMMAND = 'unstash'
 SUBMIT_COMMAND = 'submit'
 UPDATE_COMMAND = 'update'
 RETRIEVE_COMMAND = 'retrieve'
@@ -116,7 +119,6 @@ async def task_upload_job(process: CalcJob, transport_queue: TransportQueue, can
         raise TransportTaskException(f'upload_calculation failed {max_attempts} times consecutively') from exception
     else:
         logger.info(f'uploading CalcJob<{node.pk}> successful')
-        node.set_state(CalcJobState.UNSTASHING)
         return skip_submit
 
 
@@ -162,7 +164,6 @@ async def task_submit_job(node: CalcJobNode, transport_queue: TransportQueue, ca
         raise TransportTaskException(f'submit_calculation failed {max_attempts} times consecutively') from exception
     else:
         logger.info(f'submitting CalcJob<{node.pk}> successful')
-        node.set_state(CalcJobState.WITHSCHEDULER)
         return result
 
 
@@ -220,9 +221,6 @@ async def task_update_job(node: CalcJobNode, job_manager, cancellable: Interrupt
         raise TransportTaskException(f'update_calculation failed {max_attempts} times consecutively') from exception
     else:
         logger.info(f'updating CalcJob<{node.pk}> successful')
-        if job_done:
-            node.set_state(CalcJobState.STASHING)
-
         return job_done
 
 
@@ -276,9 +274,8 @@ async def task_monitor_job(
 async def task_retrieve_job(
     process: CalcJob,
     transport_queue: TransportQueue,
-    retrieved_temporary_folder: str,
     cancellable: InterruptableFuture,
-):
+) -> TemporaryRetrieval:
     """Transport task that will attempt to retrieve all files of a completed job calculation.
     The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
     function is called, wrapped in the exponential_backoff_retry coroutine, which, in case of a caught exception, will
@@ -286,19 +283,32 @@ async def task_retrieve_job(
     If all retries fail, the task will raise a TransportTaskException
     :param process: the job calculation
     :param transport_queue: the TransportQueue from which to request a Transport
-    :param retrieved_temporary_folder: the absolute path to a directory to store files
     :param cancellable: the cancelled flag that will be queried to determine whether the task was cancelled
+    :return: The completed attempt, whose ownership must be transferred to the process or released.
     :raises: TransportTaskException if after the maximum number of retries the transport task still excepted
     """
     node = process.node
-    if node.get_state() == CalcJobState.PARSING:
-        logger.warning(f'CalcJob<{node.pk}> already marked as PARSING, skipping task_retrieve_job')
-        return
+    retrieved_link = node.base.links.get_outgoing(link_label_filter=node.link_label_retrieved).first()
+    if retrieved_link is not None:
+        process.out(node.link_label_retrieved, retrieved_link.node)
     initial_interval = get_config_option(RETRY_INTERVAL_OPTION)
     max_attempts = get_config_option(MAX_ATTEMPTS_OPTION)
     authinfo = node.get_authinfo()
 
-    async def do_retrieve():
+    async def do_retrieve() -> TemporaryRetrieval:
+        # Never retry into a destination contaminated by an incomplete directory transfer.
+        async with AsyncExitStack() as cleanup:
+            directory = TemporaryDirectory(
+                prefix='aiida-retrieval-', dir=get_config_option('storage.sandbox') or None, ignore_cleanup_errors=True
+            )
+            cleanup.push_async_callback(asyncio.to_thread, directory.cleanup)
+            if retrieved_link is None or node.get_retrieve_temporary_list():
+                await retrieve(directory.name)
+            completed = TemporaryRetrieval(directory)
+            cleanup.pop_all()
+            return completed
+
+    async def retrieve(retrieved_temporary_folder: str) -> None:
         async with transport_queue.request_transport(authinfo) as request:
             transport = await cancellable.with_interrupt(request)
             # Perform the job accounting and set it on the node if successful. If the scheduler does not implement this
@@ -324,7 +334,6 @@ async def task_retrieve_job(
 
             if retrieved is not None:
                 process.out(node.link_label_retrieved, retrieved)
-            return retrieved
 
     try:
         logger.info(f'scheduled request to retrieve CalcJob<{node.pk}>')
@@ -338,7 +347,6 @@ async def task_retrieve_job(
         logger.warning(f'retrieving CalcJob<{node.pk}> failed')
         raise TransportTaskException(f'retrieve_calculation failed {max_attempts} times consecutively') from exception
     else:
-        node.set_state(CalcJobState.PARSING)
         logger.info(f'retrieving CalcJob<{node.pk}> successful')
         return result
 
@@ -392,7 +400,6 @@ async def task_stash_job(node: CalcJobNode, transport_queue: TransportQueue, can
         logger.warning(f'stashing calculation<{node.pk}> failed')
         raise TransportTaskException(f'stash_calculation failed {max_attempts} times consecutively') from exception
     else:
-        node.set_state(CalcJobState.RETRIEVING)
         logger.info(f'stashing calculation<{node.pk}> successful')
         return
 
@@ -428,7 +435,6 @@ async def task_unstash_job(node: CalcJobNode, transport_queue: TransportQueue, c
         logger.warning(f'unstashing calculation<{node.pk}> failed')
         raise TransportTaskException(f'unstash_calculation failed {max_attempts} times consecutively') from exception
     else:
-        node.set_state(CalcJobState.SUBMITTING)
         logger.info(f'unstashing calculation<{node.pk}> successful')
         return
 
@@ -501,6 +507,21 @@ class Waiting(plumpy.process_states.Waiting):
             self._command = self.data
 
     @property
+    def calcjob_state(self) -> CalcJobState:
+        """Return the persisted CalcJob phase corresponding to this waiting command."""
+        if self._command is None:
+            msg = 'A CalcJob waiting state must have a transport command.'
+            raise RuntimeError(msg)
+        return {
+            UPLOAD_COMMAND: CalcJobState.UPLOADING,
+            UNSTASH_COMMAND: CalcJobState.UNSTASHING,
+            SUBMIT_COMMAND: CalcJobState.SUBMITTING,
+            UPDATE_COMMAND: CalcJobState.WITHSCHEDULER,
+            STASH_COMMAND: CalcJobState.STASHING,
+            RETRIEVE_COMMAND: CalcJobState.RETRIEVING,
+        }[self._command]
+
+    @property
     def monitors(self) -> CalcJobMonitors | None:
         """Return the collection of monitors if specified in the inputs.
 
@@ -533,25 +554,15 @@ class Waiting(plumpy.process_states.Waiting):
         The advantage of this design, is that the sequence is interruptable,
         meaning, the process can potentially come back and start from where it left off.
 
-        The overall sequence is as follows:
-        in case `skip_submit` is True:
-
-        UPLOAD -> STASH -> RETRIEVE
-        |   ^     |   ^     |   ^
-        v   |     v   |     v   |
-        .. ..     .. ..     .. ..
-
-        otherwise:
-
-        UPLOAD -> SUBMIT -> UPDATE -> STASH -> RETRIEVE
-        |   ^     |   ^     |   ^     |   ^     |   ^
-        v   |     v   |     v   |     v   |     v   |
-        .. ..     .. ..     .. ..     .. ..     .. ..
+        Each command boundary is checkpointed. The sequence is ``UPLOAD -> STASH -> RETRIEVE`` when
+        ``skip_submit`` is true, otherwise ``UPLOAD -> SUBMIT -> UPDATE -> STASH -> RETRIEVE``.
+        For an unstash calculation, ``UNSTASH`` follows ``UPLOAD`` and its checkpoint retains ``skip_submit``.
         """
 
         node = self.process.node
         transport_queue = self.process.runner.transport
         result: plumpy.process_states.State = self
+        temporary_retrieval: TemporaryRetrieval | None = None
 
         process_status = f'Waiting for transport task: {self._command}'
         node.set_process_status(process_status)
@@ -559,11 +570,26 @@ class Waiting(plumpy.process_states.Waiting):
         try:
             if self._command == UPLOAD_COMMAND:
                 skip_submit = await self._launch_task(task_upload_job, self.process, transport_queue)
-                # Note: we do both `task_upload_job` and `task_unstash_job` at the same time,
-                # only because `skip_submit` is not easily accesible outside this `if` block!
                 if node.get_option('unstash') and node.process_type == 'aiida.calculations:core.unstash':
-                    await self._launch_task(task_unstash_job, node, transport_queue)
-                if skip_submit:
+                    result = self.create_state(  # type: ignore[assignment]
+                        ProcessState.WAITING,
+                        None,
+                        msg='Waiting to unstash',
+                        data={
+                            'command': UNSTASH_COMMAND,
+                            'skip_submit': skip_submit,
+                            'monitor_result': self._monitor_result,
+                        },
+                    )
+                elif skip_submit:
+                    result = self.stash(monitor_result=self._monitor_result)
+                else:
+                    result = self.submit()
+
+            elif self._command == UNSTASH_COMMAND:
+                assert isinstance(self.data, dict)
+                await self._launch_task(task_unstash_job, node, transport_queue)
+                if self.data['skip_submit']:
                     result = self.stash(monitor_result=self._monitor_result)
                 else:
                     result = self.submit()
@@ -587,7 +613,7 @@ class Waiting(plumpy.process_states.Waiting):
                     process_status = f'Monitoring scheduler: job state {scheduler_state_string}'
                     node.set_process_status(process_status)
                     job_done = await self._launch_task(task_update_job, node, self.process.runner.job_manager)
-                    monitor_result = await self._monitor_job(node, transport_queue, self.monitors)
+                    monitor_result = None if job_done else await self._monitor_job(node, transport_queue, self.monitors)
 
                     if monitor_result and monitor_result.action is CalcJobMonitorAction.KILL:
                         await self._kill_job(node, transport_queue)
@@ -605,11 +631,12 @@ class Waiting(plumpy.process_states.Waiting):
                 result = self.retrieve(monitor_result=self._monitor_result)
 
             elif self._command == RETRIEVE_COMMAND:
-                temp_folder = tempfile.mkdtemp()
-                await self._launch_task(task_retrieve_job, self.process, transport_queue, temp_folder)
+                temporary_retrieval = await self._launch_task(task_retrieve_job, self.process, transport_queue)
+                temp_folder = temporary_retrieval.path
 
                 if not self._monitor_result:
-                    result = self.parse(temp_folder)
+                    exit_code = self.data.get('parse_exit_code') if isinstance(self.data, dict) else None
+                    result = self.parse(temp_folder, exit_code)
 
                 elif self._monitor_result.parse is False:
                     exit_code = self.process.exit_codes.STOPPED_BY_MONITOR.format(message=self._monitor_result.message)
@@ -622,6 +649,10 @@ class Waiting(plumpy.process_states.Waiting):
                     result = self.parse(temp_folder, exit_code)
                 else:
                     result = self.parse(temp_folder)
+
+                if not self._monitor_result or self._monitor_result.parse:
+                    await self.process.take_temporary_retrieval(temporary_retrieval)
+                    temporary_retrieval = None
 
             else:
                 raise RuntimeError('Unknown waiting command')
@@ -644,6 +675,8 @@ class Waiting(plumpy.process_states.Waiting):
             node.set_process_status(None)
             return result
         finally:
+            if temporary_retrieval is not None:
+                await asyncio.to_thread(temporary_retrieval.cleanup)
             # If we were trying to kill but we didn't deal with it, make sure it's set here
             if self._killing and not self._killing.done():
                 self._killing.set_result(False)
