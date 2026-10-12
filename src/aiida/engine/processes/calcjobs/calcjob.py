@@ -23,7 +23,7 @@ import plumpy.process_states
 
 from aiida import orm
 from aiida.common import AttributeDict, exceptions
-from aiida.common.datastructures import CalcInfo, FileCopyOperation
+from aiida.common.datastructures import CalcInfo, CalcJobState, FileCopyOperation
 from aiida.common.folders import Folder
 from aiida.common.lang import classproperty, override
 from aiida.common.links import LinkType
@@ -35,7 +35,7 @@ from ..process import Process, ProcessState
 from ..process_spec import CalcJobProcessSpec
 from .importer import CalcJobImporter
 from .monitors import CalcJobMonitor
-from .tasks import UPLOAD_COMMAND, Waiting
+from .tasks import RETRIEVE_COMMAND, UPLOAD_COMMAND, Waiting
 
 __all__ = ('CalcJob',)
 
@@ -242,6 +242,24 @@ class CalcJob(Process):
     link_label_retrieved: str = 'retrieved'
     KEY_CACHE_VERSION: str = 'cache_version'
     CACHE_VERSION: int | None = None
+
+    @override
+    def _persist_transition(self, from_state: plumpy.process_states.State | None) -> None:
+        """Commit completion of retrieval together with its output links and checkpoint."""
+        if not (
+            isinstance(from_state, Waiting)
+            and from_state._command == RETRIEVE_COMMAND
+            and self._state.LABEL is ProcessState.RUNNING
+        ):
+            super()._persist_transition(from_state)
+            return
+
+        # No download or broadcast belongs in this transaction: only the completed transition's database writes.
+        with self.node.backend.transaction():
+            self.update_outputs()
+            self.node.set_process_state(self._state.LABEL)
+            self.node.set_state(CalcJobState.PARSING)
+            self._save_checkpoint(raise_on_error=True)
 
     def __init__(self, *args, **kwargs) -> None:
         """Construct a CalcJob instance.

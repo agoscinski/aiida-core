@@ -254,13 +254,16 @@ class Process(PlumpyProcess):
         except (AssertionError, AttributeError):
             return AttributeDict()
 
-    def _save_checkpoint(self) -> None:
-        """Save the current state in a chechpoint if persistence is enabled and the process state is not terminal
+    def _save_checkpoint(self, *, raise_on_error: bool = False) -> None:
+        """Save a checkpoint if persistence is enabled and the process state is not terminal.
 
-        If the persistence call excepts with a PersistenceError, it will be caught and a warning will be logged.
+        :param raise_on_error: Propagate persistence failures so a transition transaction can roll back.
         """
         if self._enable_persistence and not self._state.is_terminal():
             if self.runner.persister is None:
+                if raise_on_error:
+                    msg = 'Cannot commit a process transition without a checkpoint persister.'
+                    raise plumpy.exceptions.PersistenceError(msg)
                 self.logger.exception(
                     'No persister set to save checkpoint, this means you will '
                     'not be able to restart in case of a crash until the next successful checkpoint.'
@@ -269,6 +272,8 @@ class Process(PlumpyProcess):
             try:
                 self.runner.persister.save_checkpoint(self)
             except plumpy.exceptions.PersistenceError:
+                if raise_on_error:
+                    raise
                 self.logger.exception(
                     'Exception trying to save checkpoint, this means you will '
                     'not be able to restart in case of a crash until the next successful checkpoint.'
@@ -477,18 +482,7 @@ class Process(PlumpyProcess):
             super().on_entered(from_state)
             return
 
-        # We need to guarantee that the process state gets updated even if the ``update_outputs`` call excepts, for
-        # example if the process implementation attaches an invalid output through ``Process.out``, and so we call the
-        # ``ProcessNode.set_process_state`` in the finally-clause. This way the state gets properly set on the node even
-        # if the process is transitioning to the terminal excepted state.
-        try:
-            self.update_outputs()
-        except ValueError:
-            raise
-        finally:
-            self.node.set_process_state(self._state.LABEL)  # type: ignore[arg-type]
-
-        self._save_checkpoint()
+        self._persist_transition(from_state)
         set_process_state_change_timestamp(self.node)
 
         # The updating of outputs and state has to be performed before the super is called because the super will
@@ -496,6 +490,15 @@ class Process(PlumpyProcess):
         # is possible that they will read the old process state and outputs that they check may not yet have been
         # attached.
         super().on_entered(from_state)
+
+    def _persist_transition(self, from_state: plumpy.process_states.State | None) -> None:
+        """Persist outputs, node state and checkpoint before broadcasting the transition."""
+        # Preserve the state update on invalid outputs so plumpy can enter the excepted state.
+        try:
+            self.update_outputs()
+        finally:
+            self.node.set_process_state(self._state.LABEL)  # type: ignore[arg-type]
+        self._save_checkpoint()
 
     @override
     def on_terminated(self) -> None:

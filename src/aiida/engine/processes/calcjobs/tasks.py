@@ -338,7 +338,6 @@ async def task_retrieve_job(
         logger.warning(f'retrieving CalcJob<{node.pk}> failed')
         raise TransportTaskException(f'retrieve_calculation failed {max_attempts} times consecutively') from exception
     else:
-        node.set_state(CalcJobState.PARSING)
         logger.info(f'retrieving CalcJob<{node.pk}> successful')
         return result
 
