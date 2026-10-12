@@ -327,7 +327,10 @@ class TestProcess:
             async def run(self):
                 self.out('namespace', self.inputs.namespace)
 
-        results, node = run_get_node(TestProcess1, namespace={'alpha': orm.Int(1), 'beta': orm.Int(2)})
+        process = TestProcess1(
+            inputs={'namespace': {'alpha': orm.Int(1), 'beta': orm.Int(2)}}, enable_persistence=False
+        )
+        results, node = run_get_node(process)
 
         assert node.is_finished_ok
         assert results['namespace']['alpha'] == orm.Int(1)
@@ -353,7 +356,7 @@ class TestProcess:
                     self.out('required_string', orm.Str('testing').store())
                     self.out('integer.namespace.two', orm.Int(2).store())
 
-        _, node = run_get_node(TestProcess1)
+        _, node = run_get_node(TestProcess1(enable_persistence=False))
 
         # For default inputs, no outputs will be attached, causing the validation to fail at the end so an internal
         # exit status will be set, which is a negative integer
@@ -363,7 +366,7 @@ class TestProcess:
         assert node.exit_message == TestProcess1.exit_codes.ERROR_MISSING_OUTPUT.message
 
         # When settings `add_outputs` to True, the outputs should be added and validation should pass
-        _, node = run_get_node(TestProcess1, add_outputs=orm.Bool(True))
+        _, node = run_get_node(TestProcess1(inputs={'add_outputs': orm.Bool(True)}, enable_persistence=False))
         assert node.is_finished
         assert node.is_finished_ok
         assert node.exit_status == 0
@@ -372,7 +375,6 @@ class TestProcess:
         """Test the ``Process.exposed_outputs`` method."""
         from aiida.common import AttributeDict
         from aiida.common.links import LinkType
-        from aiida.engine.utils import instantiate_process
         from aiida.manage import get_manager
 
         runner = get_manager().get_runner()
@@ -406,7 +408,7 @@ class TestProcess:
         node_name_space = orm.Int(1).store()
         node_name_space.base.links.add_incoming(node_child, link_label='name__space', link_type=LinkType.RETURN)
 
-        process = instantiate_process(runner, ParentProcess, input=orm.Int(1))
+        process = ParentProcess(runner=runner, inputs={'input': orm.Int(1)}, enable_persistence=False)
         exposed_outputs = process.exposed_outputs(node_child, ChildProcess)
 
         expected = AttributeDict(
@@ -422,7 +424,6 @@ class TestProcess:
     def test_exposed_outputs_non_existing_namespace(self):
         """Test the ``Process.exposed_outputs`` method for non-existing namespace."""
         from aiida.common.links import LinkType
-        from aiida.engine.utils import instantiate_process
         from aiida.manage import get_manager
 
         runner = get_manager().get_runner()
@@ -456,7 +457,7 @@ class TestProcess:
         node_name_space = orm.Int(1).store()
         node_name_space.base.links.add_incoming(node_child, link_label='name__space', link_type=LinkType.RETURN)
 
-        process = instantiate_process(runner, ParentProcess, input=orm.Int(1))
+        process = ParentProcess(runner=runner, inputs={'input': orm.Int(1)}, enable_persistence=False)
 
         # If the ``namespace`` does not exist, for example because it is slightly misspelled, a ``KeyError`` is raised
         with pytest.raises(KeyError):
@@ -474,7 +475,7 @@ class TestProcess:
             def _build_process_label(self):
                 return custom_process_label
 
-        _, node = run_get_node(CustomLabelProcess)
+        _, node = run_get_node(CustomLabelProcess(enable_persistence=False))
         assert node.process_label == custom_process_label
 
 

@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from .calcjob import CalcJob
 
 UPLOAD_COMMAND = 'upload'
+UNSTASH_COMMAND = 'unstash'
 SUBMIT_COMMAND = 'submit'
 UPDATE_COMMAND = 'update'
 RETRIEVE_COMMAND = 'retrieve'
@@ -116,7 +117,6 @@ async def task_upload_job(process: CalcJob, transport_queue: TransportQueue, can
         raise TransportTaskException(f'upload_calculation failed {max_attempts} times consecutively') from exception
     else:
         logger.info(f'uploading CalcJob<{node.pk}> successful')
-        node.set_state(CalcJobState.UNSTASHING)
         return skip_submit
 
 
@@ -162,7 +162,6 @@ async def task_submit_job(node: CalcJobNode, transport_queue: TransportQueue, ca
         raise TransportTaskException(f'submit_calculation failed {max_attempts} times consecutively') from exception
     else:
         logger.info(f'submitting CalcJob<{node.pk}> successful')
-        node.set_state(CalcJobState.WITHSCHEDULER)
         return result
 
 
@@ -220,9 +219,6 @@ async def task_update_job(node: CalcJobNode, job_manager, cancellable: Interrupt
         raise TransportTaskException(f'update_calculation failed {max_attempts} times consecutively') from exception
     else:
         logger.info(f'updating CalcJob<{node.pk}> successful')
-        if job_done:
-            node.set_state(CalcJobState.STASHING)
-
         return job_done
 
 
@@ -391,7 +387,6 @@ async def task_stash_job(node: CalcJobNode, transport_queue: TransportQueue, can
         logger.warning(f'stashing calculation<{node.pk}> failed')
         raise TransportTaskException(f'stash_calculation failed {max_attempts} times consecutively') from exception
     else:
-        node.set_state(CalcJobState.RETRIEVING)
         logger.info(f'stashing calculation<{node.pk}> successful')
         return
 
@@ -427,7 +422,6 @@ async def task_unstash_job(node: CalcJobNode, transport_queue: TransportQueue, c
         logger.warning(f'unstashing calculation<{node.pk}> failed')
         raise TransportTaskException(f'unstash_calculation failed {max_attempts} times consecutively') from exception
     else:
-        node.set_state(CalcJobState.SUBMITTING)
         logger.info(f'unstashing calculation<{node.pk}> successful')
         return
 
@@ -500,6 +494,21 @@ class Waiting(plumpy.process_states.Waiting):
             self._command = self.data
 
     @property
+    def calcjob_state(self) -> CalcJobState:
+        """Return the persisted CalcJob phase corresponding to this waiting command."""
+        if self._command is None:
+            msg = 'A CalcJob waiting state must have a transport command.'
+            raise RuntimeError(msg)
+        return {
+            UPLOAD_COMMAND: CalcJobState.UPLOADING,
+            UNSTASH_COMMAND: CalcJobState.UNSTASHING,
+            SUBMIT_COMMAND: CalcJobState.SUBMITTING,
+            UPDATE_COMMAND: CalcJobState.WITHSCHEDULER,
+            STASH_COMMAND: CalcJobState.STASHING,
+            RETRIEVE_COMMAND: CalcJobState.RETRIEVING,
+        }[self._command]
+
+    @property
     def monitors(self) -> CalcJobMonitors | None:
         """Return the collection of monitors if specified in the inputs.
 
@@ -532,20 +541,9 @@ class Waiting(plumpy.process_states.Waiting):
         The advantage of this design, is that the sequence is interruptable,
         meaning, the process can potentially come back and start from where it left off.
 
-        The overall sequence is as follows:
-        in case `skip_submit` is True:
-
-        UPLOAD -> STASH -> RETRIEVE
-        |   ^     |   ^     |   ^
-        v   |     v   |     v   |
-        .. ..     .. ..     .. ..
-
-        otherwise:
-
-        UPLOAD -> SUBMIT -> UPDATE -> STASH -> RETRIEVE
-        |   ^     |   ^     |   ^     |   ^     |   ^
-        v   |     v   |     v   |     v   |     v   |
-        .. ..     .. ..     .. ..     .. ..     .. ..
+        Each command boundary is checkpointed. The sequence is ``UPLOAD -> STASH -> RETRIEVE`` when
+        ``skip_submit`` is true, otherwise ``UPLOAD -> SUBMIT -> UPDATE -> STASH -> RETRIEVE``.
+        For an unstash calculation, ``UNSTASH`` follows ``UPLOAD`` and its checkpoint retains ``skip_submit``.
         """
 
         node = self.process.node
@@ -558,11 +556,26 @@ class Waiting(plumpy.process_states.Waiting):
         try:
             if self._command == UPLOAD_COMMAND:
                 skip_submit = await self._launch_task(task_upload_job, self.process, transport_queue)
-                # Note: we do both `task_upload_job` and `task_unstash_job` at the same time,
-                # only because `skip_submit` is not easily accesible outside this `if` block!
                 if node.get_option('unstash') and node.process_type == 'aiida.calculations:core.unstash':
-                    await self._launch_task(task_unstash_job, node, transport_queue)
-                if skip_submit:
+                    result = self.create_state(  # type: ignore[assignment]
+                        ProcessState.WAITING,
+                        None,
+                        msg='Waiting to unstash',
+                        data={
+                            'command': UNSTASH_COMMAND,
+                            'skip_submit': skip_submit,
+                            'monitor_result': self._monitor_result,
+                        },
+                    )
+                elif skip_submit:
+                    result = self.stash(monitor_result=self._monitor_result)
+                else:
+                    result = self.submit()
+
+            elif self._command == UNSTASH_COMMAND:
+                assert isinstance(self.data, dict)
+                await self._launch_task(task_unstash_job, node, transport_queue)
+                if self.data['skip_submit']:
                     result = self.stash(monitor_result=self._monitor_result)
                 else:
                     result = self.submit()
@@ -586,7 +599,7 @@ class Waiting(plumpy.process_states.Waiting):
                     process_status = f'Monitoring scheduler: job state {scheduler_state_string}'
                     node.set_process_status(process_status)
                     job_done = await self._launch_task(task_update_job, node, self.process.runner.job_manager)
-                    monitor_result = await self._monitor_job(node, transport_queue, self.monitors)
+                    monitor_result = None if job_done else await self._monitor_job(node, transport_queue, self.monitors)
 
                     if monitor_result and monitor_result.action is CalcJobMonitorAction.KILL:
                         await self._kill_job(node, transport_queue)

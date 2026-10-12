@@ -16,6 +16,7 @@ import pytest
 from aiida import orm
 from aiida.calculations.arithmetic.add import ArithmeticAddCalculation
 from aiida.common.datastructures import CalcJobState
+from aiida.engine import ProcessState
 from aiida.engine.processes.calcjobs import tasks
 
 
@@ -97,5 +98,58 @@ def test_retrieval_transition_atomicity(aiida_code_installed, aiida_manager, mon
 
     try:
         runner.run_until_complete(replay())
+    finally:
+        process.close()
+
+
+@pytest.mark.requires_broker
+@pytest.mark.parametrize(
+    'command,expected',
+    [
+        (tasks.UPLOAD_COMMAND, CalcJobState.UPLOADING),
+        (tasks.UNSTASH_COMMAND, CalcJobState.UNSTASHING),
+        (tasks.SUBMIT_COMMAND, CalcJobState.SUBMITTING),
+        (tasks.UPDATE_COMMAND, CalcJobState.WITHSCHEDULER),
+        (tasks.STASH_COMMAND, CalcJobState.STASHING),
+        (tasks.RETRIEVE_COMMAND, CalcJobState.RETRIEVING),
+    ],
+)
+@pytest.mark.parametrize('failure', [False, True])
+def test_waiting_phase_atomicity(aiida_code_installed, aiida_manager, monkeypatch, command, expected, failure):
+    """Every transport command's CalcJob phase is committed with its matching checkpoint."""
+    code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
+    runner = aiida_manager.get_runner()
+    process = runner.instantiate_process(ArithmeticAddCalculation, code=code, x=orm.Int(1), y=orm.Int(2))
+    previous_state = process._state
+    previous_checkpoint = process.node.checkpoint
+    process._state = process.create_state(ProcessState.WAITING, None, data={'command': command, 'skip_submit': False})
+    assert runner.persister is not None
+    save_checkpoint = runner.persister.save_checkpoint
+
+    def checkpoint(process, tag=None):
+        assert process.node.get_state() is expected
+        save_checkpoint(process, tag)
+        if failure:
+            msg = 'Injected checkpoint failure'
+            raise plumpy.exceptions.PersistenceError(msg)
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(runner.persister, 'save_checkpoint', checkpoint)
+            if failure:
+                with pytest.raises(plumpy.exceptions.PersistenceError, match='Injected checkpoint failure'):
+                    process.on_entered(previous_state)
+            else:
+                process.on_entered(previous_state)
+
+        persisted = orm.load_node(process.pid)
+        if failure:
+            assert persisted.get_state() is None
+            assert persisted.process_state is ProcessState.CREATED
+            assert persisted.checkpoint == previous_checkpoint
+        else:
+            assert persisted.get_state() is expected
+            assert persisted.process_state is ProcessState.WAITING
+            assert persisted.checkpoint != previous_checkpoint
     finally:
         process.close()

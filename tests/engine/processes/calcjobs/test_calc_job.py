@@ -207,7 +207,6 @@ def test_multi_codes_with_mpi(
     ``prepend_cmdline_params`` list in the ``codes_info`` which should not be empty. Since the ``presubmit`` method does
     not return this value directly but writes it to a file in the sandbox, we have to read and deserialize it first.
     """
-    from aiida.engine.utils import instantiate_process
 
     inputs = {
         'code': aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash'),
@@ -235,7 +234,7 @@ def test_multi_codes_with_mpi(
     if with_mpi_option is not None:
         inputs['metadata']['options']['withmpi'] = with_mpi_option
 
-    process = instantiate_process(manager.get_runner(), SubMultiCodesCalcJob, **inputs)
+    process = SubMultiCodesCalcJob(runner=manager.get_runner(), inputs=inputs, enable_persistence=False)
 
     if expected is None:
         with pytest.raises(RuntimeError, match=r'Inconsistent requirements as to whether'):

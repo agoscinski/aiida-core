@@ -15,7 +15,9 @@ import io
 import json
 import os
 import shutil
+import tempfile
 from collections.abc import Hashable
+from contextlib import ExitStack
 from typing import Any
 
 import plumpy.ports
@@ -35,7 +37,7 @@ from ..process import Process, ProcessState
 from ..process_spec import CalcJobProcessSpec
 from .importer import CalcJobImporter
 from .monitors import CalcJobMonitor
-from .tasks import RETRIEVE_COMMAND, UPLOAD_COMMAND, Waiting
+from .tasks import UPLOAD_COMMAND, Waiting
 
 __all__ = ('CalcJob',)
 
@@ -244,22 +246,17 @@ class CalcJob(Process):
     CACHE_VERSION: int | None = None
 
     @override
-    def _persist_transition(self, from_state: plumpy.process_states.State | None) -> None:
-        """Commit completion of retrieval together with its output links and checkpoint."""
-        if not (
-            isinstance(from_state, Waiting)
-            and from_state._command == RETRIEVE_COMMAND
-            and self._state.LABEL is ProcessState.RUNNING
-        ):
-            super()._persist_transition(from_state)
-            return
-
-        # No download or broadcast belongs in this transaction: only the completed transition's database writes.
-        with self.node.backend.transaction():
-            self.update_outputs()
-            self.node.set_process_state(self._state.LABEL)
+    def _update_node_state(self, from_state: plumpy.process_states.State | None) -> None:
+        """Persist the CalcJob phase in the base process transition transaction."""
+        super()._update_node_state(from_state)
+        if self._state.is_terminal():
+            self.node.delete_state()
+        elif isinstance(self._state, Waiting):
+            self.node.set_state(self._state.calcjob_state)
+        elif isinstance(self._state, plumpy.process_states.Running) and self._state.run_fn.__name__ == 'parse':
             self.node.set_state(CalcJobState.PARSING)
-            self._save_checkpoint(raise_on_error=True)
+            if 'remote_folder' in self.inputs:
+                self.node.base.attributes.set(orm.CalcJobNode.IMMIGRATED_KEY, True)
 
     def __init__(self, *args, **kwargs) -> None:
         """Construct a CalcJob instance.
@@ -628,16 +625,9 @@ class CalcJob(Process):
         return super().node  # type: ignore[return-value]
 
     @override
-    def on_terminated(self) -> None:
-        """Cleanup the node by deleting the calulation job state.
-
-        .. note:: This has to be done before calling the super because that will seal the node after we cannot change it
-        """
-        self.node.delete_state()
-        super().on_terminated()
-
-    @override
-    async def run(self) -> plumpy.process_states.Stop | int | plumpy.process_states.Wait:
+    async def run(
+        self,
+    ) -> plumpy.process_states.Stop | int | plumpy.process_states.Wait | plumpy.process_states.Continue:
         """Run the calculation job.
 
         This means invoking the `presubmit` and storing the temporary folder in the node's repository. Then we move the
@@ -652,8 +642,7 @@ class CalcJob(Process):
             return plumpy.process_states.Stop(None, True)
 
         if 'remote_folder' in self.inputs:
-            exit_code = await self._perform_import()
-            return exit_code
+            return await self._perform_import()
 
         # The following conditional is required for the caching to properly work. Even if the source node has a process
         # state of `Finished` the cached process will still enter the running state. The process state will have then
@@ -762,14 +751,13 @@ class CalcJob(Process):
                     'script_filename': self.node.get_option('submit_script_filename'),
                 }
 
-    async def _perform_import(self):
+    async def _perform_import(self) -> plumpy.process_states.Continue:
         """Perform the import of an already completed calculation.
 
         The inputs contained a `RemoteData` under the key `remote_folder` signalling that this is not supposed to be run
         as a normal calculation job, but rather the results are already computed outside of AiiDA and merely need to be
         imported.
         """
-        from aiida.common.datastructures import CalcJobState
         from aiida.common.folders import SandboxFolder
         from aiida.engine.daemon.execmanager import retrieve_calculation
         from aiida.manage import get_config_option
@@ -777,18 +765,18 @@ class CalcJob(Process):
 
         filepath_sandbox = get_config_option('storage.sandbox') or None
 
-        with LocalTransport() as transport:
-            with SandboxFolder(filepath_sandbox) as folder:
-                with SandboxFolder(filepath_sandbox) as retrieved_temporary_folder:
-                    self.presubmit(folder)
-                    self.node.set_remote_workdir(self.inputs.remote_folder.get_remote_path())
-                    retrieved = await retrieve_calculation(self.node, transport, retrieved_temporary_folder.abspath)
-                    if retrieved is not None:
-                        self.out(self.node.link_label_retrieved, retrieved)
-                        self.update_outputs()
-                    self.node.set_state(CalcJobState.PARSING)
-                    self.node.base.attributes.set(orm.CalcJobNode.IMMIGRATED_KEY, True)
-                    return self.parse(retrieved_temporary_folder.abspath)
+        with LocalTransport() as transport, SandboxFolder(filepath_sandbox) as folder, ExitStack() as cleanup:
+            retrieved_temporary_folder = tempfile.mkdtemp(dir=filepath_sandbox)
+            cleanup.callback(shutil.rmtree, retrieved_temporary_folder, ignore_errors=True)
+            self.presubmit(folder)
+            self.node.set_remote_workdir(self.inputs.remote_folder.get_remote_path())
+            retrieved = await retrieve_calculation(self.node, transport, retrieved_temporary_folder)
+            if retrieved is not None:
+                self.out(self.node.link_label_retrieved, retrieved)
+            # Parsing is a separate checkpointed state; it takes ownership of the temporary folder.
+            next_step = plumpy.process_states.Continue(self.parse, retrieved_temporary_folder)
+            cleanup.pop_all()
+            return next_step
 
     def parse(
         self, retrieved_temporary_folder: FilePath | None = None, existing_exit_code: ExitCode | None = None

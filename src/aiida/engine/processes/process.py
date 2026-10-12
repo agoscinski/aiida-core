@@ -470,17 +470,8 @@ class Process(PlumpyProcess):
     @override
     def on_entered(self, from_state: plumpy.process_states.State | None) -> None:
         """After entering a new state, save a checkpoint and update the latest process state change timestamp."""
-        from plumpy import ProcessState
 
         from aiida.engine.utils import set_process_state_change_timestamp
-
-        if self._state.LABEL is ProcessState.EXCEPTED:
-            # The process is already excepted so simply update the process state on the node and let the process
-            # complete the state transition to the terminal state. If another exception is raised during this exception
-            # handling, the process transitioning is cut short and never makes it to the terminal state.
-            self.node.set_process_state(self._state.LABEL)
-            super().on_entered(from_state)
-            return
 
         self._persist_transition(from_state)
         set_process_state_change_timestamp(self.node)
@@ -492,44 +483,41 @@ class Process(PlumpyProcess):
         super().on_entered(from_state)
 
     def _persist_transition(self, from_state: plumpy.process_states.State | None) -> None:
-        """Persist outputs, node state and checkpoint before broadcasting the transition."""
-        # Preserve the state update on invalid outputs so plumpy can enter the excepted state.
-        try:
-            self.update_outputs()
-        finally:
-            self.node.set_process_state(self._state.LABEL)  # type: ignore[arg-type]
-        self._save_checkpoint()
+        """Commit outputs, node state and checkpoint before notifying transition listeners."""
+        with self.node.backend.transaction():
+            # Invalid outputs may have caused this exception, so do not attempt to attach them again.
+            if self._state.LABEL is not ProcessState.EXCEPTED:
+                self.update_outputs()
+            self._update_node_state(from_state)
+            if self._state.is_terminal():
+                if self._enable_persistence:
+                    assert self.runner.persister is not None
+                    self.runner.persister.delete_checkpoint(self.pid)
+                self.node.seal()
+            else:
+                self._save_checkpoint(raise_on_error=True)
 
-    @override
-    def on_terminated(self) -> None:
-        """Called when a Process enters a terminal state."""
-        super().on_terminated()
-        if self._enable_persistence:
-            try:
-                assert self.runner.persister is not None
-                self.runner.persister.delete_checkpoint(self.pid)
-            except Exception as error:
-                self.logger.exception('Failed to delete checkpoint: %s', error)
-
-        try:
-            self.node.seal()
-        except exceptions.ModificationNotAllowed:
-            pass
+    def _update_node_state(self, from_state: plumpy.process_states.State | None) -> None:
+        """Persist transition-specific attributes inside the transition transaction."""
+        self.node.set_process_state(self._state.LABEL)  # type: ignore[arg-type]
+        if isinstance(self._state, plumpy.process_states.Finished):
+            self._set_exit_status(self._state.result, self._state.successful)
+        elif isinstance(self._state, plumpy.process_states.Excepted):
+            exc_info = self._state.get_exc_info()
+            self.node.set_exception(''.join(traceback.format_exception(exc_info[0], exc_info[1], None)).rstrip())
 
     @override
     def on_except(self, exc_info: tuple[Any, Exception, TracebackType]) -> None:
-        """Log the exception by calling the report method with formatted stack trace from exception info object
-        and store the exception string as a node attribute
+        """Log the exception; its node attribute is persisted when the transition commits.
 
         :param exc_info: the sys.exc_info() object (type, value, traceback)
         """
         super().on_except(exc_info)
-        self.node.set_exception(''.join(traceback.format_exception(exc_info[0], exc_info[1], None)).rstrip())
         self.report(''.join(traceback.format_exception(*exc_info)))
 
     @override
     def on_finish(self, result: int | ExitCode | None, successful: bool) -> None:
-        """Set the finish status on the process node.
+        """Prepare finishing; the exit status is persisted when the transition commits.
 
         :param result: result of the process
         :param successful: whether execution was successful
@@ -537,6 +525,8 @@ class Process(PlumpyProcess):
         """
         super().on_finish(result, successful)
 
+    def _set_exit_status(self, result: int | ExitCode | None, successful: bool) -> None:
+        """Persist the finish result together with the terminal process state."""
         if result is None:
             if not successful:
                 result = self.exit_codes.ERROR_MISSING_OUTPUT
