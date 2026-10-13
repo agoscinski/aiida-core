@@ -979,6 +979,9 @@ class Process(ProcessBase):
         :return: flat list of inputs
 
         """
+        if isinstance(port, PortNamespace) and port.nullable and port_value is None:
+            return []
+
         if (port is None and isinstance(port_value, orm.Node)) or (
             isinstance(port, InputPort) and not (port.is_metadata or port.non_db)
         ):

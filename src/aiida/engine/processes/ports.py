@@ -15,6 +15,7 @@ import re
 import typing as t
 import warnings
 from collections.abc import Callable, Mapping, Sequence
+from enum import Enum
 from types import UnionType
 
 from aiida.common.extendeddicts import AttributesFrozendict
@@ -22,7 +23,7 @@ from aiida.common.links import validate_link_label
 from aiida.engine.processes.generic import ports
 from aiida.engine.processes.generic.ports import breadcrumbs_to_port
 from aiida.engine.processes.port_model import _namespace_value, is_a_plain_class, is_structured, without_marks
-from aiida.orm import Bool, Data, Dict, Float, Int, List, Node, Str, from_aiida_type, to_aiida_type
+from aiida.orm import Bool, Data, Dict, EnumData, Float, Int, List, Node, Str, from_aiida_type, to_aiida_type
 
 __all__ = (
     'PORT_NAMESPACE_SEPARATOR',
@@ -252,10 +253,31 @@ class CalcJobOutputPort(ports.OutputPort):
         return self._pass_to_parser
 
 
+class _NullNamespace(AttributesFrozendict):
+    """Preserve explicit None through the generic mapping-only preprocessing hook."""
+
+
 class PortNamespace(WithMetadata, WithNonDb, ports.PortNamespace):
     """Subclass of :class:`aiida.engine.processes.generic.ports.PortNamespace` supporting automatic recursive
     serialization of a given mapping onto the ports of the PortNamespace.
     """
+
+    def __init__(self, *args: t.Any, nullable: bool = False, **kwargs: t.Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._nullable = nullable
+
+    @property
+    def nullable(self) -> bool:
+        """Return whether this namespace can represent the absent arm of a Result."""
+        return self._nullable
+
+    def validate(
+        self, port_values: Mapping[str, t.Any] | None = None, breadcrumbs: Sequence[str] = ()
+    ) -> ports.PortValidationError | None:
+        """Allow an explicitly null namespace only when its contract is nullable."""
+        if self.nullable and port_values is None:
+            return None
+        return super().validate(port_values, breadcrumbs)
 
     def __setitem__(self, key: str, port: ports.Port) -> None:
         """Ensure that a `Port` being added inherits the `non_db` attribute if not explicitly defined at construction.
@@ -335,9 +357,11 @@ class PortNamespace(WithMetadata, WithNonDb, ports.PortNamespace):
 
     def pre_process(self, port_values: t.Any) -> AttributesFrozendict:
         """Accept model instances as namespace mappings before applying defaults."""
+        if self.nullable and (port_values is None or isinstance(port_values, _NullNamespace)):
+            return _NullNamespace({})
         return super().pre_process(dict(self._as_mapping(port_values)))
 
-    def prepare(self, mapping: Mapping[str, t.Any]) -> PreparedInputs:
+    def prepare(self, mapping: Mapping[str, t.Any] | None) -> PreparedInputs:
         """Convert filled inputs to runtime values, keeping sources for provenance.
 
         Filling (defaults, shape checks, missing aggregation) happens before
@@ -346,6 +370,8 @@ class PortNamespace(WithMetadata, WithNonDb, ports.PortNamespace):
         :param mapping: inputs with defaults already applied.
         :return: the runtime inputs beside their provenance sources.
         """
+        if self.nullable and (mapping is None or isinstance(mapping, _NullNamespace)):
+            return PreparedInputs(None, None)
         mapping = self._as_mapping(mapping)
 
         def dynamic(value: t.Any) -> t.Any:
@@ -510,6 +536,8 @@ def _type_from_annotation(annotation: t.Any, *, stored: bool) -> t.Any | None:
     if is_a_plain_class(annotation):
         if not stored or issubclass(annotation, Data):
             return annotation
+        if issubclass(annotation, Enum):
+            return EnumData
         return _VALID_TYPE_MAP.get(annotation)
 
     return _VALID_TYPE_MAP.get(annotation) if stored else None

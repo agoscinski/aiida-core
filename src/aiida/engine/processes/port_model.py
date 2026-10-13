@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import typing as t
+from types import UnionType
 
 from typing_extensions import Self, dataclass_transform
 
@@ -117,6 +118,18 @@ def is_a_plain_class(annotation: t.Any) -> bool:
 def is_structured(annotation: t.Any) -> bool:
     """Return whether an annotation declares a PortModel namespace."""
     return is_a_plain_class(annotation) and issubclass(annotation, PortModel)
+
+
+def nullable_model(annotation: object) -> type[PortModel] | None:
+    """Extract a PortModel from the two alternatives of a nullable model annotation."""
+    annotation = without_marks(annotation)
+    if t.get_origin(annotation) not in (t.Union, UnionType):
+        return None
+    arguments = t.get_args(annotation)
+    if len(arguments) != 2 or type(None) not in arguments:
+        return None
+    model = next(argument for argument in arguments if argument is not type(None))
+    return model if is_structured(model) else None
 
 
 def fields_of(annotation: t.Any) -> tuple[Field, ...] | None:

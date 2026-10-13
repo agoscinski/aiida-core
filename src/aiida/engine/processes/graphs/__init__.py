@@ -11,6 +11,7 @@
 from aiida.common.exceptions import UnsupportedSyntax
 from aiida.engine.processes.graphs.build_source import GraphHandle, build_from_source, graph, task
 from aiida.engine.processes.graphs.process import GraphProcess
+from aiida.engine.processes.graphs.results import Err, Ok, Result
 from aiida.engine.processes.graphs.spec import (
     BranchControl,
     Dependency,
@@ -26,10 +27,13 @@ __all__ = (
     'BranchControl',
     'Dependency',
     'Endpoint',
+    'Err',
     'GraphHandle',
     'GraphProcess',
     'GraphSpec',
     'LoopControl',
+    'Ok',
+    'Result',
     'SubgraphTask',
     'TaskHandle',
     'TaskProcess',

@@ -15,16 +15,19 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from aiida.common.links import LinkType
+from aiida.engine.processes.generic.ports import UNSPECIFIED
 from aiida.engine.processes.graphs.inputs import at, place
 from aiida.engine.processes.graphs.spec import (
     BranchControl,
     GraphSpec,
     GraphTask,
     LoopControl,
+    ProcessTask,
     SubgraphTask,
     readable_version,
 )
-from aiida.orm import Node, load_node
+from aiida.engine.processes.ports import OutputPort, PortNamespace
+from aiida.orm import EnumData, Node, load_node
 from aiida.orm.nodes.data.base import BaseType
 
 __all__ = ('GraphRun',)
@@ -105,9 +108,22 @@ class GraphRun:
             if name in self.passed or all(instance in self.done for instance in runs)
         }
 
-    @staticmethod
-    def _is_finished_ok(pk: int) -> bool:
-        return load_node(pk).is_finished_ok
+    def _has_result(self, name: str, pk: int) -> bool:
+        """Treat declared Result errors as completed values, not scheduler failures."""
+        node = load_node(pk)
+        if node.is_finished_ok:
+            return True
+        task = self.graph.task(name)
+        if not isinstance(task, ProcessTask) or task.spec.result_namespace is None or not node.is_failed:
+            return False
+        if 'error' not in node.outputs:
+            return False
+        error = node.outputs['error']
+        return (
+            isinstance(error, EnumData)
+            and error.get_member().value in task.spec.exit_codes.values()
+            and error.get_member().value.status == node.exit_status
+        )
 
     @property
     def succeeded(self) -> set[str]:
@@ -116,7 +132,7 @@ class GraphRun:
             name
             for name in self.finished
             if name in self.passed
-            or all(self._is_finished_ok(self.done[instance]) for instance in self.instances[name])
+            or all(self._has_result(name, self.done[instance]) for instance in self.instances[name])
         }
 
     @property
@@ -162,8 +178,8 @@ class GraphRun:
             elif source.task in self.passed:
                 produced[output] = at(self.passed[source.task], source.port)
             elif source.task not in self.skipped:
-                produced[output] = at(self._produced_by(source.task).outputs, source.port)
-        return produced
+                produced[output] = self._produced_value(source.task, source.port)
+        return {name: value for name, value in produced.items() if value is not None}
 
     def to_dict(self) -> GraphRunState:
         """Return the checkpointable scheduling progress, without the graph or inputs."""
@@ -209,7 +225,14 @@ class GraphRun:
 
     def _begin_branch(self, task: BranchControl, inputs: dict[str, t.Any], step: Step) -> None:
         """Dispatch the taken side of a branch, skipping when it has no body."""
-        taken = task.body if holds(inputs.pop(task.condition_port, None)) else task.otherwise
+        condition = inputs.pop(task.condition_port, None)
+        if task.condition_test == 'is_none':
+            selected = condition is None
+        elif task.condition_test == 'is_not_none':
+            selected = condition is not None
+        else:
+            selected = holds(condition)
+        taken = task.body if selected else task.otherwise
         if taken is None:
             self.skipped.add(task.name)
             return
@@ -261,7 +284,7 @@ class GraphRun:
         inputs = copy(task.inputs)
         for name, targets in self.graph.inputs.items():
             try:
-                value = at(self.given, name)
+                value = self._value_at(self.given, self.graph.input_spec(), name)
             except KeyError:
                 continue
             for target, port in targets:
@@ -270,8 +293,58 @@ class GraphRun:
         for edge in self.graph.dependencies:
             if edge.target == task.name and edge.carried_between is not None:
                 source, target = edge.carried_between
-                place(inputs, target, at(self._produced_by(edge.source).outputs, source))
+                place(inputs, target, self._produced_value(edge.source, source))
         return inputs
+
+    def _produced_value(self, name: str, path: str) -> t.Any:
+        """Represent absent optional output arms as None without inventing data nodes."""
+        node = self._produced_by(name)
+        outputs = node.outputs
+        # The node's link manager is not a Mapping; namespace inputs require one.
+        values = {key: outputs[key] for key in outputs}
+        task = self.graph.task(name)
+        ports = task.output_ports()
+        if isinstance(task, ProcessTask) and task.spec.result_namespace is not None and node.is_finished_ok:
+            value_port = ports['value']
+            if isinstance(value_port, PortNamespace):
+                # A successful model can have only null fields, and therefore no CREATE links.
+                values['value'] = self._restore_nulls(value_port, values.get('value', {}))
+        return self._value_at(values, ports, path)
+
+    @staticmethod
+    def _restore_nulls(ports: PortNamespace, values: Mapping[str, t.Any]) -> dict[str, t.Any]:
+        """Reconstruct nullable model fields that cannot be represented by data links."""
+        result = dict(values)
+        for name, port in ports.items():
+            value = result.get(name, UNSPECIFIED)
+            if isinstance(port, PortNamespace):
+                if value is UNSPECIFIED and port.nullable:
+                    result[name] = None
+                elif value is UNSPECIFIED:
+                    result[name] = GraphRun._restore_nulls(port, {})
+                else:
+                    result[name] = GraphRun._restore_nulls(port, value)
+            elif isinstance(port, OutputPort) and value is UNSPECIFIED:
+                kinds = port.valid_type or ()
+                kinds = (kinds,) if isinstance(kinds, type) else kinds
+                if type(None) in kinds:
+                    result[name] = None
+        return result
+
+    @staticmethod
+    def _value_at(value: t.Any, ports: PortNamespace, path: str) -> t.Any:
+        """Resolve a path with None for absent optional leaves or namespace arms."""
+        for segment in path.split('.') if path else ():
+            port = ports[segment]
+            try:
+                value = value[segment]
+            except KeyError:
+                if not port.required:
+                    return None
+                raise
+            if isinstance(port, PortNamespace):
+                ports = port
+        return value
 
     def _produced_by(self, name: str) -> Node:
         """Return the node produced by the latest instance of one task."""

@@ -17,7 +17,7 @@ import typing as t
 from aiida.engine.processes.exit_code import ExitCode, ExitCodesNamespace
 from aiida.engine.processes.generic import spec
 from aiida.engine.processes.generic.ports import UNSPECIFIED
-from aiida.engine.processes.port_model import Field, fields_of
+from aiida.engine.processes.port_model import Field, fields_of, nullable_model
 from aiida.engine.processes.ports import (
     CalcJobOutputPort,
     InputPort,
@@ -154,14 +154,18 @@ class ProcessSpec(spec.ProcessSpec):
 
     def _declare_field(self, name: str, field: Field, *, node_types: bool) -> None:
         """Declare one model field as a port or a nested namespace."""
-        if fields_of(field.annotation) is not None:
-            nested = field.default.as_dict() if isinstance(field.default, field.annotation) else field.default
+        nullable = nullable_model(field.annotation)
+        container = nullable if nullable is not None else field.annotation
+        if fields_of(container) is not None:
+            nested = field.default.as_dict() if isinstance(field.default, container) else field.default
             self.input_namespace_from(
                 name,
-                field.annotation,
+                container,
                 node_types=node_types,
                 required=field.required,
                 help=field.help,
+                nullable=nullable is not None,
+                default=None if nullable is not None and field.default is None else UNSPECIFIED,
                 defaults=nested if isinstance(nested, dict) else None,
             )
             return
@@ -199,9 +203,13 @@ class ProcessSpec(spec.ProcessSpec):
         for field in fields:
             name = f'{prefix}{field.name}'
 
-            if fields_of(field.annotation) is not None:
-                self.output_namespace(name, required=field.required, help=field.help)
-                self.outputs_from(field.annotation, prefix=f'{name}{self.namespace_separator}')
+            nullable = nullable_model(field.annotation)
+            container = nullable if nullable is not None else field.annotation
+            if fields_of(container) is not None:
+                self.output_namespace(
+                    name, required=field.required and nullable is None, help=field.help, nullable=nullable is not None
+                )
+                self.outputs_from(container, prefix=f'{name}{self.namespace_separator}')
                 continue
 
             self.output(name, **_as_an_output_port(field))
@@ -296,21 +304,23 @@ class GraphProcessSpec(ProcessSpec):
         if field.default is None and type(None) not in valid_type:
             valid_type += (type(None),)
 
-        if fields_of(field.annotation) is not None:
+        nullable = nullable_model(field.annotation)
+        container = nullable if nullable is not None else field.annotation
+        if fields_of(container) is not None:
             self.input_namespace_from(
                 name,
-                field.annotation,
+                container,
                 required=field.required,
                 help=field.help,
+                nullable=nullable is not None,
+                default=None if nullable is not None and field.default is None else UNSPECIFIED,
             )
             return
 
         self.input(
             name,
             valid_type=valid_type,
-            default=_lazily(field.default, node_types=False)
-            if field.default is not UNSPECIFIED
-            else UNSPECIFIED,
+            default=_lazily(field.default, node_types=False) if field.default is not UNSPECIFIED else UNSPECIFIED,
             serializer=to_aiida_type,
             help=field.help,
         )

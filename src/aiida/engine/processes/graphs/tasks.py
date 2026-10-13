@@ -13,10 +13,11 @@ from __future__ import annotations
 import functools
 import inspect
 import typing as t
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from aiida.common.exceptions import GraphError, GraphTypeCheckError, GraphValidationError
 from aiida.common.lang import override
+from aiida.engine.processes.exit_code import ExitCode, ExitCodeEnum
 from aiida.engine.processes.functions import (
     FunctionProcessBase,
     P,
@@ -25,11 +26,12 @@ from aiida.engine.processes.functions import (
     process_function,
 )
 from aiida.engine.processes.generic.ports import UNSPECIFIED
+from aiida.engine.processes.graphs.results import Err, Ok, Result, error_types, result_contract
 from aiida.engine.processes.graphs.spec import TaskSpec, fixed_inputs
-from aiida.engine.processes.port_model import field_from_annotation, is_structured
-from aiida.engine.processes.ports import PortNamespace
+from aiida.engine.processes.port_model import _namespace_value, field_from_annotation, is_structured, nullable_model
+from aiida.engine.processes.ports import OutputPort, PortNamespace
 from aiida.engine.processes.process_spec import GraphProcessSpec, ProcessSpec
-from aiida.orm import CalcFunctionNode, Data, to_aiida_type
+from aiida.orm import CalcFunctionNode, Data, EnumData, to_aiida_type
 
 __all__ = ('TaskHandle', 'TaskProcess')
 
@@ -37,7 +39,7 @@ R = t.TypeVar('R')
 
 
 class TaskProcess(FunctionProcessBase):
-    """Task process with plain Python inputs and static leaf outputs."""
+    """Task process with Python-valued inputs and static output contracts."""
 
     _spec_class = GraphProcessSpec
 
@@ -63,13 +65,135 @@ class TaskProcess(FunctionProcessBase):
 
     @classmethod
     @override
-    def _declare_outputs(
-        cls, spec: ProcessSpec, outputs: Sequence[str] | None, annotations: dict[str, t.Any]
-    ) -> None:
-        if declare_output_ports(outputs, annotations.get('return'), spec):
+    def _declare_outputs(cls, spec: ProcessSpec, outputs: Sequence[str] | None, annotations: dict[str, t.Any]) -> None:
+        annotation, codes = result_contract(annotations.get('return'))
+        for label, code in codes.items():
+            if label in spec.exit_codes or any(existing.status == code.status for existing in spec.exit_codes.values()):
+                msg = f'task exit code `{label}` ({code.status}) conflicts with an engine exit code.'
+                raise GraphTypeCheckError(msg)
+            assert code.message is not None
+            spec.exit_code(code.status, label, code.message, invalidates_cache=code.invalidates_cache)
+        if t.get_origin(annotations.get('return')) is Result:
+            model = nullable_model(annotation) or annotation
+            if is_structured(model):
+                spec.output_namespace('value', required=False, nullable=True)
+                spec.outputs_from(t.cast(type, model), prefix='value.')
+            elif annotation is type(None):
+                spec.output('value', valid_type=type(None), required=False)
+            else:
+                declare_output_ports(outputs, annotation, spec)
+                ports = list(spec.outputs.items())
+                for name, _ in ports:
+                    del spec.outputs[name]
+                if outputs is not None:
+                    value = PortNamespace('value', required=False, nullable=True)
+                    for name, port in ports:
+                        value[name] = port
+                    spec.outputs['value'] = value
+                else:
+                    port = ports[0][1]
+                    spec.output('value', valid_type=port.valid_type, required=False)
+
+            def nullable_leaves(namespace: PortNamespace) -> None:
+                for child in namespace.values():
+                    if isinstance(child, PortNamespace):
+                        nullable_leaves(child)
+                    else:
+                        kinds = child.valid_type or ()
+                        kinds = (kinds,) if isinstance(kinds, type) else kinds
+                        if type(None) in kinds:
+                            child.required = False
+
+            # Null model fields are represented by absent links, not synthetic data nodes.
+            nullable_leaves(spec.outputs)
+            spec.output('error', valid_type=EnumData, required=False)
+            spec.outputs.dynamic = False
+            return
+        if declare_output_ports(outputs, annotation, spec):
             spec.outputs.dynamic = False
         else:
             spec.outputs.valid_type = (Data, dict)
+
+    @override
+    def _prepare_result(self, result: t.Any) -> t.Any:
+        annotation = t.get_type_hints(self._func, include_extras=True).get('return')
+        _, codes = result_contract(annotation)
+        if t.get_origin(annotation) is not Result:
+            if isinstance(result, (ExitCode, Result)):
+                msg = 'task exit codes must be declared in a Result return annotation.'
+                raise GraphValidationError(msg)
+            return super()._prepare_result(result)
+        if isinstance(result, Ok):
+            if isinstance(result.value, (ExitCode, Result)):
+                msg = 'Ok must contain task outputs, not an exit code or another Result.'
+                raise GraphValidationError(msg)
+            success = t.get_args(annotation)[0]
+            if result.value is None and success is not type(None) and type(None) not in t.get_args(success):
+                msg = 'the successful Result type does not allow None.'
+                raise GraphValidationError(msg)
+            self._out_value(result.value)
+            return ExitCode()
+        if isinstance(result, Err):
+            error = result.error
+            if isinstance(error, ExitCodeEnum):
+                if not isinstance(error, error_types(annotation)):
+                    msg = f'task returned an error from an undeclared enum: {error!r}.'
+                    raise GraphValidationError(msg)
+                error = error.value
+            if isinstance(error, ExitCode) and any(
+                error.status == code.status and error.invalidates_cache == code.invalidates_cache
+                for code in codes.values()
+            ):
+                member = next(
+                    member for kind in error_types(annotation) for member in kind if member.value.status == error.status
+                )
+                self.out('error', to_aiida_type(member))
+                return error
+            msg = f'task returned an undeclared exit code: {error!r}.'
+            raise GraphValidationError(msg)
+        msg = 'a task annotated with Result must return Ok(outputs) or Err(error).'
+        raise GraphValidationError(msg)
+
+    def _out_value(self, value: t.Any) -> None:
+        """Store the successful arm as leaf CREATE links, preserving model namespaces."""
+        port = self.spec().outputs['value']
+        assert isinstance(port, (OutputPort, PortNamespace))
+        value = _namespace_value(value)
+        if isinstance(port, PortNamespace) and value is not None and not isinstance(value, Mapping):
+            names = list(port)
+            values = value if isinstance(value, tuple) else (value,)
+            if len(names) != len(values):
+                msg = f'task declares {len(names)} value outputs but returned {len(values)} values.'
+                raise GraphValidationError(msg)
+            value = dict(zip(names, values, strict=True))
+        stored: dict[str, Data] = {}
+
+        def collect(port: OutputPort | PortNamespace, value: t.Any, path: str) -> None:
+            value = _namespace_value(value)
+            if isinstance(port, PortNamespace):
+                if port.nullable and value is None:
+                    return
+                if not isinstance(value, Mapping) or value.keys() - port.keys():
+                    msg = f'task value `{path}` must match its declared output namespace.'
+                    raise GraphValidationError(msg)
+                for name, child in port.items():
+                    if name not in value:
+                        if child.required:
+                            msg = f'task value is missing required output `{path}.{name}`.'
+                            raise GraphValidationError(msg)
+                        continue
+                    collect(child, value[name], f'{path}.{name}')
+            elif value is not None:
+                stored[path] = value if isinstance(value, Data) else to_aiida_type(value)
+            else:
+                kinds = port.valid_type or ()
+                kinds = (kinds,) if isinstance(kinds, type) else kinds
+                if type(None) not in kinds:
+                    msg = f'task value `{path}` does not allow None.'
+                    raise GraphValidationError(msg)
+
+        collect(port, value, 'value')
+        super()._out_result(stored)
 
     @override
     def _out_result(self, result: t.Any) -> None:
@@ -154,8 +278,16 @@ def _check_task_contract(function: Callable[..., t.Any], outputs: Sequence[str] 
         msg = '`after` is reserved for source graph ordering dependencies.'
         raise GraphError(msg)
     hints = t.get_type_hints(function, include_extras=True)
-    annotation = hints.get('return', inspect.Signature.empty)
-    if is_structured(annotation):
+    returned = hints.get('return', inspect.Signature.empty)
+    annotation, _ = result_contract(returned)
+    model = nullable_model(annotation) or annotation
+    if nullable_model(annotation) is not None and t.get_origin(returned) is Result:
+        msg = 'a Result model success type must be a PortModel; its value arm is already nullable.'
+        raise GraphTypeCheckError(msg)
+    if is_structured(model) and t.get_origin(returned) is Result and outputs is not None:
+        msg = 'Result model outputs are named by their fields, not explicit output names.'
+        raise GraphTypeCheckError(msg)
+    if is_structured(model) and t.get_origin(returned) is not Result:
         msg = 'task output namespaces are not supported; declare leaf outputs instead.'
         raise GraphTypeCheckError(msg)
     if outputs is None:
@@ -182,7 +314,10 @@ def build_task(function: Callable[P, R], *, outputs: Sequence[str] | None = None
     handle = TaskHandle(t.cast(ProcessFunctionType[P, R, CalcFunctionNode], decorated))
     spec = handle.process_class.spec()
     fixed_inputs(spec.inputs)
-    if spec.outputs.dynamic or any(isinstance(port, PortNamespace) for port in spec.outputs.values()):
+    is_result = t.get_origin(t.get_type_hints(function, include_extras=True).get('return')) is Result
+    if spec.outputs.dynamic or (
+        not is_result and any(isinstance(port, PortNamespace) for port in spec.outputs.values())
+    ):
         msg = 'tasks require static leaf outputs.'
         raise GraphTypeCheckError(msg)
     return handle

@@ -565,10 +565,10 @@ class FunctionProcessBase(Process):
 
         from aiida.engine.processes.greenback import run_with_portal
 
-        result = await run_with_portal(self._func, *args, **kwargs)
+        result = self._prepare_result(await run_with_portal(self._func, *args, **kwargs))
 
-        if result is None or isinstance(result, ExitCode):  # type: ignore[redundant-expr]
-            return result  # type: ignore[unreachable]
+        if result is None or isinstance(result, ExitCode):
+            return result
 
         self._out_result(result)
 
@@ -600,6 +600,10 @@ class FunctionProcessBase(Process):
         kwargs.update(**inputs)
 
         return args, kwargs
+
+    def _prepare_result(self, result: t.Any) -> t.Any:
+        """Normalize a function result before interpreting outputs or an exit code."""
+        return result
 
     def _out_result(self, result: t.Any) -> None:
         """Attach the value returned by the wrapped function to the output ports.

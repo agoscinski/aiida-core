@@ -53,6 +53,7 @@ def shape_from_port(port: InputPort | OutputPort | PortNamespace, *, defaults: b
         kinds = port.valid_type
         return LeafShape(types=(kinds,) if isinstance(kinds, type) else kinds, **options)
     return NamespaceShape(
+        nullable=port.nullable,
         fields=tuple(
             (name, shape_from_port(child, defaults=defaults))
             for name, child in port.items()
@@ -72,7 +73,7 @@ def port_for_shape(name: str, shape: Shape) -> InputPort | PortNamespace:
         port = InputPort(name, valid_type=shape.types, **options)
         port.valid_type = shape.types
         return port
-    namespace = PortNamespace(name, populate_defaults=shape.required, **options)
+    namespace = PortNamespace(name, populate_defaults=shape.required, nullable=shape.nullable, **options)
     for field, child in shape.fields:
         namespace[field] = port_for_shape(field, child)
     return namespace
@@ -106,6 +107,8 @@ class _InputResolver:
                 return UNSPECIFIED
         if not isinstance(port, PortNamespace):
             return value
+        if port.nullable and value is None:
+            return None
         value = self._checked_mapping(port, value, path)
         result = dict(value)
         for name, child in sorted(port.items()):

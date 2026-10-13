@@ -68,8 +68,99 @@ Explicit output names declare multiple leaf outputs, returned as a tuple in the 
         return {'total': pair.sum, 'product': pair.product}
 
 The return mapping declares named leaf outputs; it is not an output namespace.
-Dynamic ports, nested output namespaces, ``PortModel`` task/graph returns, and runtime-keyed output collections are not supported.
+Dynamic ports, bare ``PortModel`` task/graph returns, and runtime-keyed output collections are not supported.
+Structured task outputs are supported in the successful arm of ``Result``, described below.
 A task annotated ``-> None`` has no outputs and can run for its side effects.
+
+Declared task failures
+---------------------
+
+Tasks that can fail declare a Rust-like ``Result[SuccessType, ErrorEnum]`` return
+annotation. The success type may be a ``PortModel``, including nested fields;
+the error type may be a union of ``ExitCodeEnum`` alternatives. Define error
+enums by subclassing ``ExitCodeEnum`` with AiiDA ``ExitCode`` values, then return
+``Ok(outputs)`` on success or ``Err(error)`` on failure. Graph calls expose a
+nullable pair, ``(value, error)``:
+
+.. code-block:: python
+
+    from aiida.engine import Err, ExitCode, ExitCodeEnum, Ok, PortModel, Result, graph, task
+
+    class DivisionErrors(ExitCodeEnum):
+        ZERO_DENOMINATOR = ExitCode(410, 'The denominator is zero.', invalidates_cache=True)
+
+    class InputErrors(ExitCodeEnum):
+        NEGATIVE_NUMERATOR = ExitCode(411, 'The numerator is negative.')
+
+    class Quotient(PortModel):
+        ratio: float
+
+    @task
+    def divide(numerator: float, denominator: float) -> Result[Quotient, DivisionErrors | InputErrors]:
+        if denominator == 0:
+            return Err(DivisionErrors.ZERO_DENOMINATOR)
+        if numerator < 0:
+            return Err(InputErrors.NEGATIVE_NUMERATOR)
+        return Ok(Quotient(ratio=numerator / denominator))
+
+    @task
+    def recover(error: DivisionErrors | InputErrors) -> float:
+        return 0.0
+
+    @task
+    def read_ratio(value: Quotient) -> float:
+        return value.ratio
+
+    @graph
+    def ratio(numerator: float, denominator: float) -> float:
+        value, error = divide(numerator=numerator, denominator=denominator)
+        if error is not None:
+            selected = recover(error=error)
+        else:
+            selected = read_ratio(value=value)
+        return selected
+
+The builder extracts the result arms as ``SuccessType | None`` and
+``ErrorEnum | None`` (or ``ErrorA | ErrorB | None`` for an error union). Tuple
+unpacking binds these two arms; assigning the call to one name also allows
+``result.value`` and ``result.error`` selection. Model fields can be selected
+with dotted access, for example ``value.ratio`` or ``value.settings.count``.
+
+Only the present arm creates data nodes and provenance links. The absent arm
+is supplied to downstream inputs as ``None``; no synthetic null nodes are
+created. Error inputs annotated with the enum or its union receive the original
+enum member, not its storage node. Tasks can consume both arms directly using
+annotations such as ``value: Quotient | None`` and
+``error: DivisionErrors | InputErrors | None``. Graph conditions support ``if error``,
+``if error is None`` and ``if error is not None``, as well as null tests on the
+value arm. Use a presence test rather than truthiness for values such as zero.
+
+Named multiple outputs use ``Result[tuple[...], ErrorEnum]`` with
+``@task(outputs=...)``; the names live under the ``value`` arm. A task without
+successful outputs uses ``Result[None, ErrorEnum]`` and returns ``Ok(None)``.
+
+Error enums subclass ``ExitCodeEnum``, so non-``ExitCode`` values, non-positive
+statuses, and non-string messages already fail when the enum class is defined.
+They must be non-empty, with unique positive exit statuses across all
+alternatives. Statuses and labels must not conflict with the
+engine's built-in exit codes. For unions, labels are qualified as
+``EnumName_MEMBER`` to distinguish enums with the same member name.
+Declarations are registered on the task process spec and serialized under
+``exit_codes`` in its ``TaskSpec`` IR, including ``invalidates_cache``. The
+nullable result shapes and error enum types are persisted in
+``result_namespace`` and survive a JSON round trip.
+
+``Err`` accepts an error enum member or its ``ExitCode`` value. For messages with
+placeholders, return ``Err(MyErrors.ERROR.value.format(...))``. The exit status
+and cache-invalidation flag must match a declared error. Undeclared failures and
+unwrapped return values from ``Result`` tasks raise a validation error. Tasks
+without ``Result`` cannot return exit codes.
+
+A declared failure sets the child task's exit status and message and produces
+its error output. It counts as a completed ``Result`` for scheduling: graph
+logic can inspect the error and recover. Undeclared failures, exceptions, and
+missing required outputs still prevent dependent tasks from running and end the
+graph with ``ERROR_TASK_FAILED``.
 
 Structured inputs
 -----------------
@@ -174,5 +265,6 @@ Persistence and failures
 
 Specifications store importable executor names and reject unsupported format versions or task kinds.
 The graph checkpoint records dispatched and completed tasks, loop iterations, and passed-through initial loop state, so completed work is not dispatched again on resume.
-A failed task prevents dependent tasks from starting and ends the graph with ``ERROR_TASK_FAILED``.
+An unexpected task failure prevents dependent tasks from starting and ends the graph with ``ERROR_TASK_FAILED``.
+Declared ``Result`` errors instead remain available for graph-level branching.
 Normal AiiDA task caching remains available; graphs do not introduce recovery handlers, retry policies, monitors, or partial-rerun APIs.

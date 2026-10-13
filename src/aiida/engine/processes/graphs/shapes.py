@@ -19,7 +19,7 @@ from types import UnionType
 from aiida.common.exceptions import GraphTypeCheckError
 from aiida.common.loaders import get_object_loader
 from aiida.engine.processes.generic.ports import UNSPECIFIED
-from aiida.engine.processes.port_model import _namespace_value, fields_of, port_help, without_marks
+from aiida.engine.processes.port_model import _namespace_value, fields_of, nullable_model, port_help, without_marks
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -43,6 +43,7 @@ class NamespaceShape(ValueShape):
     """Fixed fields declared by a PortModel or named output ports."""
 
     fields: tuple[tuple[str, Shape], ...] = ()
+    nullable: bool = False
 
     def select(self, name: str) -> Shape:
         """Return a declared field's contract, or reject an unknown field."""
@@ -61,7 +62,8 @@ def shape_for_annotation(
     """Capture a Python declaration without constructing engine input or output ports."""
     resolved_help = help or port_help(annotation)
     annotation = without_marks(annotation)
-    fields = fields_of(annotation)
+    model = nullable_model(annotation)
+    fields = fields_of(model if model is not None else annotation)
     if fields is not None:
         return NamespaceShape(
             fields=tuple(
@@ -76,6 +78,7 @@ def shape_for_annotation(
             required=required,
             default=default,
             help=resolved_help,
+            nullable=model is not None,
         )
     origin = t.get_origin(annotation)
     types = None
@@ -134,6 +137,8 @@ def dump_shape(shape: Shape, *, defaults: bool = True) -> dict[str, t.Any]:
         result.update(
             kind='namespace', fields={name: dump_shape(field, defaults=defaults) for name, field in shape.fields}
         )
+        if shape.nullable:
+            result['nullable'] = True
     return result
 
 
@@ -155,6 +160,10 @@ def load_shape(data: Mapping[str, t.Any]) -> Shape:
             default=default,
         )
     if data['kind'] == 'namespace':
+        nullable = data.get('nullable', False)
+        if not isinstance(nullable, bool):
+            msg = 'namespace nullability must be a boolean.'
+            raise GraphTypeCheckError(msg)
         if 'extra' in data:
             msg = 'dynamic graph namespaces are not supported.'
             raise GraphTypeCheckError(msg)
@@ -163,6 +172,7 @@ def load_shape(data: Mapping[str, t.Any]) -> Shape:
             required=required,
             help=help,
             default=default,
+            nullable=nullable,
         )
     msg = f'Unknown graph value shape `{data["kind"]}`.'
     raise GraphTypeCheckError(msg)

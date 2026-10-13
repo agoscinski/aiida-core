@@ -5,6 +5,7 @@ import enum
 import pytest
 
 from aiida.common import links
+from aiida.engine import ExitCode
 from aiida.orm import load_node
 from aiida.orm.nodes.data.enum import EnumData
 
@@ -14,6 +15,29 @@ class DummyEnum(enum.Enum):
 
     OPTION_A = 'a'
     OPTION_B = 'b'
+
+
+class TupleEnum(enum.Enum):
+    """Enum values normalized to JSON lists by provenance storage."""
+
+    PAIR = (1, 2)
+    FAILURE = ExitCode(410, 'Failure', invalidates_cache=True)
+
+
+@pytest.mark.parametrize('member', list(TupleEnum))
+def test_get_member_tuple_value(member: TupleEnum) -> None:
+    node = EnumData(member)
+    assert node.get_member() is member
+    node.store()
+    assert load_node(node.pk).get_member() is member
+
+
+@pytest.mark.parametrize('member', list(TupleEnum))
+def test_get_member_changed_tuple_value(member: TupleEnum) -> None:
+    node = EnumData(member)
+    node.base.attributes.set(EnumData.KEY_VALUE, ['changed'])
+    with pytest.raises(ValueError, match='no longer a valid value'):
+        node.get_member()
 
 
 def test_construct():

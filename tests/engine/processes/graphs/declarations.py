@@ -10,6 +10,7 @@
 
 import typing as t
 
+from aiida.engine import Err, ExitCode, ExitCodeEnum, Ok, Result
 from aiida.engine.processes.graphs.build_source import graph, task
 from aiida.engine.processes.port_model import PortModel
 from aiida.orm.nodes.data.int import Int
@@ -38,6 +39,195 @@ class DefaultedSettings(PortModel):
 
 
 # Task definitions.
+
+
+class TaskErrors(ExitCodeEnum):
+    """Declared failures for result-bearing tasks."""
+
+    NEGATIVE = ExitCode(410, 'Negative value: {value}', invalidates_cache=True)
+    ZERO = ExitCode(411, 'Zero value')
+
+
+@task
+def checked_value(value: int) -> Result[int, TaskErrors]:
+    if value < 0:
+        return Err(TaskErrors.NEGATIVE.value.format(value=str(value)))
+    if value == 0:
+        return Err(TaskErrors.ZERO)
+    return Ok(value)
+
+
+@task(outputs=('value', 'double'))
+def checked_pair(value: int) -> Result[tuple[int, int], TaskErrors]:
+    return Ok((value, value * 2))
+
+
+@task
+def checked_empty() -> Result[None, TaskErrors]:
+    return Ok(None)
+
+
+@task
+def undeclared_error(value: int) -> Result[int, TaskErrors]:
+    return Err(ExitCode(999, 'Not declared'))
+
+
+@task
+def missing_result_wrapper(value: int) -> Result[int, TaskErrors]:
+    return value
+
+
+@task
+def checked_fallback(error: TaskErrors) -> int:
+    return -error.value.status
+
+
+@graph
+def checked_pipeline(value: int) -> int:
+    result, error = checked_value(value=value)
+    if error is not None:
+        doubled = checked_fallback(error=error)
+    else:
+        doubled = add(x=result, y=result)
+    return doubled
+
+
+class InputErrors(ExitCodeEnum):
+    """An independent enum for union-error tests, with a shared member name."""
+
+    ZERO = ExitCode(412, 'Empty input')
+
+
+class ResultValue(PortModel):
+    """A structured result with a nested namespace."""
+
+    count: int
+    settings: DefaultedSettings
+
+
+@task
+def checked_model(value: int) -> Result[ResultValue, TaskErrors | InputErrors]:
+    if value < 0:
+        return Err(TaskErrors.NEGATIVE)
+    if value == 0:
+        return Err(InputErrors.ZERO)
+    return Ok(ResultValue(count=value, settings=DefaultedSettings(count=value * 2)))
+
+
+@task
+def model_total(value: ResultValue) -> int:
+    return value.count + value.settings.count
+
+
+@task
+def union_fallback(error: TaskErrors | InputErrors) -> int:
+    return -error.value.status
+
+
+@task
+def inspect_optional(value: int | None, error: TaskErrors | None) -> int:
+    if error is not None:
+        assert value is None
+        return error.value.status
+    assert value is not None
+    return value
+
+
+@task
+def inspect_optional_model(value: ResultValue | None, error: TaskErrors | InputErrors | None) -> int:
+    if error is not None:
+        assert value is None
+        return error.value.status
+    assert value is not None
+    return value.count + value.settings.count
+
+
+@graph
+def optional_model_result(value: int) -> int:
+    result, error = checked_model(value=value)
+    selected = inspect_optional_model(value=result, error=error)
+    return selected
+
+
+class NullableValue(PortModel):
+    """A model whose successful value needs no data nodes."""
+
+    count: int | None
+    settings: DefaultedSettings | None
+
+
+@task
+def nullable_fields(fail: bool) -> Result[NullableValue, TaskErrors]:
+    if fail:
+        return Err(TaskErrors.ZERO)
+    return Ok(NullableValue(count=None, settings=None))
+
+
+@task
+def inspect_nullable_fields(value: NullableValue | None, error: TaskErrors | None) -> bool:
+    if error is not None:
+        return value is None
+    return value is not None and value.count is None and value.settings is None
+
+
+@graph
+def nullable_fields_result(fail: bool) -> bool:
+    value, error = nullable_fields(fail=fail)
+    selected = inspect_nullable_fields(value=value, error=error)
+    return selected
+
+
+@graph
+def optional_result(value: int) -> int:
+    result, error = checked_value(value=value)
+    selected = inspect_optional(value=result, error=error)
+    return selected
+
+
+@graph
+def model_result(value: int) -> int:
+    result, error = checked_model(value=value)
+    if error is not None:
+        selected = union_fallback(error=error)
+    else:
+        selected = model_total(value=result)
+    return selected
+
+
+@graph
+def bound_model_result(value: int) -> int:
+    result = checked_model(value=value)
+    if result.error is None:
+        selected = model_total(value=result.value)
+    else:
+        selected = union_fallback(error=result.error)
+    return selected
+
+
+@graph
+def model_result_outputs(value: int):
+    result, error = checked_model(value=value)
+    return {'count': result.count, 'error': error}
+
+
+@graph
+def model_leaf_result(value: int) -> int:
+    result, error = checked_model(value=value)
+    if error:
+        selected = union_fallback(error=error)
+    else:
+        selected = pass_int(value=result.settings.count)
+    return selected
+
+
+@graph
+def value_none_branch(value: int) -> int:
+    result, error = checked_value(value=value)
+    if result is None:
+        selected = checked_fallback(error=error)
+    else:
+        selected = pass_int(value=result)
+    return selected
 
 
 @task

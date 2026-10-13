@@ -14,12 +14,14 @@ import abc
 import typing as t
 from collections.abc import Mapping
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from aiida.common.exceptions import GraphTypeCheckError, GraphValidationError
 from aiida.common.loaders import get_object_loader
+from aiida.engine.processes.exit_code import ExitCode
 from aiida.engine.processes.graphs.inputs import at, port_for_shape, prepare_inputs, shape_from_port
-from aiida.engine.processes.graphs.shapes import NamespaceShape, Shape, load_shape
+from aiida.engine.processes.graphs.results import Result, result_contract, result_types
+from aiida.engine.processes.graphs.shapes import LeafShape, NamespaceShape, Shape, dump_shape, load_shape
 from aiida.engine.processes.ports import InputPort, OutputPort, PortNamespace, infer_valid_type_from_type_annotation
 from aiida.engine.processes.process import Process
 from aiida.orm import Data
@@ -103,11 +105,41 @@ class TaskSpec:
     identifier: str
     executor: ExecutorReference
     version: str = TASK_SPEC_VERSION
+    exit_codes: dict[str, ExitCode] = field(default_factory=dict)
+    result_namespace: dict[str, t.Any] | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, 'exit_codes', dict(self.exit_codes))
+        if self.result_namespace is not None:
+            object.__setattr__(self, 'result_namespace', deepcopy(self.result_namespace))
 
     @classmethod
     def from_process(cls, process: t.Callable[..., t.Any]) -> TaskSpec:
         """Reference an importable decorated task function."""
-        return cls(identifier=process.__name__, executor=ExecutorReference(process.__module__, process.__name__))
+        annotation = t.get_type_hints(process, include_extras=True).get('return')
+        _, codes = result_contract(annotation)
+        result_namespace = None
+        if t.get_origin(annotation) is Result:
+            _, errors = result_types(annotation)
+            ports = getattr(process, 'process_class').spec().outputs
+            value = shape_from_port(ports['value'], defaults=False)
+            if isinstance(value, LeafShape):
+                value = replace(value, types=tuple(dict.fromkeys((*(value.types or ()), type(None)))))
+            result_namespace = dump_shape(
+                NamespaceShape(
+                    fields=(
+                        ('value', value),
+                        ('error', LeafShape(types=errors, required=False)),
+                    )
+                ),
+                defaults=False,
+            )
+        return cls(
+            identifier=process.__name__,
+            executor=ExecutorReference(process.__module__, process.__name__),
+            exit_codes=codes,
+            result_namespace=result_namespace,
+        )
 
     @property
     def process_class(self) -> type[Process]:
@@ -123,9 +155,11 @@ class TaskSpec:
 
     @property
     def outputs(self) -> PortNamespace:
-        """Return the static leaf output ports of the task process."""
+        """Return static outputs, including structured Result value namespaces."""
         ports = self.process_class.spec().outputs
-        if ports.dynamic or any(isinstance(port, PortNamespace) for port in ports.values()):
+        if ports.dynamic or (
+            self.result_namespace is None and any(isinstance(port, PortNamespace) for port in ports.values())
+        ):
             msg = 'graph tasks require static leaf outputs, not dynamic outputs or output namespaces.'
             raise GraphTypeCheckError(msg)
         return ports
@@ -133,7 +167,7 @@ class TaskSpec:
     @property
     def result_port(self) -> str:
         """Return the single output port, or an empty string for multiple outputs."""
-        return next(iter(self.outputs)) if len(self.outputs) == 1 else ''
+        return next(iter(self.outputs)) if self.result_namespace is None and len(self.outputs) == 1 else ''
 
     @property
     def input_shape(self) -> NamespaceShape:
@@ -145,13 +179,21 @@ class TaskSpec:
     @property
     def result_shape(self) -> Shape:
         """Return the result port contracts, or the whole outputs namespace."""
+        if self.result_namespace is not None:
+            return load_shape(self.result_namespace)
         selected = self.outputs[self.result_port] if self.result_port else self.outputs
         assert isinstance(selected, (InputPort, OutputPort, PortNamespace))
         return shape_from_port(selected, defaults=False)
 
     def to_dict(self) -> dict[str, t.Any]:
         """Return the task declaration without the live process class."""
-        return {'identifier': self.identifier, 'executor': self.executor.to_dict(), 'version': self.version}
+        return {
+            'identifier': self.identifier,
+            'executor': self.executor.to_dict(),
+            'version': self.version,
+            'exit_codes': {label: code._asdict() for label, code in self.exit_codes.items()},
+            'result_namespace': deepcopy(self.result_namespace),
+        }
 
     @classmethod
     def from_dict(cls, data: Mapping[str, t.Any]) -> TaskSpec:
@@ -160,6 +202,8 @@ class TaskSpec:
             identifier=data['identifier'],
             executor=ExecutorReference.from_dict(data['executor']),
             version=readable_version(data.get('version'), TASK_SPEC_VERSION, 'task'),
+            exit_codes={label: ExitCode(**code) for label, code in data.get('exit_codes', {}).items()},
+            result_namespace=data.get('result_namespace'),
         )
 
 
@@ -265,6 +309,7 @@ class GraphTask(abc.ABC):
                 body=body,
                 otherwise=GraphSpec.from_dict(data['otherwise']) if data.get('otherwise') is not None else None,
                 condition_port=data.get('condition_port', CONDITION_PORT),
+                condition_test=data.get('condition_test', 'truthy'),
                 **common,
             )
         if kind == 'loop':
@@ -312,6 +357,12 @@ class BranchControl(BodyTask):
     KIND: t.ClassVar[TaskKind] = 'branch'
     condition_port: str = CONDITION_PORT
     otherwise: GraphSpec | None = None
+    condition_test: t.Literal['truthy', 'is_none', 'is_not_none'] = 'truthy'
+
+    def __post_init__(self) -> None:
+        if self.condition_test not in ('truthy', 'is_none', 'is_not_none'):
+            msg = f'unsupported branch condition test `{self.condition_test}`.'
+            raise GraphTypeCheckError(msg)
 
     @property
     def branches(self) -> tuple[GraphSpec, ...]:
@@ -328,6 +379,7 @@ class BranchControl(BodyTask):
             **super().to_dict(),
             'condition_port': self.condition_port,
             'otherwise': None if self.otherwise is None else self.otherwise.to_dict(),
+            'condition_test': self.condition_test,
         }
 
 
@@ -474,7 +526,18 @@ class GraphSpec:
             if origin is None or isinstance(origin, PortNamespace):
                 msg = f'graph output `{name}` must reference a declared leaf.'
                 raise GraphTypeCheckError(msg)
-            namespace[name] = OutputPort(name, valid_type=self._output_types(name, origin) or (Data,))
+            ports = self.input_spec() if source.task is None else self.task(source.task).output_ports()
+            required = True
+            for segment in source.port.split('.'):
+                port = ports[segment]
+                required = required and port.required
+                if isinstance(port, PortNamespace):
+                    ports = port
+            kinds = self._output_types(name, origin) or (Data,)
+            kinds = (kinds,) if isinstance(kinds, type) else kinds
+            if not required and type(None) not in kinds:
+                kinds = (*kinds, type(None))
+            namespace[name] = OutputPort(name, valid_type=kinds, required=required)
         return namespace
 
     def _output_types(self, name: str, origin: InputPort | OutputPort) -> tuple[type, ...] | type | None:
@@ -612,7 +675,7 @@ class GraphSpec:
             return
         origin = port_at(source.output_ports(), edge.source_port or '')
         ports = self._input_ports_at(target, edge.target_port or '')
-        if origin is None or isinstance(origin, PortNamespace):
+        if origin is None:
             msg = f'dependency refers to unknown output `{edge.source}.{edge.source_port}`.'
             raise GraphTypeCheckError(msg)
         if not ports and not _accepts_condition(target, edge.target_port):
