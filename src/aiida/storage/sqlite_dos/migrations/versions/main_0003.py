@@ -14,9 +14,11 @@ Migration steps:
    asynchronous ``core.ssh`` transport plugin.
 3. :func:`_migrate_legacy_codes`: migrate the deprecated ``Code`` data plugin.
 4. Rename the visibility extra on built-in Code nodes.
+5. Replace global process activity settings with an indexed per-node transition timestamp.
 
 See the ``main_0003`` revision of the ``psql_dos`` backend for the rationale of the transport
-rename, which likewise has no inverse: the downgrade only restores the schema revision.
+rename, which likewise has no inverse. The downgrade removes the transition timestamp column,
+but does not undo the data migrations.
 
 Revision ID: main_0003
 Revises: main_0002
@@ -36,6 +38,10 @@ from aiida.storage.migrations.legacy_code import (
     check_sqlite_executables,
 )
 from aiida.storage.migrations.legacy_ssh import migrate_ssh_transports
+from aiida.storage.migrations.process_state import (
+    add_process_state_change_timestamp,
+    drop_process_state_change_timestamp,
+)
 
 revision = 'main_0003'
 down_revision = 'main_0002'
@@ -104,8 +110,9 @@ def upgrade():
     migrate_ssh_transports(conn)
     _migrate_legacy_codes(conn)
     conn.execute(text(SQLITE_HIDDEN_UPGRADE_STATEMENT))
+    add_process_state_change_timestamp()
 
 
 def downgrade():
     """Migrations for the downgrade."""
-    pass
+    drop_process_state_change_timestamp()

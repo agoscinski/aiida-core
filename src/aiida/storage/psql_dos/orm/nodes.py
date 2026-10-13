@@ -9,7 +9,9 @@
 """SqlAlchemy implementation of the `BackendNode` and `BackendNodeCollection` classes."""
 
 import typing as t
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
+from copy import deepcopy
 from datetime import datetime
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -105,6 +107,36 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
         clone._model = sqla_utils.ModelWrapper(self.MODEL_CLASS(**arguments), self.backend)
         return clone
 
+    def lock(self) -> None:
+        """Refresh authoritative values, locking the row on PostgreSQL.
+
+        SQLite serializes writers instead; a conflicting snapshot fails rather
+        than being silently replayed. No retry is performed here.
+        """
+        if not self.backend.in_transaction or not self.is_stored:
+            msg = 'Locking a node requires a stored node and an explicit transaction.'
+            raise exceptions.InvalidOperation(msg)
+        self.backend.get_session().refresh(self.bare_model, with_for_update=True)
+
+    @contextmanager
+    def store_scope(self) -> Iterator[None]:
+        """Restore the original unstored model after an enclosing transaction fails."""
+        if self.is_stored:
+            yield
+            return
+
+        model = self.bare_model
+        values = {column.key: deepcopy(getattr(model, column.key)) for column in model.__table__.columns}
+        snapshot = self.MODEL_CLASS(**values, user=model.user, dbcomputer=model.dbcomputer)
+        try:
+            yield
+        except BaseException:
+            # SQLAlchemy rollback makes inserted models transient but leaves their
+            # generated primary keys behind. Keep the entity (and its ORM adapters)
+            # while replacing that model with its pre-store state.
+            self._model = sqla_utils.ModelWrapper(snapshot, self.backend)
+            raise
+
     @property
     def ctime(self):
         return self.model.ctime
@@ -112,6 +144,14 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
     @property
     def mtime(self):
         return self.model.mtime
+
+    @property
+    def process_state_change_timestamp(self) -> datetime | None:
+        return self.model.process_state_change_timestamp
+
+    @process_state_change_timestamp.setter
+    def process_state_change_timestamp(self, value: datetime | None) -> None:
+        self.model.process_state_change_timestamp = value
 
     @property
     def uuid(self):
@@ -190,7 +230,8 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
             raise exceptions.ModificationNotAllowed('source node has to be stored when adding a link from it')
 
         self._add_link(source, link_type, link_label)
-        session.commit()
+        if not session.in_nested_transaction():
+            self.backend._commit()
 
     def _add_link(self, source, link_type, link_label):
         """Add a single link"""
@@ -222,7 +263,7 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
 
         if not session.in_nested_transaction():
             try:
-                session.commit()
+                self.backend._commit()
             except SQLAlchemyError:
                 session.rollback()
                 raise
@@ -249,8 +290,9 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
         if self.is_stored:
             value = clean_value(value)
 
-        self.model.attributes[key] = value
-        self._flush_if_stored({'attributes'})
+        attributes = self.model.attributes
+        attributes[key] = value
+        self.model.attributes = attributes
 
     def set_attribute_many(self, attributes: dict[str, t.Any]) -> None:
         for key in attributes:
@@ -259,11 +301,9 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
         if self.is_stored:
             attributes = {key: clean_value(value) for key, value in attributes.items()}
 
-        for key, value in attributes.items():
-            # We need to use the SQLA model, because otherwise the second iteration will refetch
-            # what is in the database and we lose the initial changes.
-            self.bare_model.attributes[key] = value
-        self._flush_if_stored({'attributes'})
+        values = self.model.attributes
+        values.update(attributes)
+        self.model.attributes = values
 
     def reset_attributes(self, attributes: dict[str, t.Any]) -> None:
         for key in attributes:
@@ -272,17 +312,16 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
         if self.is_stored:
             attributes = clean_value(attributes)
 
-        self.bare_model.attributes = attributes
-        self._flush_if_stored({'attributes'})
+        self.model.attributes = attributes
 
     def delete_attribute(self, key: str) -> None:
+        attributes = self.model.attributes
         try:
-            self.model.attributes.pop(key)
+            attributes.pop(key)
         except KeyError as exception:
             msg = f'attribute `{exception}` does not exist'
             raise AttributeError(msg) from exception
-        else:
-            self._flush_if_stored({'attributes'})
+        self.model.attributes = attributes
 
     def delete_attribute_many(self, keys: Iterable[str]) -> None:
         non_existing_keys = [key for key in keys if key not in self.model.attributes]
@@ -291,14 +330,13 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
             msg = f'attributes `{", ".join(non_existing_keys)}` do not exist'
             raise AttributeError(msg)
 
+        values = self.model.attributes
         for key in keys:
-            self.bare_model.attributes.pop(key)
-
-        self._flush_if_stored({'attributes'})
+            values.pop(key)
+        self.model.attributes = values
 
     def clear_attributes(self):
         self.model.attributes = {}
-        self._flush_if_stored({'attributes'})
 
     def attributes_items(self) -> Iterable[tuple[str, t.Any]]:
         yield from self.model.attributes.items()
@@ -329,7 +367,7 @@ class SqlaNodeCollection(BackendNodeCollection):
         try:
             row = session.query(self.ENTITY_CLASS.MODEL_CLASS).filter_by(id=pk).one()
             session.delete(row)
-            session.commit()
+            self.backend._commit()
         except NoResultFound:
             msg = f"Node with pk '{pk}' not found"
             raise exceptions.NotExistent(msg) from NoResultFound

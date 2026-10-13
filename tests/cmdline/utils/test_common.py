@@ -19,6 +19,37 @@ from aiida.engine import Process, calcfunction
 from aiida.orm import CalcFunctionNode, CalculationNode, WorkflowNode
 
 
+@pytest.mark.usefixtures('aiida_profile_clean')
+def test_print_last_process_state_change_unknown(capsys):
+    """Unknown historical timestamps are not reported as proof that no transition happened."""
+    CalculationNode().store()
+    common.print_last_process_state_change()
+    assert 'Last time an entry changed state: unknown (no recorded transitions)' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('process_type', (None, 'calculation', 'work'))
+@pytest.mark.usefixtures('aiida_profile_clean')
+def test_print_last_process_state_change(process_type, monkeypatch, capsys):
+    """The CLI reports the latest transition for the requested process category."""
+    from datetime import datetime, timedelta, timezone
+
+    from aiida.common import timezone as aiida_timezone
+    from aiida.common.processes import ProcessState
+
+    first = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    second = first + timedelta(minutes=1)
+    monkeypatch.setattr(aiida_timezone, 'now', lambda: first)
+    CalculationNode().store().set_process_state(ProcessState.RUNNING)
+    monkeypatch.setattr(aiida_timezone, 'now', lambda: second)
+    WorkflowNode().store().set_process_state(ProcessState.RUNNING)
+    monkeypatch.setattr(aiida_timezone, 'now', lambda: second + timedelta(minutes=1))
+
+    common.print_last_process_state_change(process_type)
+    timestamp = first if process_type == 'calculation' else second
+    formatted = common.format_local_time(timestamp, format_str='at %H:%M:%S on %Y-%m-%d')
+    assert formatted in capsys.readouterr().out
+
+
 def test_get_node_summary(aiida_code_installed):
     """Test the ``get_node_summary`` utility."""
     code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')

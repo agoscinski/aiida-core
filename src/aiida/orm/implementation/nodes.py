@@ -11,6 +11,7 @@
 import abc
 import typing as t
 from collections.abc import Iterable, Sequence
+from contextlib import AbstractContextManager
 from datetime import datetime
 
 from aiida.orm.implementation.entities import BackendCollection, BackendEntity, BackendEntityExtrasMixin
@@ -37,6 +38,19 @@ class BackendNode(BackendEntity, BackendEntityExtrasMixin, metaclass=abc.ABCMeta
 
         :return: an unstored `BackendNode` with the exact same attributes and extras as self
         """
+
+    def lock(self) -> None:
+        """Refresh and lock a stored node for updates in an explicit transaction."""
+        raise NotImplementedError('This backend does not support locking nodes for transactional updates.')
+
+    def store_scope(self) -> AbstractContextManager[None]:
+        """Restore an unstored entity if its enclosing storage transaction fails.
+
+        Enter this scope before the transaction and exit it after rollback. This
+        restores local state only: it neither commits nor retries database writes.
+        Backends must explicitly support transactional node storage.
+        """
+        raise NotImplementedError('This backend does not support transactional node storage.')
 
     @property
     @abc.abstractmethod
@@ -165,6 +179,16 @@ class BackendNode(BackendEntity, BackendEntityExtrasMixin, metaclass=abc.ABCMeta
 
         :return: the mtime
         """
+
+    @property
+    @abc.abstractmethod
+    def process_state_change_timestamp(self) -> datetime | None:
+        """Return the last process state transition time, if known."""
+
+    @process_state_change_timestamp.setter
+    @abc.abstractmethod
+    def process_state_change_timestamp(self, value: datetime | None) -> None:
+        """Set the process state transition time."""
 
     @abc.abstractmethod
     def add_incoming(self, source: 'BackendNode', link_type, link_label):

@@ -16,7 +16,7 @@ from aiida.storage.sqlite_zip.migrator import _alembic_connect, list_versions
 from aiida.storage.sqlite_zip.utils import create_sqla_engine
 from tests.storage.migrations.utils import reflect_schema
 
-PROFILE_MAIN_VERSIONS = ('main_0001', 'main_0002', 'main_0003')
+PROFILE_MAIN_VERSIONS = ('main_0001', 'main_0002', 'main_0003', 'main_0004')
 SQLITE_ZIP_LEGACY_MAIN_REVISIONS = ('main_0000', 'main_0000a', 'main_0000b')
 REFERENCE_SCHEMAS = Path(__file__).parent / 'reference_schemas'
 

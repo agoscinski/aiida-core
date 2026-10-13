@@ -61,6 +61,8 @@ class DbNode(Base):
         index=True,
     )
 
+    process_state_change_timestamp = Column(DateTime(timezone=True), nullable=True, index=True)
+
     # TODO SP: The 'passive_deletes=all' argument here means that SQLAlchemy
     # won't take care of automatic deleting in the DbLink table. This still
     # isn't exactly the same behaviour than with Django. The solution to

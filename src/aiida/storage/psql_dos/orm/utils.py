@@ -78,6 +78,10 @@ class ModelWrapper:
         if item in ('_model', '_backend'):
             raise AttributeError()
 
+        deferred = getattr(self._backend, '_deferred', None)
+        if self.is_saved() and deferred is not None and deferred.owns(self._model, item):
+            return deferred.get(self._model, item)
+
         if self.is_saved() and self._is_mutable_model_field(item) and not self._in_transaction():
             self._ensure_model_uptodate(fields=(item,))
 
@@ -91,6 +95,11 @@ class ModelWrapper:
         :param key: the name of the model field
         :param value: the value to set
         """
+        deferred = getattr(self._backend, '_deferred', None)
+        if self.is_saved() and deferred is not None and deferred.owns(self._model, key):
+            deferred.set(self._model, key, value)
+            self._backend._commit()
+            return
         setattr(self._model, key, value)
         if self.is_saved() and self._is_mutable_model_field(key):
             fields = {key}
@@ -109,19 +118,20 @@ class ModelWrapper:
     def save(self):
         """Store the model instance.
 
-        .. note:: If one is currently in a transaction, this method is a no-op.
+        .. note:: Inside an explicit transaction, changes are flushed without committing.
 
         :raises `aiida.common.IntegrityError`: if a database integrity error is raised during the save.
         """
+        in_transaction = self._in_transaction()
         try:
             self.session.add(self._model)
-            if not self._in_transaction():
-                self.session.commit()
-            else:
-                self.session.flush()
+            self._backend._commit()
         except IntegrityError as exception:
-            self.session.rollback()
-            raise exceptions.IntegrityError(str(exception))
+            # The enclosing savepoint owns rollback in an explicit transaction.
+            # Rolling back the session here would discard the caller's writes too.
+            if not in_transaction:
+                self.session.rollback()
+            raise exceptions.IntegrityError(str(exception)) from exception
 
     def _is_mutable_model_field(self, field):
         """Return whether the field is a mutable field of the model.
@@ -148,6 +158,10 @@ class ModelWrapper:
         :param fields: the model fields whose current value to flush to the database
         """
         if self.is_saved():
+            deferred = getattr(self._backend, '_deferred', None)
+            if deferred is not None and fields and all(deferred.owns(self._model, field) for field in fields):
+                self._backend._commit()
+                return
             for field in fields:
                 flag_modified(self._model, field)
 

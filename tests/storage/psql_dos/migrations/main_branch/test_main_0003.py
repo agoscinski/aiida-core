@@ -8,6 +8,7 @@
 """Test ``main_0003.py``."""
 
 import pytest
+from sqlalchemy import inspect, text
 
 from aiida.common.utils import get_new_uuid
 from aiida.storage.migrations import legacy_ssh
@@ -54,12 +55,58 @@ def test_migration(perform_migrations: PsqlDosMigrator):
 def test_downgrade(perform_migrations: PsqlDosMigrator):
     """Test that downgrading from ``main_0003`` restores the ``main_0002`` revision.
 
-    The transport rename has no inverse, so the downgrade only moves the revision back.
+    Data migrations have no inverse; the transition timestamp column is removed.
     """
     perform_migrations.migrate_up('main@main_0003')
     perform_migrations.migrate_down('main@main_0002')
 
     assert perform_migrations.get_schema_version_profile() == 'main_0002'
+
+
+def test_process_transition_timestamp(perform_migrations: PsqlDosMigrator):
+    """Add the indexed column without inventing history and remove obsolete settings."""
+    migrator = perform_migrations
+    migrator.migrate_up('main@main_0002')
+    with migrator.session() as session:
+        session.execute(
+            text(
+                'INSERT INTO db_dbsetting (key, val, description, time) VALUES '
+                "(:key, '\"2026-01-01T00:00:00+00:00\"', '', '2026-01-01')"
+            ),
+            [{'key': key} for key in ('process|state_change|calculation', 'process|state_change|work', 'other')],
+        )
+        user_id = session.execute(
+            text(
+                'INSERT INTO db_dbuser (email, first_name, last_name, institution) '
+                "VALUES ('a@b.c', '', '', '') RETURNING id"
+            )
+        ).scalar_one()
+        session.execute(
+            text(
+                'INSERT INTO db_dbnode (uuid, node_type, label, description, ctime, mtime, user_id, '
+                'attributes, extras, repository_metadata) VALUES '
+                "(:uuid, 'process.calculation.CalculationNode.', '', '', '2026-01-01', '2026-01-02', "
+                ":user, '{\"process_state\": \"finished\"}', '{}', '{}')"
+            ),
+            {'uuid': get_new_uuid(), 'user': user_id},
+        )
+        session.commit()
+    migrator.migrate_up('main@main_0003')
+    with migrator.session() as session:
+        schema = inspect(session.connection())
+        column = next(col for col in schema.get_columns('db_dbnode') if col['name'] == 'process_state_change_timestamp')
+        assert column['nullable']
+        assert any(
+            index['column_names'] == ['process_state_change_timestamp'] for index in schema.get_indexes('db_dbnode')
+        )
+        row = session.execute(text('SELECT process_state_change_timestamp, attributes FROM db_dbnode')).one()
+        assert row == (None, {'process_state': 'finished'})
+        assert session.execute(text('SELECT key FROM db_dbsetting')).scalars().all() == ['other']
+    migrator.migrate_down('main@main_0002')
+    with migrator.session() as session:
+        assert 'process_state_change_timestamp' not in {
+            col['name'] for col in inspect(session.connection()).get_columns('db_dbnode')
+        }
 
 
 def test_rename_ssh_async_transport(perform_migrations: PsqlDosMigrator, ssh_dir):

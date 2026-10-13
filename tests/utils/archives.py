@@ -209,10 +209,17 @@ def generate_archive_main_0003(dest_dir) -> str:
     return _generate_archive(Path(dest_dir) / 'export_main_0003_simple.aiida', _build_main_0001_dataset)
 
 
+def generate_archive_main_0004(dest_dir) -> str:
+    """Export the unchanged reference dataset with the timestamp-repair revision."""
+    from pathlib import Path
+
+    return _generate_archive(Path(dest_dir) / 'export_main_0004_simple.aiida', _build_main_0001_dataset)
+
+
 def generate_archive_head(dest_dir) -> str:
     """Generate the reference simple archive for the head version.
 
-    Currently redirects to :func:`generate_archive_main_0003`. Dispatches
+    Currently redirects to :func:`generate_archive_main_0004`. Dispatches
     explicitly per revision so a future head without a registered builder
     fails loudly instead of silently reusing stale content.
 
@@ -228,6 +235,7 @@ def generate_archive_head(dest_dir) -> str:
         'main_0001': generate_archive_main_0001,
         'main_0002': generate_archive_main_0002,
         'main_0003': generate_archive_main_0003,
+        'main_0004': generate_archive_main_0004,
     }
     try:
         builder = builders[head]

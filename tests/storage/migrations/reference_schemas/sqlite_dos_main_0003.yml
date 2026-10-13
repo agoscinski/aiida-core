@@ -244,6 +244,10 @@ columns:
     name: user_id
     nullable: false
     type: INTEGER
+  - default: null
+    name: process_state_change_timestamp
+    nullable: true
+    type: DATETIME
   db_dbsetting:
   - default: null
     name: id
@@ -647,6 +651,11 @@ indexes:
     - node_type
     dialect_options: {}
     name: ix_db_dbnode_db_dbnode_node_type
+    unique: 0
+  - column_names:
+    - process_state_change_timestamp
+    dialect_options: {}
+    name: ix_db_dbnode_db_dbnode_process_state_change_timestamp
     unique: 0
   - column_names:
     - process_type

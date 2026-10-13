@@ -100,6 +100,18 @@ class NodeRepository:
 
         self._repository_instance = repository
 
+    @contextlib.contextmanager
+    def _store_scope(self) -> t.Iterator[None]:
+        """Retain the sandbox until the enclosing database transaction succeeds."""
+        repository = self._repository
+        try:
+            yield
+        except BaseException:
+            # Permanent objects may already exist. Do not delete deduplicated objects
+            # that might also be referenced by another committed node.
+            self._repository_instance = repository
+            raise
+
     def _store(self) -> None:
         """Store the repository in the backend."""
         from aiida.repository import Repository
