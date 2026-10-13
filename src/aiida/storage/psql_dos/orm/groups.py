@@ -129,10 +129,9 @@ class SqlaGroup(entities.SqlaModelEntity[DbGroup], ExtrasMixin, BackendGroup):
 
     def clear(self):
         """Remove all the nodes from this group."""
-        session = self.backend.get_session()
         # Note we have to call `bare_model` to circumvent flushing data to the database
         self.bare_model.dbnodes = []
-        session.commit()
+        self.backend._commit()
 
     @property
     def nodes(self):
@@ -201,7 +200,7 @@ class SqlaGroup(entities.SqlaModelEntity[DbGroup], ExtrasMixin, BackendGroup):
 
             # Commit everything as up till now we've just flushed
             if not session.in_nested_transaction():
-                session.commit()
+                self.backend._commit()
 
     def remove_nodes(self, nodes, **kwargs):
         """Remove a node or a set of nodes from the group.
@@ -231,7 +230,7 @@ class SqlaGroup(entities.SqlaModelEntity[DbGroup], ExtrasMixin, BackendGroup):
                 session.execute(statement)
 
             if not session.in_nested_transaction():
-                session.commit()
+                self.backend._commit()
 
 
 class SqlaGroupCollection(BackendGroupCollection):
@@ -244,4 +243,4 @@ class SqlaGroupCollection(BackendGroupCollection):
 
         row = session.get(self.ENTITY_CLASS.MODEL_CLASS, id)
         session.delete(row)
-        session.commit()
+        self.backend._commit()

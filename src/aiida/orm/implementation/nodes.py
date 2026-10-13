@@ -39,6 +39,10 @@ class BackendNode(BackendEntity, BackendEntityExtrasMixin, metaclass=abc.ABCMeta
         :return: an unstored `BackendNode` with the exact same attributes and extras as self
         """
 
+    def lock(self) -> None:
+        """Refresh and lock a stored node for updates in an explicit transaction."""
+        raise NotImplementedError('This backend does not support locking nodes for transactional updates.')
+
     def store_scope(self) -> AbstractContextManager[None]:
         """Restore an unstored entity if its enclosing storage transaction fails.
 

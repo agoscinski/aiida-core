@@ -15,7 +15,7 @@ import pathlib
 import typing as t
 import weakref
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 
 from disk_objectstore import Container, backup_utils
 from sqlalchemy import column, insert, update
@@ -32,9 +32,11 @@ from aiida.storage.log import STORAGE_LOGGER
 from aiida.storage.psql_dos.migrator import REPOSITORY_UUID_KEY, PsqlDosMigrator
 from aiida.storage.psql_dos.models import base
 from aiida.storage.psql_dos.orm import authinfos, comments, computers, convert, groups, logs, nodes, querybuilder, users
+from aiida.storage.psql_dos.orm.batching import DeferredWrites
 from aiida.storage.utils import _create_smarter_in_clause
 
 if t.TYPE_CHECKING:
+    from aiida.orm.implementation import BackendNode
     from aiida.repository.backend import DiskObjectStoreRepositoryBackend
 
 __all__ = ('PsqlDosBackend',)
@@ -165,6 +167,8 @@ class PsqlDosBackend(StorageBackend):
             migrator.validate_storage()
 
         self._resources = _PsqlDosResources()
+        self._batch_writes = True
+        self._deferred = DeferredWrites(self)
         self._finalizer = weakref.finalize(self, _finalize_backend, self._resources, repr(self))
         self._initialise_session()
         # save the URL of the database, for use in the __str__ method
@@ -287,6 +291,33 @@ class PsqlDosBackend(StorageBackend):
     def users(self) -> users.SqlaUserCollection:
         return self._users
 
+    def _deferred_writes(self, node: BackendNode) -> AbstractContextManager[None]:
+        """Let storage own metadata staging for the currently executing node."""
+        assert isinstance(node, nodes.SqlaNode)
+        return self._deferred.scope(node.bare_model)
+
+    def _flush_deferred_writes(self, node: BackendNode | None = None) -> AbstractContextManager[None]:
+        """Commit pending metadata together with the engine's boundary writes."""
+        if node is not None:
+            assert isinstance(node, nodes.SqlaNode)
+        return self._deferred.boundary(node.bare_model if node is not None else None)
+
+    def _commit(self) -> None:
+        """Finish pending writes without committing an enclosing transaction.
+
+        Runtime SQL persistence goes through this gateway so commit policy is
+        applied consistently to ORM writes and explicit transaction boundaries.
+        Migration connections have their own lifecycle and are not routed here.
+        """
+        session = self.get_session()
+        if session.in_nested_transaction():
+            session.flush()
+            return
+        if self._deferred.defer_commit():
+            self._deferred.release_read_transaction()
+            return
+        session.commit()
+
     @contextmanager
     def transaction(self) -> Iterator[Session]:
         """Open a transaction to be used as a context manager.
@@ -305,7 +336,7 @@ class PsqlDosBackend(StorageBackend):
         try:
             with session.begin_nested():
                 yield session
-            session.commit()
+            self._commit()
         except BaseException:
             session.rollback()
             raise
@@ -515,7 +546,7 @@ class PsqlDosBackend(StorageBackend):
             result = session.execute(text('SELECT pg_terminate_backend(:pid)'), {'pid': pid})
             if result.scalar():
                 terminated += 1
-        session.commit()
+        self._commit()
 
         return terminated
 
