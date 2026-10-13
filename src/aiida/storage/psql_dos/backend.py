@@ -296,6 +296,10 @@ class PsqlDosBackend(StorageBackend):
         assert isinstance(node, nodes.SqlaNode)
         return self._deferred.scope(node.bare_model)
 
+    def _deferred_task_scope(self) -> AbstractContextManager[None]:
+        """Hand a launched task its own view onto the active batch."""
+        return self._deferred.task_scope()
+
     def _flush_deferred_writes(self, node: BackendNode | None = None) -> AbstractContextManager[None]:
         """Commit pending metadata together with the engine's boundary writes."""
         if node is not None:

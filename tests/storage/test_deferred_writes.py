@@ -292,3 +292,57 @@ def test_failed_flush_discards_batch(commit_backend):
             event.remove(engine, 'commit', fail)
         assert not backend.get_session().in_transaction()
     assert node.process_status is None
+
+
+def test_task_partitions_merge_disjoint_fields(commit_backend):
+    """Sibling tasks stage different fields; one boundary commits both atomically."""
+    backend = commit_backend
+    node = orm.CalculationNode().store()
+    with backend._deferred_writes(node.backend_entity):
+        node.set_process_status('owner')
+        with backend._deferred_task_scope():
+            node.label = 'child'
+        with backend._flush_deferred_writes():
+            pass
+    assert node.process_status == 'owner'
+    assert node.label == 'child'
+
+
+def test_task_partition_conflict_rejected(commit_backend):
+    """Same field staged by two partitions fails loudly instead of last-wins."""
+    backend = commit_backend
+    node = orm.CalculationNode().store()
+    with backend._deferred_writes(node.backend_entity):
+        node.set_process_status('owner')
+        with backend._deferred_task_scope():
+            node.set_process_status('child')
+        with pytest.raises(exceptions.InvalidOperation, match='Concurrent update'):
+            with backend._flush_deferred_writes():
+                pass
+    assert node.process_status is None
+
+
+def test_task_partitions_are_isolated(commit_backend):
+    """A task reads committed state, not a sibling's staged writes."""
+    backend = commit_backend
+    node = orm.CalculationNode().store()
+    seen = {}
+
+    async def run():
+        with backend._deferred_writes(node.backend_entity):
+            node.set_process_status('owner')
+
+            async def child():
+                with backend._deferred_task_scope():
+                    seen['child_read'] = node.process_status
+                    node.label = 'child'
+
+            await asyncio.create_task(child())
+            seen['owner_read'] = node.label
+            with backend._flush_deferred_writes():
+                pass
+
+    asyncio.run(run())
+    assert seen == {'child_read': None, 'owner_read': ''}
+    assert node.process_status == 'owner'
+    assert node.label == 'child'

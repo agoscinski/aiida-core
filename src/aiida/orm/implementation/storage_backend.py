@@ -68,6 +68,10 @@ class StorageBackend(abc.ABC):
         """Establish execution ownership where the backend supports staged writes."""
         return nullcontext()
 
+    def _deferred_task_scope(self) -> AbstractContextManager[None]:
+        """Hand a launched task its own view where the backend supports staging."""
+        return nullcontext()
+
     def _flush_deferred_writes(self, node: BackendNode | None = None) -> AbstractContextManager[None]:
         """Persist execution-local writes at an explicit engine boundary."""
         return nullcontext()

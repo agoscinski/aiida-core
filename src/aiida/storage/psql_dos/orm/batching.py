@@ -31,11 +31,15 @@ class SqlStorage(t.Protocol):
 
 
 @dataclass
-class PendingField:
-    """An original value and its execution-local replacement."""
+class TaskView:
+    """The writable surface one task sees inside an execution scope.
 
-    original: object
-    value: object
+    A view exposes only its own staged entries; other views are unreachable
+    through it. The boundary merges views in creation order.
+    """
+
+    batch: 'WriteBatch | None' = None
+    staged: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -43,7 +47,8 @@ class WriteBatch:
     """Pending fields belonging to one stored node, not a shared SQL session."""
 
     model: object
-    fields: dict[str, PendingField] = field(default_factory=dict)
+    originals: dict[str, object] = field(default_factory=dict)
+    views: list[TaskView] = field(default_factory=list)
     active: bool = True
 
 
@@ -56,7 +61,7 @@ class DeferredWrites:
     def __init__(self, backend: SqlStorage) -> None:
         self.backend = backend
         self._batches: dict[int, WriteBatch] = {}
-        self._current: ContextVar[WriteBatch | None] = ContextVar('storage_write_batch', default=None)
+        self._current: ContextVar[TaskView | None] = ContextVar('storage_write_view', default=None)
         self._applying: ContextVar[bool] = ContextVar('storage_applying_batch', default=False)
 
     @contextmanager
@@ -75,22 +80,56 @@ class DeferredWrites:
             raise exceptions.InvalidOperation(msg)
         batch = WriteBatch(model)
         self._batches[id(model)] = batch
-        token = self._current.set(batch)
+        owner = TaskView(batch)
+        batch.views.append(owner)
+        token = self._current.set(owner)
         applying_token = self._applying.set(False)
         try:
             yield
-            if any(pending.value != pending.original for pending in batch.fields.values()):
+            if any(
+                value != batch.originals[name]
+                for view in batch.views
+                for name, value in view.staged.items()
+            ):
                 msg = 'Deferred writes remain without an explicit persistence boundary.'
                 raise exceptions.InvalidOperation(msg)
         finally:
             batch.active = False
-            batch.fields.clear()
+            batch.views.clear()
+            batch.originals.clear()
             self._batches.pop(id(model))
             self._applying.reset(applying_token)
             self._current.reset(token)
 
+    @contextmanager
+    def task_scope(self) -> Iterator[TaskView | None]:
+        """Hand the current task its own view onto the active batch.
+
+        Tasks created inside an execution scope inherit the owner's view
+        through the copied context; entering this scope swaps in a fresh one
+        whose staged entries are invisible to siblings and unreachable from
+        them. Same-field writes across views fail loudly at the boundary
+        instead of silently overwriting each other. Outside a batch this
+        yields ``None`` and node writes commit immediately. The yielded view
+        may be held and passed explicitly; routing still follows the current
+        view so existing call sites need no new parameters.
+        """
+        view = self._current.get()
+        batch = view.batch if view is not None else None
+        if not self.backend._batch_writes or batch is None or not batch.active or self._applying.get():
+            yield None
+            return
+        fresh = TaskView(batch)
+        batch.views.append(fresh)
+        token = self._current.set(fresh)
+        try:
+            yield fresh
+        finally:
+            self._current.reset(token)
+
     def owns(self, model: object, name: str) -> bool:
-        batch = self._current.get()
+        view = self._current.get()
+        batch = view.batch if view is not None else None
         return (
             self.backend._batch_writes
             and not self._applying.get()
@@ -101,28 +140,28 @@ class DeferredWrites:
         )
 
     def get(self, model: object, name: str) -> object:
-        """Read pending values without mutating a SQLAlchemy-managed object."""
-        batch = self._current.get()
-        assert batch is not None and self.owns(model, name)
-        if name not in batch.fields:
+        """Read the current view's staged value, else the committed value, without dirtying the session."""
+        view = self._current.get()
+        assert view is not None and view.batch is not None and self.owns(model, name)
+        batch = view.batch
+        if name not in batch.originals:
             session = self.backend.get_session()
             with session.no_autoflush:
                 session.refresh(model, attribute_names=[name])
-                original = deepcopy(getattr(model, name))
-            batch.fields[name] = PendingField(original, deepcopy(original))
-        value = deepcopy(batch.fields[name].value)
+                batch.originals[name] = deepcopy(getattr(model, name))
+        value = view.staged[name] if name in view.staged else batch.originals[name]
         self.release_read_transaction()
-        return value
+        return deepcopy(value)
 
     def set(self, model: object, name: str, value: object) -> None:
-        """Stage a field without making the shared session dirty."""
+        """Stage a field in the current view only; sibling views are unreachable."""
         if self.backend.get_session().in_nested_transaction():
             msg = 'Deferred metadata writes cannot overlap an explicit caller transaction.'
             raise exceptions.InvalidOperation(msg)
+        view = self._current.get()
+        assert view is not None and self.owns(model, name)
         self.get(model, name)
-        batch = self._current.get()
-        assert batch is not None
-        batch.fields[name].value = deepcopy(value)
+        view.staged[name] = deepcopy(value)
         self.release_read_transaction()
 
     @staticmethod
@@ -147,14 +186,20 @@ class DeferredWrites:
         event.listen(session, 'do_orm_execute', executed)
         event.listen(session, 'after_transaction_end', ended)
 
+    def _active_batch(self) -> WriteBatch | None:
+        """Return the current view's batch if it is still staging."""
+        view = self._current.get()
+        batch = view.batch if view is not None else None
+        if batch is None or not batch.active:
+            return None
+        return batch
+
     def defer_commit(self) -> bool:
         """Delay metadata commits, but never swallow unrelated dirty session writes."""
         session = self.backend.get_session()
-        batch = self._current.get()
         return (
             self.backend._batch_writes
-            and batch is not None
-            and batch.active
+            and self._active_batch() is not None
             and not self._applying.get()
             and not session.new
             and not session.dirty
@@ -165,10 +210,8 @@ class DeferredWrites:
     def release_read_transaction(self) -> None:
         """Do not retain even a read transaction while an execution awaits I/O."""
         session = self.backend.get_session()
-        batch = self._current.get()
         if (
-            batch is not None
-            and batch.active
+            self._active_batch() is not None
             and not self._applying.get()
             and not session.in_nested_transaction()
             and not session.new
@@ -206,7 +249,7 @@ class DeferredWrites:
     @contextmanager
     def boundary(self, model: object | None = None) -> Iterator[None]:
         """Merge field-level changes into authoritative data and commit once."""
-        batch = self._current.get()
+        batch = self._active_batch()
         if model is not None:
             batch = self._batches.get(id(model))
         if batch is not None and not batch.active:
@@ -223,13 +266,32 @@ class DeferredWrites:
                 if target is not None:
                     session.refresh(target, with_for_update=True)
                 if batch is not None:
-                    for name, pending in batch.fields.items():
-                        if pending.value == pending.original:
-                            continue
-                        value = self._merge(name, pending.original, pending.value, getattr(batch.model, name))
-                        setattr(batch.model, name, value)
+                    for name, value in self._merge_views(batch).items():
+                        merged = self._merge(name, batch.originals[name], value, getattr(batch.model, name))
+                        setattr(batch.model, name, merged)
                 yield
         finally:
             if batch is not None:
-                batch.fields.clear()
+                # Clear per-view staged entries too: holders keep referencing
+                # their view after the boundary commits or rolls back.
+                for view in batch.views:
+                    view.staged.clear()
+                batch.views.clear()
+                batch.originals.clear()
             self._applying.reset(token)
+
+    @staticmethod
+    def _merge_views(batch: WriteBatch) -> dict[str, object]:
+        """Combine task views; identical staged values merge, conflicts raise."""
+        combined: dict[str, object] = {}
+        for view in batch.views:
+            for name, value in view.staged.items():
+                if value == batch.originals[name]:
+                    continue
+                if name in combined:
+                    if value != combined[name]:
+                        msg = f'Concurrent update of deferred field `{name}` by tasks in one execution.'
+                        raise exceptions.InvalidOperation(msg)
+                    continue
+                combined[name] = deepcopy(value)
+        return combined
