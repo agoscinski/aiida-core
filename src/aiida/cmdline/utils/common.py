@@ -86,7 +86,7 @@ def format_local_time(timestamp: datetime | float, format_str: str = '%Y-%m-%d %
 
 
 def print_last_process_state_change(process_type: t.Literal['work'] | t.Literal['calculation'] | None = None) -> None:
-    """Print the last time that a process of the specified type has changed its state.
+    """Print the latest recorded transition time queried from processes of the specified type.
 
     :param process_type: optional process type for which to get the latest state change timestamp.
         Valid process types are either 'calculation' or 'work'.
@@ -94,12 +94,12 @@ def print_last_process_state_change(process_type: t.Literal['work'] | t.Literal[
     from aiida.cmdline.utils.echo import echo_report
     from aiida.common import timezone
     from aiida.common.utils import str_timedelta
-    from aiida.engine.utils import get_process_state_change_timestamp
+    from aiida.orm import get_process_state_change_timestamp
 
     timestamp = get_process_state_change_timestamp(process_type)
 
     if timestamp is None:
-        echo_report('Last time an entry changed state: never')
+        echo_report('Last time an entry changed state: unknown (no recorded transitions)')
     else:
         timedelta = timezone.delta(timestamp)
         formatted = format_local_time(timestamp, format_str='at %H:%M:%S on %Y-%m-%d')

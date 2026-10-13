@@ -124,6 +124,8 @@ def test_migrate_legacy_code(migration_profile):
 
         # Downgrade only restores the schema revision; it cannot reconstruct the original legacy codes.
         migrator.migrate_down('main@main_0002')
+        migrator.connection.commit()
         with migrator.session() as session:
-            remote = session.query(node_model).filter(node_model.id == remote_id).one()
-            assert remote.node_type == 'data.core.code.installed.InstalledCode.'
+            # The current model includes columns that do not exist after downgrade.
+            node_type = session.query(node_model.node_type).filter(node_model.id == remote_id).scalar()
+            assert node_type == 'data.core.code.installed.InstalledCode.'

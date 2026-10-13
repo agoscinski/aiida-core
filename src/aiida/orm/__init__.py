@@ -20,6 +20,7 @@ from aiida.orm.extras import *
 from aiida.orm.groups import *
 from aiida.orm.logs import *
 from aiida.orm.nodes import *
+from aiida.orm.processes import *
 from aiida.orm.pydantic import *
 from aiida.orm.qb_fields import *
 from aiida.orm.querybuilder import *
@@ -111,6 +112,7 @@ __all__ = (
     'cif_from_ase',
     'find_bandgap',
     'get_loader',
+    'get_process_state_change_timestamp',
     'get_query_type_from_type_string',
     'get_type_string_from_class',
     'has_pycifrw',

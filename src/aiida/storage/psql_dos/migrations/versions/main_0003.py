@@ -13,6 +13,7 @@ Migration steps:
    asynchronous ``core.ssh`` transport plugin.
 2. :func:`_migrate_legacy_codes`: migrate the deprecated ``Code`` data plugin.
 3. :func:`_migrate_code_hidden_extra`: rename the visibility extra on built-in Code nodes.
+4. Replace global process activity settings with an indexed per-node transition timestamp.
 
 The legacy paramiko-based ``core.ssh`` transport plugin was removed in v3.0, and the asynchronous plugin (formerly
 ``core.ssh_async``) took over its entry point name. Consequently:
@@ -27,7 +28,7 @@ The legacy paramiko-based ``core.ssh`` transport plugin was removed in v3.0, and
 
 Note that neither step has an inverse: once both kinds of computers share the ``core.ssh`` transport
 type they can no longer be told apart, and the parameters that were converted are gone from the
-database. The downgrade therefore only restores the schema revision.
+database. The downgrade removes the transition timestamp column but does not undo the data migrations.
 
 Revision ID: main_0003
 Revises: main_0002
@@ -40,6 +41,10 @@ from sqlalchemy import text
 from aiida.storage.log import MIGRATE_LOGGER
 from aiida.storage.migrations.legacy_code import INSTALLED_NODE_TYPE, LEGACY_NODE_TYPE, PORTABLE_NODE_TYPE
 from aiida.storage.migrations.legacy_ssh import migrate_ssh_transports
+from aiida.storage.migrations.process_state import (
+    add_process_state_change_timestamp,
+    drop_process_state_change_timestamp,
+)
 
 revision = 'main_0003'
 down_revision = 'main_0002'
@@ -129,6 +134,8 @@ def _migrate_code_hidden_extra(conn):
 def upgrade():
     """Migrations for the upgrade."""
     conn = op.get_bind()
+    # Alter the node table before data updates queue deferred foreign-key triggers.
+    add_process_state_change_timestamp()
     migrate_ssh_transports(conn)
     _migrate_legacy_codes(conn)
     _migrate_code_hidden_extra(conn)
@@ -136,3 +143,4 @@ def upgrade():
 
 def downgrade():
     """Migrations for the downgrade."""
+    drop_process_state_change_timestamp()

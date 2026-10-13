@@ -257,6 +257,11 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
             read_only=True,
             examples=['aiida.calculations:arithmetic.add.'],
         )
+        process_state_change_timestamp: datetime.datetime | None = OrmMetadataField(
+            None,
+            description='The last process state transition time, if known; null for data nodes',
+            read_only=True,
+        )
         ctime: datetime.datetime = OrmMetadataField(
             description='The creation time of the node',
             read_only=True,
@@ -808,6 +813,11 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
         :return: the ctime
         """
         return self.backend_entity.ctime
+
+    @property
+    def process_state_change_timestamp(self) -> datetime.datetime | None:
+        """Return the last process state transition time, or ``None`` if unknown or not a process."""
+        return self.backend_entity.process_state_change_timestamp
 
     @property
     def mtime(self) -> datetime.datetime:

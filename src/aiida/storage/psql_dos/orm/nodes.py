@@ -114,6 +114,14 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
         return self.model.mtime
 
     @property
+    def process_state_change_timestamp(self) -> datetime | None:
+        return self.model.process_state_change_timestamp
+
+    @process_state_change_timestamp.setter
+    def process_state_change_timestamp(self, value: datetime | None) -> None:
+        self.model.process_state_change_timestamp = value
+
+    @property
     def uuid(self):
         return str(self.model.uuid)
 

@@ -26,6 +26,8 @@ pbc2: QbBoolField('attributes.pbc2', dtype=bool | None, doc='Periodicity in the 
 pbc3: QbBoolField('attributes.pbc3', dtype=bool | None, doc='Periodicity in the third
   lattice vector direction')
 pk: QbNumericField('pk', dtype=<class 'int'>, doc='The primary key of the entity')
+process_state_change_timestamp: QbNumericField('process_state_change_timestamp', dtype=datetime.datetime
+  | None, doc='The last process state transition time, if known; null for data nodes')
 process_type: QbStrField('process_type', dtype=str | None, doc='The process type of
   the node')
 repository_metadata: QbDictField('repository_metadata', dtype=dict[str, typing.Any],

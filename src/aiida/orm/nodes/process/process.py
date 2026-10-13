@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import enum
 import typing as t
+from contextlib import nullcontext
 from pathlib import Path
 
-from aiida.common import exceptions
+from aiida.common import exceptions, timezone
 from aiida.common.lang import classproperty
 from aiida.common.links import LinkType
 from aiida.common.processes import ProcessState
@@ -352,14 +353,21 @@ class ProcessNode(Sealable, Node):
 
         return ProcessState(state)
 
-    def set_process_state(self, state: str | ProcessState | None):
-        """Set the process state
+    def set_process_state(self, state: str | ProcessState | None) -> None:
+        """Set process state and record its transition time atomically.
+
+        Reassigning the same state leaves the transition timestamp unchanged.
 
         :param state: value or instance of ProcessState enum
         """
         if isinstance(state, ProcessState):
             state = state.value
-        return self.base.attributes.set(self.PROCESS_STATE_KEY, state)
+        context = self.backend.transaction() if self.is_stored and not self.backend.in_transaction else nullcontext()
+        with context:
+            previous = self.base.attributes.get(self.PROCESS_STATE_KEY, None)
+            self.base.attributes.set(self.PROCESS_STATE_KEY, state)
+            if state != previous:
+                self.backend_entity.process_state_change_timestamp = timezone.now()
 
     @property
     def process_status(self) -> str | None:

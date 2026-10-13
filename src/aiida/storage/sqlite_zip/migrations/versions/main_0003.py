@@ -13,6 +13,7 @@ Migration steps:
 1. Rename the ``core.ssh_async`` transport plugin to ``core.ssh``.
 2. Migrate the deprecated ``Code`` data plugin to modern code plugins.
 3. Rename the visibility extra on built-in Code nodes.
+4. Add an indexed per-node process transition timestamp; historical values remain unknown.
 
 Bring archives in line with the profile database ``main_0003``, so that a computer exported from a
 profile that used ``core.ssh_async`` can be imported into a v3 profile. Archives carry no client
@@ -21,7 +22,7 @@ the legacy ``core.ssh`` conversion. See ``aiida.storage.psql_dos.migrations.vers
 for the rationale.
 
 The rename has no inverse: once both kinds of computers share the ``core.ssh`` transport type, they
-can no longer be told apart. The downgrade therefore only restores the schema revision and leaves
+can no longer be told apart. The downgrade removes the transition timestamp column and leaves
 the transport types as they are.
 
 Without the code migration, an archive containing nodes with the ``data.core.code.Code.`` node type
@@ -41,6 +42,10 @@ from aiida.storage.migrations.legacy_code import (
     SQLITE_UPGRADE_STATEMENTS,
     check_sqlite_executables,
 )
+from aiida.storage.migrations.process_state import (
+    add_process_state_change_timestamp,
+    drop_process_state_change_timestamp,
+)
 
 revision = 'main_0003'
 down_revision = 'main_0002'
@@ -57,8 +62,9 @@ def upgrade():
     for statement in SQLITE_UPGRADE_STATEMENTS:
         conn.execute(text(statement))
     conn.execute(text(SQLITE_HIDDEN_UPGRADE_STATEMENT))
+    add_process_state_change_timestamp()
 
 
 def downgrade():
     """Migrations for the downgrade."""
-    pass
+    drop_process_state_change_timestamp()

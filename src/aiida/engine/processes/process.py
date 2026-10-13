@@ -462,8 +462,7 @@ class Process(ProcessBase):
 
     @override
     def on_entered(self, from_state: process_states.State | None) -> None:
-        """After entering a new state, save a checkpoint and update the latest process state change timestamp."""
-        from aiida.engine.utils import set_process_state_change_timestamp
+        """After entering a new state, persist its outputs and state and save a checkpoint."""
 
         if self._state.LABEL is ProcessState.EXCEPTED:
             # The process is already excepted so simply update the process state on the node and let the process
@@ -485,7 +484,6 @@ class Process(ProcessBase):
             self.node.set_process_state(self._state.LABEL)  # type: ignore[arg-type]
 
         self._save_checkpoint()
-        set_process_state_change_timestamp(self.node)
 
         # The updating of outputs and state has to be performed before the super is called because the super will
         # broadcast state changes and parent processes may start running again before the state change is completed. It
