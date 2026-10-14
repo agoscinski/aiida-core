@@ -122,7 +122,7 @@ class SqlaComputerCollection(BackendComputerCollection):
             session = self.backend.get_session()
             row = session.get(self.ENTITY_CLASS.MODEL_CLASS, pk)
             session.delete(row)
-            session.commit()
+            self.backend._commit()
         except SQLAlchemyError as exc:
             msg = f'Unable to delete the requested computer: {exc}'
             raise exceptions.InvalidOperation(msg)

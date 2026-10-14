@@ -93,7 +93,7 @@ class SqlaLogCollection(BackendLogCollection):
         try:
             row = session.query(self.ENTITY_CLASS.MODEL_CLASS).filter_by(id=log_id).one()
             session.delete(row)
-            session.commit()
+            self.backend._commit()
         except NoResultFound:
             session.rollback()
             msg = f"Log with id '{log_id}' not found"
@@ -108,7 +108,7 @@ class SqlaLogCollection(BackendLogCollection):
 
         try:
             session.query(self.ENTITY_CLASS.MODEL_CLASS).delete()
-            session.commit()
+            self.backend._commit()
         except Exception as exc:
             session.rollback()
             msg = f'Could not delete all Logs. Full exception: {exc}'

@@ -336,6 +336,10 @@ class SqliteZipBackend(StorageBackend):
     def _clear(self) -> None:
         raise ReadOnlyError()
 
+    def _commit(self) -> None:
+        """Preserve SQLAlchemy commit behavior for shared ORM adapters."""
+        self.get_session().commit()
+
     @contextmanager
     def transaction(self) -> Iterator[Session]:
         session = self.get_session()
@@ -343,7 +347,7 @@ class SqliteZipBackend(StorageBackend):
             with session.begin_nested() as savepoint:
                 yield session
                 savepoint.commit()
-            session.commit()
+            self._commit()
         else:
             with session.begin():
                 with session.begin_nested() as savepoint:

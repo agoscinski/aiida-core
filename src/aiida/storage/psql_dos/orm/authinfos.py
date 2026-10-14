@@ -133,7 +133,7 @@ class SqlaAuthInfoCollection(BackendAuthInfoCollection):
         try:
             row = session.query(self.ENTITY_CLASS.MODEL_CLASS).filter_by(id=pk).one()
             session.delete(row)
-            session.commit()
+            self.backend._commit()
         except NoResultFound:
             msg = f'AuthInfo<{pk}> does not exist'
             raise exceptions.NotExistent(msg)
