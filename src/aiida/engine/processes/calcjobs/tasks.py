@@ -16,6 +16,7 @@ import logging
 import tempfile
 import typing as t
 from collections.abc import Callable
+from contextlib import nullcontext
 
 from aiida.common.datastructures import CalcJobState, JobState
 from aiida.common.exceptions import FeatureNotAvailable, StashingError, TransportTaskException
@@ -475,7 +476,13 @@ async def task_kill_job(node: CalcJobNode, transport_queue: TransportQueue, canc
         raise TransportTaskException(msg) from exception
     else:
         logger.info(f'killing CalcJob<{node.pk}> successful')
-        node.set_scheduler_state(JobState.DONE)
+        # Control tasks can run outside the execution context. Persist polling
+        # metadata and the kill result together rather than leaving a stale buffer.
+        scope = (
+            node.backend._flush_deferred_writes(node.backend_entity) if node.backend._batch_writes else nullcontext()
+        )
+        with scope:
+            node.set_scheduler_state(JobState.DONE)
         return result
 
 
