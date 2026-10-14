@@ -534,30 +534,27 @@ class Process(ProcessBase):
         """
         state = self._state.LABEL
         assert isinstance(state, ProcessState)
-        output_failed = False
+        # update_outputs shares the commit transaction below, so an output failure
+        # and a commit failure surface from the same block with opposite rules:
+        # outputs rolled back still need the attempted state recorded (as the
+        # immediate path's ``finally`` does), while a commit failure must never
+        # replay the batch, since a lost acknowledgement may mean it committed.
+        outputs_stored = False
         try:
-            with ExitStack() as outputs:
-                try:
-                    # Deduplicate aliases so each output has one rollback snapshot.
-                    for output in {id(node): node for node in self._flat_outputs().values()}.values():
-                        outputs.enter_context(output._store_scope())
-                except BaseException:
-                    output_failed = True
-                    raise
-
-                with self._storage_boundary():
-                    try:
-                        self.update_outputs()
-                    except BaseException:
-                        output_failed = True
-                        raise
-                    self.node.set_process_state(state)
-                    self._save_checkpoint(use_savepoint=True)
+            # One line: scopes must surround the transaction, and a dynamic count needs the stack.
+            with ExitStack() as outputs, self._storage_boundary():
+                # Deduplicate aliases so each output has one rollback snapshot.
+                for output in {id(node): node for node in self._flat_outputs().values()}.values():
+                    outputs.enter_context(output._store_scope())
+                self.update_outputs()
+                outputs_stored = True
+                self.node.set_process_state(state)
+                self._save_checkpoint(use_savepoint=True)
         except BaseException:
-            if output_failed:
-                # The failed output batch and its Python state have rolled back.
-                with self._storage_boundary():
-                    self.node.set_process_state(state)
+            if outputs_stored:
+                raise
+            with self._storage_boundary():
+                self.node.set_process_state(state)
             raise
 
     @override
