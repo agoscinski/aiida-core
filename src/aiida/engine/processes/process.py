@@ -416,17 +416,6 @@ class Process(ProcessBase):
             self._task = None
 
     @override
-    async def step(self) -> None:
-        """Establish storage ownership while executing a process step."""
-        scope = (
-            self.node.backend._deferred_writes(self.node.backend_entity)
-            if self.metadata.store_provenance
-            else nullcontext()
-        )
-        with scope:
-            await super().step()
-
-    @override
     async def step_until_terminated(self) -> None:
         """Keep a greenback portal open for as long as this process is being stepped.
 
