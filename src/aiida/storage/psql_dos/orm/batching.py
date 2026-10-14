@@ -19,6 +19,18 @@ from sqlalchemy.orm import ORMExecuteState, Session, SessionTransaction
 
 from aiida.common import exceptions
 
+FieldName: t.TypeAlias = t.Literal['attributes', 'label', 'description', 'repository_metadata']
+"""Model fields that stage in an execution scope instead of committing immediately."""
+
+JsonValue: t.TypeAlias = 'bool | int | float | str | list[JsonValue] | dict[str, JsonValue] | None'
+JsonObject: t.TypeAlias = dict[str, JsonValue]
+
+StagedValue: t.TypeAlias = JsonObject | str
+"""A replacement for a supported node metadata column."""
+
+StagedFields: t.TypeAlias = dict[FieldName, StagedValue]
+"""Staged field values keyed by model field name."""
+
 
 class SqlStorage(t.Protocol):
     """SQL operations required at a persistence boundary."""
@@ -39,7 +51,7 @@ class TaskView:
     """
 
     batch: 'WriteBatch | None' = None
-    staged: dict[str, object] = field(default_factory=dict)
+    staged: StagedFields = field(default_factory=dict)
 
 
 @dataclass
@@ -47,7 +59,7 @@ class WriteBatch:
     """Pending fields belonging to one stored node, not a shared SQL session."""
 
     model: object
-    originals: dict[str, object] = field(default_factory=dict)
+    originals: StagedFields = field(default_factory=dict)
     views: list[TaskView] = field(default_factory=list)
     active: bool = True
 
@@ -56,7 +68,7 @@ class DeferredWrites:
     """Keep node metadata separate from SQLAlchemy until an explicit boundary."""
 
     # Extras are also used by plugins for live cross-task coordination.
-    FIELDS = frozenset({'attributes', 'label', 'description', 'repository_metadata'})
+    FIELDS: t.ClassVar[frozenset[FieldName]] = frozenset({'attributes', 'label', 'description', 'repository_metadata'})
 
     def __init__(self, backend: SqlStorage) -> None:
         self.backend = backend
@@ -86,11 +98,7 @@ class DeferredWrites:
         applying_token = self._applying.set(False)
         try:
             yield
-            if any(
-                value != batch.originals[name]
-                for view in batch.views
-                for name, value in view.staged.items()
-            ):
+            if any(value != batch.originals[name] for view in batch.views for name, value in view.staged.items()):
                 msg = 'Deferred writes remain without an explicit persistence boundary.'
                 raise exceptions.InvalidOperation(msg)
         finally:
@@ -139,7 +147,7 @@ class DeferredWrites:
             and name in self.FIELDS
         )
 
-    def get(self, model: object, name: str) -> object:
+    def get(self, model: object, name: FieldName) -> StagedValue:
         """Read the current view's staged value, else the committed value, without dirtying the session."""
         view = self._current.get()
         assert view is not None and view.batch is not None and self.owns(model, name)
@@ -153,8 +161,14 @@ class DeferredWrites:
         self.release_read_transaction()
         return deepcopy(value)
 
-    def set(self, model: object, name: str, value: object) -> None:
-        """Stage a field in the current view only; sibling views are unreachable."""
+    @t.overload
+    def set(self, model: object, name: t.Literal['label', 'description'], value: str) -> None: ...
+
+    @t.overload
+    def set(self, model: object, name: t.Literal['attributes', 'repository_metadata'], value: JsonObject) -> None: ...
+
+    def set(self, model: object, name: FieldName, value: StagedValue) -> None:
+        """Snapshot a supported field replacement already handled by the node setters."""
         if self.backend.get_session().in_nested_transaction():
             msg = 'Deferred metadata writes cannot overlap an explicit caller transaction.'
             raise exceptions.InvalidOperation(msg)
@@ -281,9 +295,9 @@ class DeferredWrites:
             self._applying.reset(token)
 
     @staticmethod
-    def _merge_views(batch: WriteBatch) -> dict[str, object]:
+    def _merge_views(batch: WriteBatch) -> StagedFields:
         """Combine task views; identical staged values merge, conflicts raise."""
-        combined: dict[str, object] = {}
+        combined: StagedFields = {}
         for view in batch.views:
             for name, value in view.staged.items():
                 if value == batch.originals[name]:
