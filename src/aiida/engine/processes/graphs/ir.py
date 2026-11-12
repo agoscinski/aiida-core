@@ -28,7 +28,7 @@ from aiida.engine.processes.graphs.inputs import _port_for_shape, _shape_from_po
 from aiida.engine.processes.graphs.shapes import LeafShape, NamespaceShape, Shape, dump_shape, load_shape
 from aiida.engine.processes.ports import InputPort, OutputPort, PortNamespace, _infer_node_types
 from aiida.engine.processes.process import Process
-from aiida.orm import Data
+from aiida.orm.nodes.data.datanode import DataNode
 
 __all__ = (
     'BodyTask',
@@ -749,7 +749,7 @@ class GraphIR:
             msg = f'graph output `{path}` must reference a declared leaf.'
             raise GraphTypeCheckError(msg)
         top = path.split('.', maxsplit=1)[0]
-        valid_type = self._output_types(top, origin) or (Data,)
+        valid_type = self._output_types(top, origin) or (DataNode,)
         return OutputPort(name, valid_type=valid_type, required=_output_required(origin))
 
     def _output_types(self, name: str, origin: InputPort | OutputPort) -> tuple[type, ...] | type | None:

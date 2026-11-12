@@ -37,7 +37,8 @@ from aiida.engine.processes.process import Process
 from aiida.engine.processes.process_spec import GraphProcessSpec, ProcessSpec
 from aiida.engine.processes.workchains.workchain import WorkChain
 from aiida.engine.utils import is_process_function
-from aiida.orm import CalcFunctionNode, CalcJobNode, Data, WorkChainNode, to_aiida_type
+from aiida.orm import CalcFunctionNode, CalcJobNode, WorkChainNode, to_aiida_type
+from aiida.orm.nodes.data.datanode import DataNode
 
 if t.TYPE_CHECKING:
     from aiida.engine.processes.graphs.ir import ProcessTask
@@ -81,7 +82,7 @@ def _typevar_positions(function: Callable[..., t.Any]) -> tuple[TypevarPositions
     return inputs, output
 
 
-PortDeclaration: t.TypeAlias = Mapping[str, 'type[Data] | tuple[type[Data], ...] | PortDeclaration']
+PortDeclaration: t.TypeAlias = Mapping[str, 'type[DataNode] | tuple[type[DataNode], ...] | PortDeclaration']
 """Names and node types inside dynamic namespaces, nested like the namespaces they fill."""
 
 
@@ -98,9 +99,9 @@ def _declared_shape(declaration: PortDeclaration | None, *, leaves: bool = False
             continue
         # Callers outside type checking pass arbitrary objects, so check every entry at runtime.
         given: tuple[object, ...] = value if isinstance(value, tuple) else (value,)
-        types = tuple(kind for kind in given if inspect.isclass(kind) and issubclass(kind, Data))
+        types = tuple(kind for kind in given if inspect.isclass(kind) and issubclass(kind, DataNode))
         if not types or len(types) != len(given):
-            msg = f'declared port `{location}` takes `Data` subclasses, not `{value!r}`.'
+            msg = f'declared port `{location}` takes `DataNode` subclasses, not `{value!r}`.'
             raise GraphTypeCheckError(msg)
         fields.append((name, LeafShape(types=types)))
     return NamespaceShape(fields=tuple(fields))
@@ -128,7 +129,7 @@ def _declare_output_ports(return_annotation: t.Any, spec: ProcessSpec) -> None:
             raise GraphTypeCheckError(msg)
         for key, raw in hints.items():
             hint = _expanded_annotation(raw)
-            spec.output(key, valid_type=_infer_node_types(hint) or (Data,))
+            spec.output(key, valid_type=_infer_node_types(hint) or (DataNode,))
         return
     if t.get_origin(return_annotation) is tuple or return_annotation is tuple:
         msg = 'name multiple task outputs with a TypedDict instead of a tuple.'
@@ -139,7 +140,7 @@ def _declare_output_ports(return_annotation: t.Any, spec: ProcessSpec) -> None:
         origin = return_annotation
     spec.output(
         Process.SINGLE_OUTPUT_LINKNAME,
-        valid_type=_infer_node_types(origin) or (Data,),
+        valid_type=_infer_node_types(origin) or (DataNode,),
     )
 
 
@@ -208,7 +209,7 @@ class TaskProcess(FunctionProcessBase):
             msg = f'task declares {len(names)} outputs {names} but returned {len(values)} values.'
             raise GraphValidationError(msg)
         stored = {
-            name: value if isinstance(value, Data) else to_aiida_type(value)
+            name: value if isinstance(value, DataNode) else to_aiida_type(value)
             for name, value in zip(names, values, strict=True)
         }
         super()._out_result(stored)
