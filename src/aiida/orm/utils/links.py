@@ -139,6 +139,7 @@ def validate_link(
     """
     from aiida.common.links import LinkType, validate_link_label
     from aiida.orm import CalculationNode, Data, Node, WorkflowNode
+    from aiida.orm.nodes.data.container import Container
 
     type_check(link_type, LinkType, f'link_type should be a LinkType enum but got: {type(link_type)}')
     type_check(source, Node, f'source should be a `Node` but got: {type(source)}')
@@ -167,13 +168,16 @@ def validate_link(
     # link of this type regardless of the label. If instead it is `unique_label`, an infinite amount of links of that
     # type can be defined, as long as the link label is unique for the sub set of links of that type. Finally, for
     # `unique_triple` the triple of node, link type and link label has to be unique.
+    # Containers share node identity and behave like data at provenance links, but are decoupled from ``Data``
+    # semantics (dedicated ``BackendContainer`` storage). ``isinstance`` accepts the tuple form directly.
+    data_or_container = (Data, Container)
     link_mapping = {
         LinkType.CALL_CALC: (WorkflowNode, CalculationNode, 'unique_triple', 'unique'),
         LinkType.CALL_WORK: (WorkflowNode, WorkflowNode, 'unique_triple', 'unique'),
-        LinkType.CREATE: (CalculationNode, Data, 'unique_pair', 'unique'),
-        LinkType.INPUT_CALC: (Data, CalculationNode, 'unique_triple', 'unique_pair'),
-        LinkType.INPUT_WORK: (Data, WorkflowNode, 'unique_triple', 'unique_pair'),
-        LinkType.RETURN: (WorkflowNode, Data, 'unique_pair', 'unique_triple'),
+        LinkType.CREATE: (CalculationNode, data_or_container, 'unique_pair', 'unique'),
+        LinkType.INPUT_CALC: (data_or_container, CalculationNode, 'unique_triple', 'unique_pair'),
+        LinkType.INPUT_WORK: (data_or_container, WorkflowNode, 'unique_triple', 'unique_pair'),
+        LinkType.RETURN: (WorkflowNode, data_or_container, 'unique_pair', 'unique_triple'),
     }
 
     type_source, type_target, outdegree, indegree = link_mapping[link_type]

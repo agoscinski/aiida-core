@@ -23,6 +23,7 @@ from aiida.engine.processes.generic import ports
 from aiida.engine.processes.generic.ports import breadcrumbs_to_port
 from aiida.engine.processes.port_model import _is_a_plain_class, _is_structured, _namespace_value, _without_marks
 from aiida.orm import Bool, Data, Dict, Float, Int, List, Node, Str, from_aiida_type, to_aiida_type
+from aiida.orm.nodes.data.container import Container
 
 __all__ = (
     'PORT_NAMESPACE_SEPARATOR',
@@ -140,20 +141,22 @@ class WithSerialize:
     def __init__(self, *args, **kwargs) -> None:
         serializer = kwargs.pop('serializer', None)
         super().__init__(*args, **kwargs)
-        self._serializer: Callable[[t.Any], Data] | None = serializer
+        self._serializer: Callable[[t.Any], Node] | None = serializer
 
     @property
-    def serializer(self) -> Callable[[t.Any], Data] | None:
+    def serializer(self) -> Callable[[t.Any], Node] | None:
         """Return the serializer."""
         return self._serializer
 
-    def serialize(self, value: t.Any) -> Data:
-        """Serialize the given value, unless it is ``None``, already a Data type, or no serializer function is defined.
+    def serialize(self, value: t.Any) -> Node:
+        """Serialize the given value, unless it is ``None``, already a storable node, or no serializer is defined.
+
+        Containers pass through like data (shared node identity, decoupled storage).
 
         :param value: the value to be serialized
         :returns: a serialized version of the value or the unchanged value
         """
-        if self._serializer is None or value is None or isinstance(value, Data):
+        if self._serializer is None or value is None or isinstance(value, (Data, Container)):
             return value
 
         return self._serializer(value)
@@ -437,7 +440,7 @@ def _is_storable(annotation: t.Any) -> bool:
         return True
     # `_is_a_plain_class`, not `isinstance(., type)`: parametrized generics pass the latter on some versions.
     if _is_a_plain_class(annotation):
-        return issubclass(annotation, Data) or _has_conversion(annotation)
+        return issubclass(annotation, (Data, Container)) or _has_conversion(annotation)
     return _origin_storable(t.get_origin(annotation), annotation)
 
 
@@ -462,7 +465,7 @@ def _runtime_value(
     """Preserve accepted nodes and unwrap only values matching the runtime declaration."""
     if valid_type is None or isinstance(value, valid_type):
         return value
-    if isinstance(value, Data):
+    if isinstance(value, (Data, Container)):
         converted = from_aiida_type(value)
         return converted if isinstance(converted, valid_type) else value
     types = valid_type if isinstance(valid_type, tuple) else (valid_type,)
@@ -518,7 +521,7 @@ def _node_type(annotation: t.Any) -> t.Any | None:
     if annotation is t.Any:
         return None
     if _is_a_plain_class(annotation):
-        return annotation if issubclass(annotation, Data) else _VALID_TYPE_MAP.get(annotation)
+        return annotation if issubclass(annotation, (Data, Container)) else _VALID_TYPE_MAP.get(annotation)
     return _VALID_TYPE_MAP.get(annotation)
 
 

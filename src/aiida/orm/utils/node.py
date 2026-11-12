@@ -63,6 +63,18 @@ def load_node_class(type_string):
     if base_path.startswith('node.'):
         base_path = base_path.removeprefix('node.')
 
+    # Owned containers share the ``data.`` type-string prefix (common node identity) but resolve through the
+    # dedicated ``aiida.container`` group, decoupled from ``Data`` semantics. Stored type strings are unchanged
+    # (``data.core.data_list.DataList.``), so no migration rewrites them; only the resolution group changes.
+    if type_string in ('data.core.data_list.DataList.', 'data.core.data_dict.DataDict.'):
+        entry_point_name = base_path.removeprefix('data.')
+        try:
+            return load_entry_point('aiida.container', entry_point_name)
+        except exceptions.MissingEntryPointError:
+            from aiida.orm.nodes.data.container import Container
+
+            return Container
+
     # If the Data plugin is not available we fall back on the base Data class
     if base_path.startswith('data.'):
         entry_point_name = base_path.removeprefix('data.')

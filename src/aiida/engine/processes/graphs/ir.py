@@ -29,6 +29,7 @@ from aiida.engine.processes.graphs.shapes import LeafShape, NamespaceShape, Shap
 from aiida.engine.processes.ports import InputPort, OutputPort, PortNamespace, _infer_node_types
 from aiida.engine.processes.process import Process
 from aiida.orm import Data
+from aiida.orm.nodes.data.container import Container
 
 __all__ = (
     'BodyTask',
@@ -687,7 +688,7 @@ class GraphIR:
             if origin is None or isinstance(origin, PortNamespace):
                 msg = f'graph output `{name}` must reference a declared leaf.'
                 raise GraphTypeCheckError(msg)
-            namespace[name] = OutputPort(name, valid_type=self._output_types(name, origin) or (Data,))
+            namespace[name] = OutputPort(name, valid_type=self._output_types(name, origin) or (Data, Container))
         return namespace
 
     def _output_types(self, name: str, origin: InputPort | OutputPort) -> tuple[type, ...] | type | None:

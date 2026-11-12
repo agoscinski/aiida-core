@@ -658,7 +658,9 @@ class Node(Entity['BackendNode', NodeCollection['Node']], metaclass=AbstractNode
         if not self._storable:
             raise exceptions.StoringNotAllowed(self._unstorable_message)
 
-        if not is_registered_entry_point(self.__module__, self.__class__.__name__, groups=('aiida.node', 'aiida.data')):
+        if not is_registered_entry_point(
+            self.__module__, self.__class__.__name__, groups=('aiida.node', 'aiida.data', 'aiida.container')
+        ):
             msg = (
                 f'class `{self.__module__}:{self.__class__.__name__}` does not have a registered entry point. '
                 'Check that the corresponding plugin is installed '

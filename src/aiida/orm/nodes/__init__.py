@@ -28,6 +28,7 @@ __all__ = (
     'CalculationNode',
     'CifData',
     'Code',
+    'Container',
     'ContainerizedCode',
     'Data',
     'DataDict',

@@ -351,6 +351,24 @@ class SqliteTempBackend(StorageBackend):
             self, owner_id, members, assert_element_type, kind=kind, assert_layout=assert_layout
         )
 
+    def store_container_subtree(
+        self,
+        entities: t.Sequence[t.Any],
+        containers: t.Sequence[t.Any],
+        root_links: t.Sequence[t.Any] | None = None,
+        *,
+        clean: bool = True,
+    ) -> list[str | None]:
+        """Persist a complete owned-container subtree atomically.
+
+        Shares the backend-contract orchestration in :mod:`aiida.storage.ownership` with the other
+        SQL backends. See
+        :meth:`aiida.storage.psql_dos.backend.PsqlDosBackend.store_container_subtree`.
+        """
+        from aiida.storage import ownership as ownership_contract
+
+        return ownership_contract.store_container_subtree(self, entities, containers, root_links, clean=clean)
+
     def bulk_insert(self, entity_type: EntityTypes, rows: list[dict], allow_defaults: bool = False) -> list[int]:
         mapper, keys = self._get_mapper_from_entity(entity_type, False)
         if not rows:
