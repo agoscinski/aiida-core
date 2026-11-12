@@ -183,7 +183,10 @@ class SqlaNode(entities.SqlaModelEntity[models.DbNode], ExtrasMixin, BackendNode
     def add_incoming(self, source, link_type, link_label):
         session = self.backend.get_session()
 
-        type_check(source, self.__class__)
+        # Backend-node interface, not the concrete subclass: provenance links routinely connect
+        # different backend entities (e.g. a calculation ``SqlaNode`` CREATEs a ``SqlaContainer``),
+        # so restricting ``source`` to ``self.__class__`` wrongly rejects whole-container links.
+        type_check(source, SqlaNode)
 
         if not self.is_stored:
             raise exceptions.ModificationNotAllowed('node has to be stored when adding an incoming link')
@@ -388,7 +391,10 @@ class SqlaContainer(SqlaNode, BackendContainer):
 
 def _is_container_node_type(node_type: str | None) -> bool:
     """Return whether a backend ``node_type`` string identifies a container (no ORM import)."""
-    return node_type in ('data.core.data_list.DataList.', 'data.core.data_dict.DataDict.')
+    from aiida.storage import ownership as ownership_contract
+
+    # Closed container set: the shared storage identifier mapping is the single source of truth.
+    return ownership_contract.is_container_node_type(node_type)
 
 
 class SqlaNodeCollection(BackendNodeCollection):

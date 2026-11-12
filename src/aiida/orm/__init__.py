@@ -54,6 +54,7 @@ __all__ = (
     'Data',
     'DataDict',
     'DataList',
+    'DataNode',
     'Dict',
     'Entity',
     'EntityExtras',

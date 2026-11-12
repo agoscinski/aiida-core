@@ -36,10 +36,15 @@ def load_node_class(type_string):
         plugin, meaning the storage still has to be migrated.
     """
     from aiida.orm import Data, Node, ProcessNode
+    from aiida.orm.nodes.data.datanode import DataNode
     from aiida.plugins.entry_point import load_entry_point
+    from aiida.storage.ownership import CONTAINER_NODE_TYPES
 
     if type_string == '':
         return Node
+
+    if type_string == DataNode.class_node_type:
+        return DataNode
 
     if type_string == 'data.Data.':
         return Data
@@ -64,9 +69,10 @@ def load_node_class(type_string):
         base_path = base_path.removeprefix('node.')
 
     # Owned containers share the ``data.`` type-string prefix (common node identity) but resolve through the
-    # dedicated ``aiida.container`` group, decoupled from ``Data`` semantics. Stored type strings are unchanged
-    # (``data.core.data_list.DataList.``), so no migration rewrites them; only the resolution group changes.
-    if type_string in ('data.core.data_list.DataList.', 'data.core.data_dict.DataDict.'):
+    # dedicated ``aiida.container`` group, decoupled from ``Data`` semantics. The supported set is closed
+    # (``CONTAINER_NODE_TYPES`` is the single source of truth); stored type strings are unchanged, so no
+    # migration rewrites them and only the resolution group changes.
+    if type_string in CONTAINER_NODE_TYPES:
         entry_point_name = base_path.removeprefix('data.')
         try:
             return load_entry_point('aiida.container', entry_point_name)

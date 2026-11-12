@@ -110,12 +110,13 @@ __all__ = (
     'validate_ownership_graph',
 )
 
-#: Exact ``node_type`` identifiers eligible to own nodes. Only the new
-#: container types may own nodes; the shared container base (if any) stays
-#: internal. These must equal ``DataList.class_node_type`` /
-#: ``DataDict.class_node_type`` (entry-point preserving underscore, e.g.
-#: ``data.core.data_list.DataList.``); comparison is always exact string
-#: equality, never plugin loading (storage must not import the ORM).
+#: Exact ``node_type`` identifiers eligible to own nodes. This is the single source of truth for the
+#: supported container set, which is finite and closed: only ``DataList`` and ``DataDict`` (no
+#: third-party containers). The shared container base stays internal and owns nothing. These must equal
+#: ``DataList.class_node_type`` / ``DataDict.class_node_type`` (entry-point preserving underscore, e.g.
+#: ``data.core.data_list.DataList.``); comparison is always exact string equality, never plugin
+#: loading (storage must not import the ORM). Backend dispatch, class loading and QueryBuilder all
+#: consult this mapping instead of duplicating the identifiers.
 CONTAINER_NODE_TYPES: frozenset[str] = frozenset(
     {
         'data.core.data_list.DataList.',

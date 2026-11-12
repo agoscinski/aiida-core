@@ -19,6 +19,7 @@ from aiida.orm.nodes.data.cif import *
 from aiida.orm.nodes.data.code import *
 from aiida.orm.nodes.data.container import *
 from aiida.orm.nodes.data.data import *
+from aiida.orm.nodes.data.datanode import *
 from aiida.orm.nodes.data.dict import *
 from aiida.orm.nodes.data.entry_point import *
 from aiida.orm.nodes.data.enum import *
@@ -48,6 +49,7 @@ __all__ = (
     'Data',
     'DataDict',
     'DataList',
+    'DataNode',
     'Dict',
     'EntryPointData',
     'EnumData',

@@ -440,10 +440,10 @@ def _(dbmodel, backend):
 
 @get_backend_entity.register(models.DbNode)  # type: ignore[call-overload]
 def _(dbmodel, backend):
-    if getattr(dbmodel, 'node_type', None) in (
-        'data.core.data_list.DataList.',
-        'data.core.data_dict.DataDict.',
-    ):
+    from aiida.storage import ownership as ownership_contract
+
+    # Closed container set: the shared storage identifier mapping is the single source of truth.
+    if ownership_contract.is_container_node_type(getattr(dbmodel, 'node_type', None)):
         return SqliteContainer.from_dbmodel(dbmodel, backend)
     return SqliteNode.from_dbmodel(dbmodel, backend)
 

@@ -135,7 +135,7 @@ class Process(ProcessBase):
             valid_type=bool,
             help='Do not consider the cache for this process, ignoring all other caching configuration rules.',
         )
-        spec.inputs.valid_type = (orm.Data, orm.Container)
+        spec.inputs.valid_type = (orm.DataNode,)
         spec.inputs.dynamic = False  # Settings a ``valid_type`` automatically makes it dynamic, so we reset it again
         spec.exit_code(
             1, 'ERROR_UNSPECIFIED', invalidates_cache=True, message='The process has failed with an unspecified error.'
@@ -646,8 +646,8 @@ class Process(ProcessBase):
         super().on_output_emitting(output_port, value)
 
         # Note that `PortNamespaces` should be able to receive non `Data` types such as a normal dictionary
-        if isinstance(output_port, OutputPort) and not isinstance(value, (orm.Data, orm.Container)):
-            msg = f'Processes can only return `orm.Data`/`orm.Container` instances as output, got {value.__class__}'
+        if isinstance(output_port, OutputPort) and not isinstance(value, orm.DataNode):
+            msg = f'Processes can only return `orm.DataNode` instances as output, got {value.__class__}'
             raise TypeError(msg)
 
     def set_status(self, status: str | None) -> None:
@@ -834,7 +834,7 @@ class Process(ProcessBase):
         """
         from aiida.orm.nodes.data.container import ensure_standalone, is_owned
 
-        if not isinstance(output, (orm.Data, orm.Container)):
+        if not isinstance(output, orm.DataNode):
             return output
         if is_owned(output):
             return ensure_standalone(output)
@@ -855,7 +855,7 @@ class Process(ProcessBase):
         """
         from aiida.orm.nodes.data.container import is_owned
 
-        if isinstance(output, (orm.Data, orm.Container)) and is_owned(output):
+        if isinstance(output, orm.DataNode) and is_owned(output):
             msg = (
                 'workflow processes cannot return an owned container child'
                 f'({output!r}); return the whole standalone container instead'

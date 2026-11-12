@@ -1162,7 +1162,7 @@ def test_shelljob_task_rejects_mistyped_declared_input() -> None:
         ),
         pytest.param(
             {'inputs': {'nodes': {'x': int}}, 'outputs': {'stdout': SinglefileData}},
-            'takes `Data` subclasses',
+            'takes `DataNode` subclasses',
             id='python-type',
         ),
         pytest.param(

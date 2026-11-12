@@ -10,8 +10,10 @@ Sometimes a calculation needs an ordered collection of nodes — the frames of a
 That is what the owned data containers are for.
 ``DataList`` holds an ordered list of data nodes, ``DataDict`` maps string keys to data nodes, and each container is itself a node so it can be stored and linked into the provenance graph.
 Elements are leaf data nodes or nested containers, and every element of one container must have the same concrete node type.
+The container set is closed: ``DataList`` and ``DataDict`` are final, third-party containers are unsupported, and ``aiida.storage.ownership`` is the single source of truth for the reserved node types consulted by backend dispatch, class loading, and querying.
 
-Containers share node identity (a ``DbNode`` row, a ``node_type`` string, provenance links) but they are not ``Data``: they subclass :py:class:`~aiida.orm.nodes.node.Node` via :py:class:`~aiida.orm.nodes.data.container.Container` and persist through the dedicated :py:class:`~aiida.orm.implementation.containers.BackendContainer` storage entity (``store_container``), never through ``BackendNode.store``.
+Containers share node identity (a ``DbNode`` row, a ``node_type`` string, provenance links) but they are not ``Data``: they subclass :py:class:`~aiida.orm.DataNode` via :py:class:`~aiida.orm.nodes.data.container.Container` and persist through the dedicated :py:class:`~aiida.orm.implementation.containers.BackendContainer` storage entity (``store_container``), never through ``BackendNode.store``.
+Querying ``DataNode`` matches data and containers, querying ``Data`` excludes containers, and querying ``Container`` matches ``DataList`` and ``DataDict``.
 This split lets container persistence evolve independently of data persistence while provenance keeps treating both as nodes.
 
 For usage and examples, see :ref:`topics:data_containers`.
@@ -102,14 +104,16 @@ Removing an element detaches just that root — it becomes standalone, unstored,
 Re-inserting it copies it afresh; there is no reparenting in place.
 
 Storing the root freezes the entire subtree at once, and the freeze is all-or-nothing.
-The ORM validates the whole subtree, writes every repository file first (repo-first), then hands narrow storage specs — backend entities plus explicit position/key metadata, no ORM objects — to ``backend.store_container_subtree``.
+Before any repository or database write, the root validates itself and every descendant passes the same storability check as a standalone store, with each leaf additionally receiving its normal validation; nested containers are covered once by the root recursion rather than re-validated per level.
+The ORM then writes every repository file first (repo-first), then hands narrow storage specs — backend entities plus explicit position/key metadata, no ORM objects — to ``backend.store_container_subtree``.
 That call writes all node rows in post-order (children before owner, root last), then all membership edges with the locked ``element_type``/``layout``, in a single backend transaction that joins any enclosing transaction.
 Leaf rows go through ``BackendNode.store``; container rows go through ``BackendContainer.store_container``.
 Calling the ordinary ``store`` method on a backend container raises ``IntegrityError``.
 Only the ownership root receives the incoming provenance links.
 If anything fails, no partially stored ownership graph is left behind: the retained Python objects are restored from snapshots to unstored, editable, retryable state, with their content, ordering, and type locks intact.
+When the store joined an enclosing transaction, recovery is eager: the store registers a backend rollback hook that restores the retained subtree at rollback time, safe to observe from a retained leaf child first and correct across nested savepoints, since only the failed scope fires while outer scopes keep theirs.
+Backends without hook support keep the lazy fallback: the root re-verifies its row on the next status check outside an active transaction and recovers the subtree the same way.
 Database rollback cannot undo repository writes, so orphaned files are left for normal storage maintenance rather than chased synchronously — the recovered objects are reseeded from snapshots and never depend on cleanup having run.
-If the store ran inside an enclosing transaction, the rows may still be rolled back afterwards; the root re-verifies its row on the next status check outside an active transaction and recovers the subtree the same way.
 
 Once stored, the subtree is immutable except for the ordinary node mutability exceptions such as extras.
 Owned children cannot be stored on their own, and stored membership rows can never be changed in place.
@@ -170,8 +174,8 @@ There is no recursive traversal and no container-specific aggregation yet; each 
 ``with_incoming``/``with_outgoing`` additionally traverse immediate membership at query time, without persisting anything.
 
 Archives have no representation for ownership yet, so both directions refuse rather than silently drop it.
-Exporting any selection that touches an owned node — container roots, nested containers, dict units, or individual owned children — fails with ``ExportValidationError``.
-Import validates ownership agreement before writing anything: an archive carrying ownership data is rejected, and UUID deduplication reuses a node only when both sides agree it is standalone with no container state; any disagreement under one UUID is an integrity error, never a silent detach.
+Exporting any selection that touches an owned node — container roots (including empty containers, which carry container state but no membership rows), nested containers, dict units, or individual owned children — fails with ``ExportValidationError``.
+Import validates ownership agreement before writing anything: an archive carrying ownership data or a container node type (including empty containers) is rejected, and UUID deduplication reuses a node only when both sides agree it is standalone with no container state; any disagreement under one UUID is an integrity error, never a silent detach.
 
 
 Container caching
@@ -187,10 +191,9 @@ Cache reuse is explicitly disabled (``_cachable = False``) — restoring a cache
 Known limitations
 =================
 
-- Archives cannot carry ownership yet: the archive format has no fields for owner references or membership edges, so containers are blocked from travelling through ``.aiida`` files by design until the format supports them. Exporting any selection that touches an owned node fails validation, and importing an archive that carries ownership data is rejected before anything is written — instead of silently freeing owned children into standalone nodes.
+- Archives cannot carry ownership yet: the archive format has no fields for owner references or membership edges, so containers are blocked from travelling through ``.aiida`` files by design until the format supports them. Exporting any selection that touches an owned node (including empty containers) fails validation, and importing an archive that carries ownership data or a container node type is rejected before anything is written — instead of silently freeing owned children into standalone nodes.
 - QueryBuilder has no recursive membership traversal or container-specific aggregation.
-  Concrete ``DataList`` and ``DataDict`` queries work, but querying the ``Container`` base class is not yet supported correctly, and ``Data`` subclass queries still include containers because their stored type strings retain the data prefix.
+  ``DataNode`` queries match data and containers, ``Data`` queries exclude containers, and ``Container`` queries match ``DataList`` and ``DataDict``.
 - Container cache reuse is disabled (``_cachable = False``).
 - Slicing a ``DataList`` raises ``TypeError``; there is no view or copy semantics for slices.
-- Port validation for containers is class-only (``valid_type`` accepts the container class alongside ``Data``); element types are not checked by the port.
-- Exposing an owned child as a calculation output records a standalone copy via ``CREATE``; the object returned to the caller by ``run_get_node`` is the pre-copy handle, not the recorded copy (known gap).
+- Port validation for containers is class-only (``valid_type`` accepts ``DataNode``); element types are not checked by the port.

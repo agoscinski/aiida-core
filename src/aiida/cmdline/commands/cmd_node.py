@@ -54,7 +54,7 @@ def verdi_node():
 @options.RAW()
 def node_list(entry_point, subclassing, project, past_days, order_by, order_dir, limit, raw):
     """Query all nodes with optional filtering and ordering."""
-    from aiida.common.exceptions import InvalidEntryPointTypeError
+    from aiida.common.exceptions import InvalidEntryPointTypeError, MissingEntryPointError
     from aiida.orm import Node
     from aiida.plugins.factories import ContainerFactory, DataFactory
 
@@ -63,7 +63,7 @@ def node_list(entry_point, subclassing, project, past_days, order_by, order_dir,
     else:
         try:
             node_class = DataFactory(entry_point)
-        except InvalidEntryPointTypeError:
+        except (InvalidEntryPointTypeError, MissingEntryPointError):
             node_class = ContainerFactory(entry_point)
 
     if past_days is not None:
@@ -497,11 +497,11 @@ def rehash(nodes, entry_point, force):
 
     The set of nodes that will be rehashed can be filtered by their identifier and/or based on their class.
     """
-    from aiida.orm import Data, ProcessNode, QueryBuilder
+    from aiida.orm import DataNode, ProcessNode, QueryBuilder
 
-    # If no explicit entry point is defined, rehash all nodes, which are either Data nodes or ProcessNodes
+    # If no explicit entry point is defined, rehash all nodes, which are either DataNode nodes or ProcessNodes
     if entry_point is None:
-        classes: tuple = (Data, ProcessNode)
+        classes: tuple = (DataNode, ProcessNode)
     else:
         classes = (entry_point,)
 

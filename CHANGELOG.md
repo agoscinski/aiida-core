@@ -35,9 +35,10 @@ Some fixtures have analogs in `aiida.tools.pytest_fixtures` that are drop-in rep
 
 #### Owned containers are decoupled from `Data`
 
-`aiida.orm.DataList` and `aiida.orm.DataDict` now derive from `aiida.orm.Container`, not `aiida.orm.Data`. To accept both data and containers, use `isinstance(value, (Data, Container))` or declare process ports with `valid_type=(Data, Container)`.
+`aiida.orm.DataList` and `aiida.orm.DataDict` now derive from `aiida.orm.Container`, not `aiida.orm.Data`. Use their shared base `aiida.orm.DataNode` for type checks, process ports and queries that should accept both data and containers. Queries for `Data` now exclude containers.
 
 The `core.data_list` and `core.data_dict` entry points have moved from `aiida.data` to `aiida.container`. Use `aiida.plugins.ContainerFactory` instead of `DataFactory` to load them. The ORM import paths are unchanged.
+Archive export and import reject containers, including empty ones: ownership cannot round-trip through `.aiida` files yet.
 
 #### `Code`: the deprecated data plugin has been removed
 

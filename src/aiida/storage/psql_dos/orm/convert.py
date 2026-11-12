@@ -65,12 +65,11 @@ def _(dbmodel, backend):
     to the dedicated ``SqlaContainer`` (``BackendContainer``) entity so they
     never persist through ``BackendNode.store``.
     """
+    from aiida.storage import ownership as ownership_contract
     from aiida.storage.psql_dos.orm import nodes
 
-    if getattr(dbmodel, 'node_type', None) in (
-        'data.core.data_list.DataList.',
-        'data.core.data_dict.DataDict.',
-    ):
+    # Closed container set: the shared storage identifier mapping is the single source of truth.
+    if ownership_contract.is_container_node_type(getattr(dbmodel, 'node_type', None)):
         return nodes.SqlaContainer.from_dbmodel(dbmodel, backend)
     return nodes.SqlaNode.from_dbmodel(dbmodel, backend)
 

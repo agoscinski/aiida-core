@@ -33,6 +33,7 @@ __all__ = (
     'Data',
     'DataDict',
     'DataList',
+    'DataNode',
     'Dict',
     'EntryPointData',
     'EnumData',

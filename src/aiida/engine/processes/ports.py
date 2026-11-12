@@ -22,8 +22,8 @@ from aiida.common.links import validate_link_label
 from aiida.engine.processes.generic import ports
 from aiida.engine.processes.generic.ports import breadcrumbs_to_port
 from aiida.engine.processes.port_model import _is_a_plain_class, _is_structured, _namespace_value, _without_marks
-from aiida.orm import Bool, Data, Dict, Float, Int, List, Node, Str, from_aiida_type, to_aiida_type
-from aiida.orm.nodes.data.container import Container
+from aiida.orm import Bool, Dict, Float, Int, List, Node, Str, from_aiida_type, to_aiida_type
+from aiida.orm.nodes.data.datanode import DataNode
 
 __all__ = (
     'PORT_NAMESPACE_SEPARATOR',
@@ -156,7 +156,7 @@ class WithSerialize:
         :param value: the value to be serialized
         :returns: a serialized version of the value or the unchanged value
         """
-        if self._serializer is None or value is None or isinstance(value, (Data, Container)):
+        if self._serializer is None or value is None or isinstance(value, DataNode):
             return value
 
         return self._serializer(value)
@@ -440,7 +440,7 @@ def _is_storable(annotation: t.Any) -> bool:
         return True
     # `_is_a_plain_class`, not `isinstance(., type)`: parametrized generics pass the latter on some versions.
     if _is_a_plain_class(annotation):
-        return issubclass(annotation, (Data, Container)) or _has_conversion(annotation)
+        return issubclass(annotation, DataNode) or _has_conversion(annotation)
     return _origin_storable(t.get_origin(annotation), annotation)
 
 
@@ -465,7 +465,7 @@ def _runtime_value(
     """Preserve accepted nodes and unwrap only values matching the runtime declaration."""
     if valid_type is None or isinstance(value, valid_type):
         return value
-    if isinstance(value, (Data, Container)):
+    if isinstance(value, DataNode):
         converted = from_aiida_type(value)
         return converted if isinstance(converted, valid_type) else value
     types = valid_type if isinstance(valid_type, tuple) else (valid_type,)
@@ -521,7 +521,7 @@ def _node_type(annotation: t.Any) -> t.Any | None:
     if annotation is t.Any:
         return None
     if _is_a_plain_class(annotation):
-        return annotation if issubclass(annotation, (Data, Container)) else _VALID_TYPE_MAP.get(annotation)
+        return annotation if issubclass(annotation, DataNode) else _VALID_TYPE_MAP.get(annotation)
     return _VALID_TYPE_MAP.get(annotation)
 
 

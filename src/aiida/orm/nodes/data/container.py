@@ -12,12 +12,14 @@ Scaffolding iteration for the owned-container specification (``orm-container-spe
 
 * ``DataList`` (entry point ``core.data_list``) is an ordered container of data nodes.
 * ``DataDict`` (entry point ``core.data_dict``) maps string keys to data nodes.
+* :class:`Container` is the public base class of both and, together with
+  :class:`~aiida.orm.Data`, subclasses the shared :class:`~aiida.orm.DataNode` base.
 
 Contract summary:
 
 * Contents: independent, exclusively owned copies of ownable nodes — any :class:`~aiida.orm.Data` subclass or
   nested container. Process nodes and other non-ownable nodes are rejected. Containers themselves are not
-  :class:`~aiida.orm.Data`: they subclass :class:`~aiida.orm.nodes.node.Node` via
+  :class:`~aiida.orm.Data`: they subclass :class:`~aiida.orm.DataNode` via
   :class:`~aiida.orm.nodes.data.container.Container` and persist through the dedicated ``BackendContainer``
   storage entity, while sharing node identity (``DbNode`` row, ``node_type`` string, provenance links).
 * Homogeneity: list elements (dictionary values) must share the exact concrete node type, compared as the stored
@@ -74,6 +76,7 @@ from aiida.common import exceptions
 from aiida.common.lang import override
 from aiida.orm.nodes.caching import NodeCaching
 from aiida.orm.nodes.data.data import Data
+from aiida.orm.nodes.data.datanode import DataNode
 from aiida.orm.nodes.node import Node
 
 if t.TYPE_CHECKING:
@@ -88,7 +91,7 @@ OwnableNode = t.Union['Data', 'Container']
 
 def is_container_node(node: t.Any) -> bool:
     """Return whether ``node`` is an owned-data container (``DataList``/``DataDict``)."""
-    return isinstance(node, _ContainerBase)
+    return isinstance(node, Container)
 
 
 @contextlib.contextmanager
@@ -220,7 +223,7 @@ def detach_owned_inputs_and_copies(value: t.Any) -> tuple[t.Any, list[Node]]:
     copies: list[Node] = []
 
     def walk(entry: t.Any) -> t.Any:
-        if isinstance(entry, (Data, _ContainerBase)):
+        if isinstance(entry, DataNode):
             if is_owned(entry):
                 candidate = entry.clone()
                 copies.append(candidate)
@@ -301,7 +304,7 @@ class ContainerCaching(NodeCaching):
         """Return the content objects contributing to the container hash."""
         objects = super().get_objects_to_hash()
         node = self._node
-        assert isinstance(node, _ContainerBase)
+        assert isinstance(node, Container)
         node._ensure_materialized()
         objects['container_element_type'] = node._container_element_type
         objects['container_layout'] = node._container_layout
@@ -324,15 +327,16 @@ def _owned_root(node: Node) -> Node | None:
         current = owner
 
 
-class _ContainerBase(Node):
-    """Internal base class for owned containers of data nodes.
+class Container(DataNode):
+    """Public base class for owned containers of data nodes.
 
     Containers share node identity (``DbNode`` row, ``node_type`` string,
     provenance links) but are decoupled from :class:`~aiida.orm.Data`:
-    they subclass :class:`~aiida.orm.nodes.node.Node` directly and persist
+    they subclass :class:`~aiida.orm.DataNode` directly and persist
     through the dedicated :class:`~aiida.orm.implementation.containers.BackendContainer`
     storage entity (``store_container``), never ``BackendNode.store``.
-    Only :class:`DataList` and :class:`DataDict` are public. This base implements
+    Only the concrete :class:`DataList` and :class:`DataDict` subclasses are
+    registered as entry points (``aiida.container`` group). This base implements
     copy-on-insert, single ownership, pre-storage mutation and atomic freeze-on-store.
     Persistence orchestration (the single storage transaction over node rows
     plus membership edges) lives in
@@ -352,7 +356,7 @@ class _ContainerBase(Node):
     def initialize(self) -> None:
         """Initialize the in-memory container state (unmaterialized, standalone, typeless)."""
         super().initialize()
-        self._container_owner: _ContainerBase | None = None
+        self._container_owner: Container | None = None
         self._container_materialized = False
         self._container_element_type: str | None = None
         self._container_layout: str = 'row'
@@ -392,11 +396,11 @@ class _ContainerBase(Node):
         """
         raise NotImplementedError
 
-    def _iter_containers(self) -> Iterator[_ContainerBase]:
+    def _iter_containers(self) -> Iterator[Container]:
         """Yield this container and every nested owned container."""
         yield self
         for child in self._owned_children():
-            if isinstance(child, _ContainerBase):
+            if isinstance(child, Container):
                 yield from child._iter_containers()
 
     # -- loading / materialization --
@@ -526,7 +530,7 @@ class _ContainerBase(Node):
         except Exception as exc:
             msg = f'persisted container child id {child_id} could not be loaded: {exc}'
             raise exceptions.IntegrityError(msg) from exc
-        if child is None or not isinstance(child, (Data, _ContainerBase)):
+        if child is None or not isinstance(child, DataNode):
             msg = f'persisted container child id {child_id} is not an ownable node'
             raise exceptions.IntegrityError(msg)
         return child
@@ -574,10 +578,10 @@ class _ContainerBase(Node):
             raise exceptions.InvalidOperation(msg)
         yield from records[2]
 
-    def _container_root(self) -> _ContainerBase:
+    def _container_root(self) -> Container:
         """Return the outermost in-memory owner of this container (itself if standalone)."""
         root = _owned_root(self)
-        return root if isinstance(root, _ContainerBase) else self
+        return root if isinstance(root, Container) else self
 
     @property
     @override
@@ -592,6 +596,27 @@ class _ContainerBase(Node):
         if getattr(self, '_container_guard_armed', False) or owner is not None:
             self._container_root()._verify_outer_persisted()
         return super().is_stored
+
+    def _register_rollback_recovery(self, subtree: list[Node], snapshot: dict[str, dict[str, t.Any]]) -> None:
+        """Register eager subtree recovery if the enclosing backend transaction rolls back.
+
+        Uses the general storage rollback hook (a plain callable carrying no ORM assumptions for
+        storage), so the same retained objects are restored to an unstored, editable, retryable state
+        at rollback time regardless of whether a retained leaf child or the ownership root is inspected
+        first afterwards. Backends without hook support keep the lazy verification fallback below.
+        """
+        add_hook = getattr(self.backend, 'add_rollback_callback', None)
+        if add_hook is None or not self.backend.in_transaction:
+            return
+
+        def _recover_on_rollback() -> None:
+            # Disarm before recovering: recovery mutates attributes, whose mutability checks consult
+            # `is_stored`, which would otherwise re-enter lazy verification and recurse on nested subtrees.
+            self._container_guard_armed = False
+            self._container_recovery_snapshot = None
+            self._recover_subtree(subtree, snapshot)
+
+        add_hook(_recover_on_rollback)
 
     def _verify_outer_persisted(self) -> None:
         """Disarm the enclosing-transaction guard, recovering the subtree if its rows are gone."""
@@ -609,10 +634,12 @@ class _ContainerBase(Node):
         except exceptions.NotExistent:
             subtree = self._collect_subtree()
             snapshot = self._container_recovery_snapshot
-            if snapshot is not None:
-                self._recover_subtree(subtree, snapshot)
+            # Disarm before recovering: recovery mutates attributes, whose mutability checks consult
+            # `is_stored`, which would otherwise re-enter this verification and recurse on nested subtrees.
             self._container_guard_armed = False
             self._container_recovery_snapshot = None
+            if snapshot is not None:
+                self._recover_subtree(subtree, snapshot)
         else:
             self._container_guard_armed = False
             self._container_recovery_snapshot = None
@@ -646,8 +673,8 @@ class _ContainerBase(Node):
 
         :raises TypeError: if ``source`` is not an ownable node or violates the locked element type.
         """
-        if not isinstance(source, (Data, _ContainerBase)):
-            msg = f'container elements must be data nodes or containers, got {type(source).__name__}'  # type: ignore[unreachable]
+        if not isinstance(source, DataNode):
+            msg = f'container elements must be data nodes or containers, got {type(source).__name__}'
             raise TypeError(msg)
         self._ensure_materialized()
         element_type = self._container_element_type
@@ -718,8 +745,8 @@ class _ContainerBase(Node):
         self._ensure_materialized()
         element_type = self._container_element_type
         for child in self._owned_children():
-            if not isinstance(child, (Data, _ContainerBase)):
-                msg = f'container elements must be data nodes or containers, got {type(child).__name__}'  # type: ignore[unreachable]
+            if not isinstance(child, DataNode):
+                msg = f'container elements must be data nodes or containers, got {type(child).__name__}'
                 raise exceptions.ValidationError(msg)
             if element_type is not None and child.node_type != element_type:
                 msg = f'container element type is locked to {element_type}, found node of type {child.node_type}'
@@ -733,7 +760,7 @@ class _ContainerBase(Node):
             if child.backend.profile.uuid != self.backend.profile.uuid:
                 msg = 'all nodes of a container subtree must share the same storage backend'
                 raise exceptions.ValidationError(msg)
-            if isinstance(child, _ContainerBase):
+            if isinstance(child, Container):
                 child._validate()
         return True
 
@@ -752,7 +779,7 @@ class _ContainerBase(Node):
                 msg = 'container ownership cycle detected'
                 raise exceptions.InvalidOperation(msg)
             visiting.add(id(node))
-            if isinstance(node, _ContainerBase):
+            if isinstance(node, Container):
                 node._ensure_materialized()
                 for child in node._owned_children():
                     visit(child)
@@ -777,7 +804,7 @@ class _ContainerBase(Node):
                 'description': node.description,
                 'owner_id': getattr(bare_model, 'owner_id', None),
             }
-            if isinstance(node, _ContainerBase):
+            if isinstance(node, Container):
                 # Container state lives in `db_dbcontainer`, locked at first-element time alongside
                 # the element type; snapshot the in-memory locks so recovery restores them.
                 entry['container_element_type'] = node._container_element_type
@@ -789,7 +816,7 @@ class _ContainerBase(Node):
         """Yield ``(key, child)`` pairs in persisted position order (``key`` is ``None`` for lists)."""
         raise NotImplementedError
 
-    def _container_store_specs(self) -> tuple[list[_ContainerBase], list[t.Any]]:
+    def _container_store_specs(self) -> tuple[list[Container], list[t.Any]]:
         """Return the nested-first containers and their narrow storage membership specs.
 
         Each spec references backend entities with explicit ``position``/``key``
@@ -800,14 +827,14 @@ class _ContainerBase(Node):
         """
         from aiida.storage import ownership as ownership_contract
 
-        ordered: list[_ContainerBase] = []
+        ordered: list[Container] = []
         seen: set[int] = set()
 
         def visit(node: Node) -> None:
             if id(node) in seen:
                 return
             seen.add(id(node))
-            if isinstance(node, _ContainerBase):
+            if isinstance(node, Container):
                 node._ensure_materialized()
                 for child in node._owned_children():
                     visit(child)
@@ -868,7 +895,7 @@ class _ContainerBase(Node):
                     bare_model.owner_id = state.get('owner_id')
             except Exception:
                 pass
-            if isinstance(node, _ContainerBase):
+            if isinstance(node, Container):
                 node._container_element_type = state.get('container_element_type')
                 node._container_layout = state.get('container_layout', 'row')
             node.base.attributes.reset(copy.deepcopy(state['attributes']))
@@ -904,6 +931,13 @@ class _ContainerBase(Node):
         self._verify_are_parents_stored()
 
         subtree = self._collect_subtree()
+        for node in subtree:
+            if node is self:
+                continue
+            node._validate_storability()
+            # Nested containers were validated recursively by the root.
+            if not isinstance(node, Container):
+                node._validate()
         snapshot = self._snapshot_subtree(subtree)
         joined_outer = self.backend.in_transaction
         store_subtree = getattr(self.backend, 'store_container_subtree', None)
@@ -934,10 +968,12 @@ class _ContainerBase(Node):
         self.base.links.incoming_cache = []
         self.base.caching.rehash()
         if joined_outer:
-            # The rows may still be rolled back with the enclosing transaction; arm lazy verification (see
-            # `is_stored`) and retain the snapshot for recovery.
+            # The rows may still be rolled back with the enclosing transaction: recover eagerly through a
+            # rollback hook (child-first safe, no root check needed), keeping lazy verification (see
+            # `is_stored`) as a fallback for backends without hook support.
             self._container_guard_armed = True
             self._container_recovery_snapshot = snapshot
+            self._register_rollback_recovery(subtree, snapshot)
         else:
             self._container_guard_armed = False
             self._container_recovery_snapshot = None
@@ -949,19 +985,11 @@ class _ContainerBase(Node):
         return self
 
 
-class Container(_ContainerBase):
-    """Public base class for owned containers of data nodes.
-
-    Containers share node identity (``DbNode`` row, ``node_type`` string,
-    provenance links) but are decoupled from :class:`~aiida.orm.Data`:
-    they subclass :class:`~aiida.orm.nodes.node.Node` directly and persist
-    through the dedicated :class:`~aiida.orm.implementation.containers.BackendContainer`
-    storage entity, never ``BackendNode.store``. Only the concrete
-    :class:`DataList` and :class:`DataDict` subclasses are registered as
-    entry points (``aiida.container`` group).
-    """
+# Backwards-compatible alias for the former private base class name.
+_ContainerBase = Container
 
 
+@t.final
 class DataList(Container):
     """Ordered container of data nodes (entry point ``core.data_list`` of the ``aiida.container`` group).
 
@@ -1097,6 +1125,7 @@ class DataList(Container):
             self._finalize_remove(child)
 
 
+@t.final
 class DataDict(Container):
     """String-keyed container of data nodes (entry point ``core.data_dict`` of the ``aiida.container`` group).
 
