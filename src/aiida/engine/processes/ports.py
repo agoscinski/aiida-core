@@ -15,14 +15,16 @@ import re
 import typing as t
 import warnings
 from collections.abc import Callable, Mapping, Sequence
+from enum import Enum
 from types import UnionType
 
 from aiida.common.extendeddicts import AttributesFrozendict
 from aiida.common.links import validate_link_label
+from aiida.common.loaders import get_object_loader
 from aiida.engine.processes.generic import ports
 from aiida.engine.processes.generic.ports import breadcrumbs_to_port
 from aiida.engine.processes.port_model import _is_a_plain_class, _is_structured, _namespace_value, _without_marks
-from aiida.orm import Bool, Dict, Float, Int, List, Node, Str, from_aiida_type, to_aiida_type
+from aiida.orm import Bool, Dict, EnumData, Float, Int, List, Node, Str, from_aiida_type, to_aiida_type
 from aiida.orm.nodes.data.datanode import DataNode
 
 __all__ = (
@@ -457,6 +459,57 @@ def _origin_storable(origin: t.Any, annotation: t.Any) -> bool:
     return False
 
 
+def _enum_candidates(valid_type: type | tuple[type, ...] | None) -> tuple[type[Enum], ...]:
+    """Return the enum classes declared in a runtime valid type."""
+    if valid_type is None:
+        return ()
+    kinds = valid_type if isinstance(valid_type, tuple) else (valid_type,)
+    return tuple(kind for kind in kinds if issubclass(kind, Enum))
+
+
+def _coerce_enum_member(valid_type: type | tuple[type, ...] | None, value: t.Any) -> t.Any | None:
+    """Return the declared-enum member matching an enum value, or `None` when it does not apply.
+
+    Daemon workers load task executors from their pickled payload, which duplicates
+    importable enum classes by value. Provenance members always resolve through the
+    loader to the importable original, so a plain `isinstance` check misses the
+    duplicate. Matching by loader identifier plus member name recovers the member of
+    the declared (possibly duplicated) class, keeping `is` comparisons in task bodies
+    and port validation correct. Only identifier-matching enums coerce, so same-status
+    members of another enum never cross over.
+    """
+    candidates = _enum_candidates(valid_type)
+    if not candidates:
+        return None
+    if isinstance(value, EnumData):
+        name = value.name
+        identifier = value.identifier
+        for candidate in candidates:
+            try:
+                candidate_id = get_object_loader().identify_object(candidate)
+            except (ImportError, ValueError, AttributeError):
+                continue
+            if candidate_id == identifier and name in candidate.__members__:
+                return candidate.__members__[name]
+        return None
+    if isinstance(value, Enum):
+        try:
+            value_id = get_object_loader().identify_object(type(value))
+        except (ImportError, ValueError, AttributeError):
+            return None
+        for candidate in candidates:
+            if candidate is type(value):
+                return value
+            try:
+                candidate_id = get_object_loader().identify_object(candidate)
+            except (ImportError, ValueError, AttributeError):
+                continue
+            if candidate_id == value_id and value.name in candidate.__members__:
+                return candidate.__members__[value.name]
+        return None
+    return None
+
+
 def _runtime_value(
     valid_type: type | tuple[type, ...] | None,
     value: t.Any,
@@ -465,6 +518,9 @@ def _runtime_value(
     """Preserve accepted nodes and unwrap only values matching the runtime declaration."""
     if valid_type is None or isinstance(value, valid_type):
         return value
+    coerced = _coerce_enum_member(valid_type, value)
+    if coerced is not None:
+        return coerced
     if isinstance(value, DataNode):
         converted = from_aiida_type(value)
         return converted if isinstance(converted, valid_type) else value
@@ -521,7 +577,11 @@ def _node_type(annotation: t.Any) -> t.Any | None:
     if annotation is t.Any:
         return None
     if _is_a_plain_class(annotation):
-        return annotation if issubclass(annotation, DataNode) else _VALID_TYPE_MAP.get(annotation)
+        if issubclass(annotation, DataNode):
+            return annotation
+        if issubclass(annotation, Enum):
+            return EnumData
+        return _VALID_TYPE_MAP.get(annotation)
     return _VALID_TYPE_MAP.get(annotation)
 
 

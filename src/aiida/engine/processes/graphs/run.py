@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 
 from aiida.common.exceptions import GraphMaxIterationsError, GraphRuntimeError, GraphValidationError
 from aiida.common.links import LinkType
+from aiida.common.loaders import get_object_loader
+from aiida.engine.processes.exit_code import ExitCode
 from aiida.engine.processes.graphs.inputs import _at, _drops_none_value, _place, _prepare_graph_inputs
 from aiida.engine.processes.graphs.ir import (
     BranchControl,
@@ -35,12 +37,13 @@ from aiida.engine.processes.graphs.ir import (
     OutputTree,
     ProcessTask,
     SubgraphTask,
+    TaskIR,
     _input_ports_at,
     _require_version,
 )
 from aiida.engine.processes.graphs.shapes import LeafShape, NamespaceShape
 from aiida.manage import get_manager
-from aiida.orm import DataDict, DataList, Node, load_node
+from aiida.orm import DataDict, DataList, EnumData, Node, from_aiida_type, load_node, to_aiida_type
 from aiida.orm.nodes.data.bool import Bool
 
 __all__ = ('GraphRun',)
@@ -135,6 +138,26 @@ def _at_or_none(container: t.Any, path: str) -> t.Any:
         return _at(container, path)
     except KeyError:
         return None
+
+
+def _holds_member(task: BranchControl, condition: t.Any) -> bool:
+    """Return whether a condition is the enum member a branch test names."""
+    assert task.condition_member is not None
+    identifier, name = task.condition_member
+    expected = get_object_loader().load_object(identifier).__members__[name]
+    actual = from_aiida_type(condition) if isinstance(condition, EnumData) else condition
+    return actual is expected
+
+
+def _error_member(spec: TaskIR, label: str, node: Node) -> t.Any:
+    """Return the declared member matching a failed process task's exit status."""
+    for identifier in spec.error_enums:
+        kind = get_object_loader().load_object(identifier)
+        for member in kind:
+            if member.value.status == node.exit_status:
+                return to_aiida_type(member)
+    msg = f'task `{label}` failed with an unmapped exit status {node.exit_status}.'
+    raise GraphRuntimeError(msg)
 
 
 def _regroup_carried_outputs(body_outputs: dict[str, OutputTree], resolved: dict[str, t.Any]) -> dict[str, t.Any]:
@@ -449,14 +472,57 @@ class GraphRun:
         """Return whether one dispatched task run finished successfully."""
         return label in self.done and self._is_finished_ok(self.done[label])
 
-    def _label_problems(self, spec: t.Any, label: str) -> tuple[list[str], list[str]]:
-        """Return the missing and mistyped declared outputs of one finished task run."""
-        from aiida.engine.processes.graphs.ir import TaskIR
+    def _has_declared_result(self, spec: t.Any, label: str) -> bool:
+        """Return whether a finished run failed with a declared outcome.
 
+        Function tasks store the declared member on an `error` output; process
+        tasks with an `errors=` mapping match the child exit status alone and the
+        member is synthesized when the arm is read. Only a matching declaration
+        counts: unexpected failures stay failures and never unblock dependents.
+        """
+        if label not in self.done or not isinstance(spec, TaskIR):
+            return False
+        if not spec.exit_codes:
+            return False
+        node = self._node(self.done[label])
+        if node.is_finished_ok or not node.is_failed:
+            return False
+        if 'error' in node.outputs:
+            error = node.outputs['error']
+            if not isinstance(error, EnumData):
+                return False
+            value: ExitCode = error.get_member().value
+            return value in spec.exit_codes.values() and value.status == node.exit_status
+        return bool(spec.error_enums) and node.exit_status in {code.status for code in spec.exit_codes.values()}
+
+    def _label_completed(self, spec: t.Any, label: str) -> bool:
+        """Return whether a run finished ok or with a declared failure."""
+        return self._label_ok(label) or self._has_declared_result(spec, label)
+
+    def _is_mapped_failure(self, spec: TaskIR, label: str) -> bool:
+        """Return whether a run failed with a declared error mapping.
+
+        The success arms of such a failure are absent by design, like the missing
+        arm of a `Result` task, so they read as `None` downstream.
+        """
+        if label not in self.done:
+            return False
+        if not spec.exit_codes:
+            return False
+        return self._has_declared_result(spec, label)
+
+    def _label_problems(self, spec: t.Any, label: str) -> tuple[list[str], list[str]]:
+        """Return the missing and mistyped declared outputs of one finished task run.
+
+        A mapped failure carries its outcome on the `error` arm; its absent
+        success arms are not missing outputs.
+        """
         if label in self._memo_problems:
             return self._memo_problems[label]
         declared: NamespaceShape | None = spec.declared_outputs if isinstance(spec, TaskIR) else None
         if label not in self.done or declared is None or not declared.fields:
+            return [], []
+        if self._is_mapped_failure(spec, label):
             return [], []
         node = self._node(self.done[label])
         problems = (_missing_declared_outputs(declared, node), _mistyped_declared_outputs(declared, node))
@@ -478,6 +544,9 @@ class GraphRun:
         for label in self._map_items(scope_key, task.name):
             if label not in self.done:
                 continue
+            if self._is_mapped_failure(task.spec, label):
+                # Absent success arms of a mapped failure are not missing outputs.
+                continue
             node = self._node(self.done[label])
             for port in _missing_declared_outputs(task.spec.declared_outputs, node):
                 if port not in missing:
@@ -495,7 +564,7 @@ class GraphRun:
             labels = scope.get('instances', {}).get(name, [])
             return (
                 bool(labels)
-                and all(self._label_ok(label) for label in labels)
+                and all(self._label_completed(task.spec, label) for label in labels)
                 and all(not any(self._label_problems(task.spec, label)) for label in labels)
             )
         if isinstance(task, MapControl):
@@ -610,7 +679,7 @@ class GraphRun:
         for task in template.tasks:
             if isinstance(task, ProcessTask):
                 for label in scope.get('instances', {}).get(task.name, []):
-                    if not self._label_ok(label) or any(self._label_problems(task.spec, label)):
+                    if not self._label_completed(task.spec, label) or any(self._label_problems(task.spec, label)):
                         return False
             elif isinstance(task, MapControl):
                 if not self._placement_ok(key, task.name):
@@ -641,7 +710,12 @@ class GraphRun:
         scope = self.scopes[scope_key]
         task = self._template_of(scope_key).task(name)
         if isinstance(task, ProcessTask):
-            return self._node(self.done[scope['instances'][name][-1]]).outputs
+            node = self._node(self.done[scope['instances'][name][-1]])
+            if 'error' not in node.outputs and self._is_mapped_failure(task.spec, scope['instances'][name][-1]):
+                # A mapped failure synthesizes its member from the child exit status;
+                # absent success arms read as `None` downstream like a `Result` arm.
+                return {'error': _error_member(task.spec, scope['instances'][name][-1], node)}
+            return node.outputs
         if isinstance(task, MapControl):
             return self._node(self.done[scope['collectors'][name]]).outputs
         if isinstance(task, (SubgraphTask, BranchControl)):
@@ -672,6 +746,9 @@ class GraphRun:
                 if isinstance(task, ProcessTask):
                     for label in scope.get('instances', {}).get(task.name, []):
                         if label not in self.done:
+                            continue
+                        if self._has_declared_result(task.spec, label):
+                            # A declared `Result`/`errors=` failure is handled downstream.
                             continue
                         missing, mistyped = self._label_problems(task.spec, label)
                         if not self._label_ok(label) or missing or mistyped:
@@ -889,10 +966,25 @@ class GraphRun:
         self._invalidate()
 
     def _begin_branch(self, scope_key: str, task: BranchControl, inputs: dict[str, t.Any]) -> None:
-        """Enter the taken side of a branch as one child scope; empty sides settle at once."""
+        """Enter the taken side of a branch as one child scope; empty sides settle at once.
+
+        `condition_test` decides selection without truthiness coercion: `is_none` and
+        `is_not_none` test arm presence for `Result`/`errors=` outcomes, while `is_member`
+        and `is_not_member` compare an error arm against one declared enum member.
+        """
         scope = self.scopes[scope_key]
-        condition = inputs.pop(task.condition_port)
-        taken = task.body if _holds(condition) else task.otherwise
+        condition = inputs.pop(task.condition_port, None)
+        test = task.condition_test
+        if test == 'is_none':
+            selected = condition is None
+        elif test == 'is_not_none':
+            selected = condition is not None
+        elif test in ('is_member', 'is_not_member'):
+            matched = _holds_member(task, condition)
+            selected = matched if test == 'is_member' else not matched
+        else:
+            selected = _holds(condition)
+        taken = task.body if selected else task.otherwise
         selector = 'taken' if taken is task.body else 'otherwise'
         raw = {key: value for key, value in inputs.items() if key in taken.inputs}
         child = self._new_scope(
@@ -1102,7 +1194,10 @@ class GraphRun:
         An empty path names the whole declared outputs namespace, resolved to
         a plain mapping so region inputs receive values instead of a link
         manager. Undeclared outputs of a dynamic namespace stay behind, since
-        validation checked the edge against the declared ports only.
+        validation checked the edge against the declared ports only. Process
+        tasks declare no error output, so a mapped failure synthesizes its
+        member from the child exit status. Absent success arms read as `None`,
+        like the missing arm of a `Result` task.
         """
         outputs = self._placement_outputs(scope_key, name)
         if not path:
