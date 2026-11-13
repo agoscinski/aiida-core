@@ -1,0 +1,331 @@
+###########################################################################
+# Copyright (c), The AiiDA team. All rights reserved.                     #
+# This file is part of the AiiDA code.                                    #
+#                                                                         #
+# The code is hosted on GitHub at https://github.com/aiidateam/aiida-core #
+# For further information on the license, see the LICENSE.txt file        #
+# For further information please visit http://www.aiida.net               #
+###########################################################################
+"""Matched correctness checks and benchmark harness for the engine benchmark workloads.
+
+Each of the five workloads in :mod:`tests.benchmark.test_engine` (``WORKCHAINS``) has a graph equivalent in
+:mod:`tests.benchmark.graph_programs` (``GRAPH_BENCHMARKS``) that preserves the observable workload: the same number
+of loop iterations, child-graph equivalents, and ``ArithmeticAddCalculation`` placements with ``x=1`` and ``y=2``.
+The correctness tests below pin that correspondence at ``n=4`` for both implementations, and the benchmark tests time
+``run_get_node`` for the five workloads times the two implementations (ten cases), grouped per workload so each
+``workchain-*`` case compares directly against its ``graph-*`` counterpart.
+
+Semantic overhead caveats (so benchmark deltas are read as workload-matched, not operation-identical):
+
+* Graphs always declare outputs while the originals return nothing; loop benchmarks return their final counter and the
+  threaded benchmarks return their collected results.
+* Graph loop state rewinds through tasks, so every loop benchmark spends one ``decrement`` plus one ``is_positive``
+  calcfunction task per iteration (plus one final ``is_positive`` check that exits the loop). The originals keep
+  ``counter``/``iter`` in memory and run zero tasks per no-op step.
+* Each loop iteration dispatches one child graph node holding the iteration body, and each ``par_map`` collection
+  dispatches one collector calcfunction that creates the result container. Neither exists in the originals.
+* ``threaded-calcjob-loop`` is statically unrolled to exactly four placements (see ``graph_programs``); requesting any
+  other iteration count raises ``ValueError`` on the graph side only.
+* Calcjob placements on the graph side require per-placement ``metadata.options`` (``resources``/``withmpi``) under
+  ``task_metadata``; the ``WorkChain`` originals submit without explicit options. Both sides run the real
+  ``ArithmeticAddCalculation`` with ``filepath_executable='/bin/bash'`` so every calculation parses ``sum == 3``.
+
+Benchmark timing notes:
+
+* Everything before ``benchmark.pedantic`` -- the ``InstalledCode``, the prepared launch kwargs, and (graph side)
+  ``handle.build()`` -- stays outside the timed region for both implementations alike. ``build()`` warms the lowering
+  cache, so the timed region covers warm execution, matching the already-defined ``WorkChain`` classes.
+* Only ``run_get_node`` in the local runner is timed (no daemon, no ``xdist``); run benchmarks serially.
+
+Run correctness only (benchmarks skip by default via ``--benchmark-skip``)::
+
+    uv run pytest -m presto tests/benchmark/test_graph_engine.py
+
+Run benchmarks only (never together with other ongoing work)::
+
+    uv run pytest -m presto tests/benchmark/test_graph_engine.py --benchmark-only \
+        --benchmark-json=/tmp/graph-engine-benchmark.json
+
+``--benchmark-only`` also overrides the ``--benchmark-skip`` default from ``addopts`` (``--benchmark-enable``
+only overrides ``--benchmark-disable``) and deselects the correctness tests by itself, so no ``-k`` filter is
+needed.
+"""
+
+from __future__ import annotations
+
+import typing as t
+
+import pytest
+
+from aiida.common.links import LinkType
+from aiida.engine.launch import run_get_node
+from aiida.orm import CalcJobNode, GraphNode, InstalledCode, Int, WorkChainNode
+from aiida.orm.nodes.process.process import ProcessNode
+from tests.benchmark.graph_programs import GRAPH_BENCHMARKS, prepare_benchmark_inputs, validate_benchmarks
+from tests.benchmark.test_engine import WORKCHAINS
+
+pytestmark = pytest.mark.presto
+
+#: Benchmark size shared by both implementations in every matched comparison.
+BENCHMARK_SIZE = 4
+
+_DYNAMIC_WORKLOADS = ('basic-loop', 'serial-wc-loop', 'threaded-wc-loop', 'serial-calcjob-loop')
+_CALCJOB_WORKLOADS = ('serial-calcjob-loop', 'threaded-calcjob-loop')
+_ALL_WORKLOADS = tuple(GRAPH_BENCHMARKS)
+
+# Expected descendant counts at ``BENCHMARK_SIZE`` on the graph side. Each loop
+# iteration dispatches one child graph holding the iteration body, and each loop
+# benchmark spends one ``decrement`` plus one ``is_positive`` calcfunction per
+# iteration plus one final ``is_positive`` check, so:
+# basic-loop: 4 iteration bodies; 4 + 4 checks + 1 final = 9 calcfunctions.
+# serial-wc-loop: per iteration body + wc_step + one_loop + one_loop body = 4
+#   graph nodes (x4 = 16); per iteration 1 body check + one_loop (2 checks + 1
+#   decrement) + 1 wc_step decrement = 5 calcfunctions (x4 = 20) + 1 final = 21.
+# threaded-wc-loop: 4 one_loop children + 4 one_loop bodies = 8 graph nodes;
+#   4 x one_loop (2 checks + 1 decrement) = 12 + 1 par_map collector = 13.
+# serial-calcjob-loop: loop shape of basic-loop (4 bodies, 9 tasks) + 4 direct
+#   ArithmeticAddCalculation placements, one per calc_step.
+# threaded-calcjob-loop: 4 direct placements in a single step, no tasks at all.
+_EXPECTED_GRAPH: dict[str, dict[str, int]] = {
+    'basic-loop': {'graphs': 4, 'calcfunctions': 9, 'calcjobs': 0},
+    'serial-wc-loop': {'graphs': 16, 'calcfunctions': 21, 'calcjobs': 0},
+    'threaded-wc-loop': {'graphs': 8, 'calcfunctions': 13, 'calcjobs': 0},
+    'serial-calcjob-loop': {'graphs': 8, 'calcfunctions': 9, 'calcjobs': 4},
+    'threaded-calcjob-loop': {'graphs': 0, 'calcfunctions': 0, 'calcjobs': 4},
+}
+
+# Expected descendant counts at ``BENCHMARK_SIZE`` on the WorkChain side, mirroring
+# the ``outgoing`` contract of ``WORKCHAINS``: the wc loops submit four child
+# WorkChains (serially or in one step), the calcjob loops submit four CalcJobs,
+# and the basic loop submits nothing.
+_EXPECTED_WORKFLOWS = {'basic-loop': 0, 'serial-wc-loop': 4, 'threaded-wc-loop': 4}
+_EXPECTED_CALCJOBS = {'serial-calcjob-loop': 4, 'threaded-calcjob-loop': 4}
+
+
+def _make_code(aiida_localhost) -> InstalledCode:
+    """Return the ``/bin/bash`` arithmetic code both implementations execute successfully."""
+    return InstalledCode(
+        default_calc_job_plugin='core.arithmetic.add', computer=aiida_localhost, filepath_executable='/bin/bash'
+    )
+
+
+def _by_type(nodes: t.Iterable[ProcessNode]) -> dict[str, list[ProcessNode]]:
+    """Bucket process nodes by class name for structural assertions."""
+    bucketed: dict[str, list[ProcessNode]] = {}
+    for node in nodes:
+        bucketed.setdefault(type(node).__name__, []).append(node)
+    return bucketed
+
+
+def _assert_no_workflow_create(node: ProcessNode) -> None:
+    """Assert no workflow node in the tree carries a CREATE link (workflows only RETURN)."""
+    for child in (node, *node.called_descendants):
+        if isinstance(child, (WorkChainNode, GraphNode)):
+            assert child.base.links.get_outgoing(link_type=LinkType.CREATE).all() == []
+
+
+def _assert_calcjobs_success(node: ProcessNode, count: int) -> None:
+    """Assert exactly ``count`` CalcJob descendants, all finished with ``sum == 3`` (``x=1``, ``y=2``)."""
+    calcjobs = [child for child in node.called_descendants if isinstance(child, CalcJobNode)]
+    assert len(calcjobs) == count
+    for calcjob in calcjobs:
+        assert calcjob.is_finished_ok, (calcjob.exit_status, calcjob.exit_message)
+        assert calcjob.outputs.sum.value == 3
+
+
+@pytest.mark.parametrize('name', _ALL_WORKLOADS)
+def test_graph_templates(name) -> None:
+    """The serialized GraphIR each benchmark executes matches its lowered source template.
+
+    ``validate_benchmarks`` pins the static placement contracts (four direct unrolled placements for
+    ``threaded-calcjob-loop``, one call per serial loop body, the unary ``par_map`` shape), and the
+    ``to_dict``/``from_dict`` round trip proves the stored declaration that ``GraphProcess`` executes is
+    representative of ``handle.build()`` rather than a divergent copy.
+    """
+    from aiida.engine.processes.graphs.ir import GraphIR
+
+    (handle, _iterations) = GRAPH_BENCHMARKS[name]
+    counts = validate_benchmarks()
+    assert set(counts) == set(GRAPH_BENCHMARKS)
+    template = handle.build()
+    assert GraphIR.from_dict(template.to_dict()).to_dict() == template.to_dict()
+    if name == 'threaded-calcjob-loop':
+        assert counts[name] == 4
+    elif name in ('serial-wc-loop', 'serial-calcjob-loop'):
+        assert counts[name] == 1
+
+
+@pytest.mark.usefixtures('aiida_profile_clean')
+@pytest.mark.parametrize('name', _ALL_WORKLOADS)
+def test_correctness_matched(aiida_localhost, name) -> None:
+    """Both implementations finish the workload at ``n=4`` with matching observable provenance.
+
+    WorkChain side: finished ok, no outputs (the originals return nothing), the ``WORKCHAINS`` child counts
+    (four child workflows or four calcjobs), and the exact ``sum == 3`` calcjob contract.
+    Graph side: finished ok, the documented workload outputs, one child graph per loop iteration where the
+    source loops, the exact ``sum == 3`` calcjob contract, a stored declaration identical to the lowered
+    template, and no CREATE link from any workflow node on either side.
+    """
+    from aiida.engine.processes.graphs.ir import GraphIR
+
+    code = _make_code(aiida_localhost)
+
+    workchain_class, iterations, _outgoing = WORKCHAINS[name]
+    assert iterations == BENCHMARK_SIZE
+    wc_outputs, wc_node = run_get_node(workchain_class, iterations=Int(iterations), code=code)
+    assert wc_node.is_finished_ok, (wc_node.exit_status, wc_node.exit_message)
+    assert isinstance(wc_node, WorkChainNode)
+    assert dict(wc_outputs) == {}
+    wc_called = _by_type(wc_node.called)
+    wc_descendants = _by_type(wc_node.called_descendants)
+    assert len(wc_descendants.get('WorkChainNode', [])) == _EXPECTED_WORKFLOWS.get(name, 0)
+    assert len(wc_descendants.get('CalcJobNode', [])) == _EXPECTED_CALCJOBS.get(name, 0)
+    if name in ('serial-wc-loop', 'threaded-wc-loop'):
+        assert len(wc_called.get('WorkChainNode', [])) == 4
+    if name in _CALCJOB_WORKLOADS:
+        assert len(wc_called.get('CalcJobNode', [])) == 4
+        _assert_calcjobs_success(wc_node, 4)
+    _assert_no_workflow_create(wc_node)
+
+    handle, graph_iterations = GRAPH_BENCHMARKS[name]
+    assert graph_iterations == BENCHMARK_SIZE
+    graph_outputs, graph_node = run_get_node(handle, **prepare_benchmark_inputs(name, code))
+    assert graph_node.is_finished_ok, (graph_node.exit_status, graph_node.exit_message)
+    assert isinstance(graph_node, GraphNode)
+    stored = graph_node.base.links.get_incoming(link_type=LinkType.INPUT_WORK).get_node_by_label('graph')
+    assert GraphIR.from_dict(stored.get_dict()).to_dict() == handle.build().to_dict()
+    if name in ('basic-loop', 'serial-wc-loop', 'serial-calcjob-loop'):
+        assert graph_outputs['result'].value == 0
+    elif name == 'threaded-wc-loop':
+        assert [item.value for item in graph_outputs['result']] == [0] * BENCHMARK_SIZE
+    elif name == 'threaded-calcjob-loop':
+        assert {label: graph_outputs[label].value for label in ('first', 'second', 'third', 'fourth')} == {
+            'first': 3,
+            'second': 3,
+            'third': 3,
+            'fourth': 3,
+        }
+    expected = _EXPECTED_GRAPH[name]
+    descendants = _by_type(graph_node.called_descendants)
+    assert len(descendants.get('GraphNode', [])) == expected['graphs']
+    assert len(descendants.get('CalcFunctionNode', [])) == expected['calcfunctions']
+    assert len(descendants.get('CalcJobNode', [])) == expected['calcjobs']
+    direct = _by_type(graph_node.called)
+    if name in ('basic-loop', 'serial-wc-loop', 'serial-calcjob-loop'):
+        # Four dispatched iteration bodies plus the final loop-exit condition check.
+        assert len(direct.get('GraphNode', [])) == 4
+        assert len(direct.get('CalcFunctionNode', [])) == 1
+    elif name == 'threaded-wc-loop':
+        # One one_loop child per element plus the single result collector.
+        assert len(direct.get('GraphNode', [])) == 4
+        assert len(direct.get('CalcFunctionNode', [])) == 1
+    elif name == 'threaded-calcjob-loop':
+        assert len(direct.get('CalcJobNode', [])) == 4
+    if name in _CALCJOB_WORKLOADS:
+        _assert_calcjobs_success(graph_node, 4)
+    _assert_no_workflow_create(graph_node)
+
+
+@pytest.mark.usefixtures('aiida_profile_clean')
+@pytest.mark.parametrize('name', _DYNAMIC_WORKLOADS)
+@pytest.mark.parametrize('count', [0, 1])
+def test_bounds_zero_one(aiida_localhost, name, count) -> None:
+    """The resizable workloads accept the 0/1 bounds on both implementations.
+
+    Zero iterations run no placements and return the identity result; one iteration runs exactly one
+    placement (one child workflow, or one successful ``sum == 3`` calcjob for the serial calcjob loop).
+    ``threaded-calcjob-loop`` is statically unrolled and covered by ``test_threaded_calcjob_static``.
+    """
+    code = _make_code(aiida_localhost)
+
+    workchain_class, _iterations, _outgoing = WORKCHAINS[name]
+    wc_outputs, wc_node = run_get_node(workchain_class, iterations=Int(count), code=code)
+    assert wc_node.is_finished_ok, (wc_node.exit_status, wc_node.exit_message)
+    assert dict(wc_outputs) == {}
+    wc_descendants = _by_type(wc_node.called_descendants)
+    if name in ('serial-wc-loop', 'threaded-wc-loop'):
+        assert len(wc_descendants.get('WorkChainNode', [])) == count
+    elif name == 'serial-calcjob-loop':
+        assert len(wc_descendants.get('CalcJobNode', [])) == count
+        _assert_calcjobs_success(wc_node, count)
+    else:
+        assert wc_node.called == []
+    _assert_no_workflow_create(wc_node)
+
+    handle, _graph_iterations = GRAPH_BENCHMARKS[name]
+    graph_outputs, graph_node = run_get_node(handle, **prepare_benchmark_inputs(name, code, iterations=count))
+    assert graph_node.is_finished_ok, (graph_node.exit_status, graph_node.exit_message)
+    if name in ('basic-loop', 'serial-wc-loop', 'serial-calcjob-loop'):
+        assert graph_outputs['result'].value == 0
+    elif name == 'threaded-wc-loop':
+        assert [item.value for item in graph_outputs['result']] == [0] * count
+    graph_descendants = _by_type(graph_node.called_descendants)
+    assert len(graph_descendants.get('CalcJobNode', [])) == (count if name == 'serial-calcjob-loop' else 0)
+    if name == 'serial-calcjob-loop':
+        _assert_calcjobs_success(graph_node, count)
+    _assert_no_workflow_create(graph_node)
+
+
+@pytest.mark.usefixtures('aiida_profile_clean')
+def test_threaded_calcjob_static(aiida_localhost) -> None:
+    """The statically unrolled graph benchmark rejects any size but four and requires its code."""
+    code = _make_code(aiida_localhost)
+    for bad in (0, 1, 3, 5):
+        with pytest.raises(ValueError, match='statically unrolled'):
+            prepare_benchmark_inputs('threaded-calcjob-loop', code, iterations=bad)
+    with pytest.raises(ValueError, match='needs the installed `code`'):
+        prepare_benchmark_inputs('threaded-calcjob-loop')
+    with pytest.raises(ValueError, match='needs the installed `code`'):
+        prepare_benchmark_inputs('serial-calcjob-loop')
+    with pytest.raises(KeyError):
+        prepare_benchmark_inputs('not-a-benchmark', code)
+
+
+def _benchmark_cases() -> list:
+    """Return the ten (workload, implementation) cases, each grouped per workload for comparison."""
+    cases = []
+    for name in _ALL_WORKLOADS:
+        cases.append(pytest.param(name, 'workchain', marks=pytest.mark.benchmark(group=name), id=f'workchain-{name}'))
+        cases.append(pytest.param(name, 'graph', marks=pytest.mark.benchmark(group=name), id=f'graph-{name}'))
+    return cases
+
+
+@pytest.mark.timeout(1200)
+@pytest.mark.parametrize(('workload', 'implementation'), _benchmark_cases())
+def test_benchmark(benchmark, aiida_localhost, workload, implementation) -> None:
+    """Time ``run_get_node`` for one workload/implementation pair (10 rounds, 1 warmup, 1 iteration).
+
+    All setup -- the ``/bin/bash`` code, the prepared launch kwargs, and (graph side) the warmed
+    ``handle.build()`` lowering cache -- happens outside the timed region for both implementations alike,
+    so the timer covers warm execution only. Benchmarks run serially in the local runner; enable them
+    explicitly (see module docstring) and never alongside other ongoing work.
+    """
+    code = _make_code(aiida_localhost)
+    if implementation == 'workchain':
+        workchain_class, iterations, _outgoing = WORKCHAINS[workload]
+        target = workchain_class
+        kwargs: dict[str, t.Any] = {'iterations': Int(iterations), 'code': code}
+    else:
+        handle, _iterations = GRAPH_BENCHMARKS[workload]
+        handle.build()
+        target = handle
+        kwargs = prepare_benchmark_inputs(workload, code)
+
+    def _run():
+        return run_get_node(target, **kwargs)
+
+    outputs, node = benchmark.pedantic(_run, iterations=1, rounds=10, warmup_rounds=1)
+
+    assert node.is_finished_ok, (node.exit_status, node.exit_message)
+    if implementation == 'graph' and workload in ('basic-loop', 'serial-wc-loop', 'serial-calcjob-loop'):
+        assert outputs['result'].value == 0
+    descendants = _by_type(node.called_descendants)
+    benchmark.extra_info['provenance'] = {
+        'workload': workload,
+        'implementation': implementation,
+        'finished_ok': node.is_finished_ok,
+        'graph_nodes': len(descendants.get('GraphNode', [])),
+        'workchains': len(descendants.get('WorkChainNode', [])),
+        'calcfunctions': len(descendants.get('CalcFunctionNode', [])),
+        'calcjobs': len(descendants.get('CalcJobNode', [])),
+    }
