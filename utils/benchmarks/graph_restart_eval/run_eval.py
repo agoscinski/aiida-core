@@ -15,9 +15,11 @@ prompt except for the allowed implementation method. The harness:
 
 1. records model/thinking/tools/timeout/token-cap/revision and `pi --version`;
 2. creates one detached worktree per arm plus a fresh `eval-scratch-<arm>/`
-   cwd containing ONLY the shared task files (hidden tests are NEVER copied);
-3. asserts no `.jsonl` report/session files exist in either arm cwd
-   (no leakage of prior runs or of this conversation);
+   cwd containing ONLY the shared task files: the tracked `grading/` grader
+   source and any root `reports/` checkout are physically removed from each
+   fresh worktree (never from this checkout), and hidden tests are NEVER copied;
+3. asserts no `.jsonl` report/session files and no `grading/`/`reports/` paths
+   exist in either arm checkout (no leakage of prior runs or of this conversation);
 4. pre-warms EVERY worktree (`.venv` via `uv sync`) BEFORE either agent
    launches, OUTSIDE the timed solve, identically for both arms;
 5. launches `pi --mode json` with inherited tools/session context disabled
@@ -29,7 +31,7 @@ prompt except for the allowed implementation method. The harness:
    (outside both arm worktrees) while timing with `time.monotonic()`;
 6. parses the authoritative `message_end` usage via :mod:`parse_events`;
 7. writes a per-arm run card. It does NOT run the hidden acceptance tests —
-   the operator runs those AFTER both agents finish (see README).
+   the operator runs `grading/verify_arm.py` AFTER both agents finish (see README).
 
 Token budget policy: time is the enforced budget (`timeout_s_each_arm`,
 monotonic wall clock). Tokens are measured post-hoc from authoritative
@@ -138,8 +140,9 @@ def build_prompt(scratch: Path, arm_file: str) -> str:
         '  `tests/engine/processes/graphs/...`), but NEVER write outside it.\n'
         '- FORBIDDEN to read, list, glob, or grep: any other `eval-scratch-*` '
         '  directory, any `ARM_*.md` file other than the one in your scratch, '
-        '  any `reports/` directory, any `*.jsonl` transcript/metrics/session file, '
-        '  any `tests_hidden/` path or file with `hidden`/`verify` in its name.\n'
+        '  any `reports/` directory, any `grading/` path, any `*.jsonl` '
+        '  transcript/metrics/session file, any `tests_hidden/` path or file '
+        '  with `hidden`/`verify` in its name.\n'
         '- FORBIDDEN to inspect git history or other checkouts: no `git log/show/diff/blame`, '
         '  no other worktrees or branches, no stash/reflog. The current checkout is all there is.\n'
         '- This is a fresh session: there is no prior conversation to resume and no other '
@@ -149,14 +152,53 @@ def build_prompt(scratch: Path, arm_file: str) -> str:
     return f'{header}{common}\n\n---\n\n{arm}\n'
 
 
+def _solver_worktree_leak_paths(worktree: Path) -> list[Path]:
+    """Paths that must never be visible inside a fresh solver worktree."""
+    return [
+        worktree / 'utils' / 'benchmarks' / 'graph_restart_eval' / 'grading',
+        worktree / 'reports',
+    ]
+
+
+def _scrub_solver_worktree(worktree: Path) -> list[str]:
+    """Remove grader source and reports from a NEW disposable worktree only.
+
+    `grading/` is tracked grader source (committed after the original solves)
+    and root `reports/` may hold committed run cards — a fresh `git worktree
+    add` would otherwise expose both to the solver. Every removal is joined
+    under `worktree` (the disposable detached checkout for one arm); the main
+    checkout and the repository are never touched. Raises if either leak path
+    is still present afterwards.
+    """
+    removed: list[str] = []
+    for path in _solver_worktree_leak_paths(worktree):
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+            removed.append(str(path))
+        elif path.is_file() or path.is_symlink():
+            path.unlink()
+            removed.append(str(path))
+    leaks = [str(p) for p in _solver_worktree_leak_paths(worktree) if p.exists()]
+    if leaks:
+        msg = f'solver worktree still exposes grader/report paths: {leaks}'
+        raise RuntimeError(msg)
+    return removed
+
+
 def prepare_arm(repo_root: Path, revision: str, arm: str, worktree_root: Path, reports_dir: Path) -> dict:
-    """Create an isolated worktree + scratch dir with only shared task files."""
+    """Create an isolated worktree + scratch dir with only shared task files.
+
+    The fresh detached worktree is scrubbed of the tracked `grading/` grader
+    and any root `reports/` checkout BEFORE the scratch dir is staged and long
+    before the solver starts; the main checkout is never modified.
+    """
     info = ARMS[arm]
     worktree = worktree_root / f'graph-restart-eval-arm-{arm}'
     if worktree.exists():
         msg = f'worktree path already exists (remove it for a fresh run): {worktree}'
         raise RuntimeError(msg)
     _run(['git', 'worktree', 'add', '--detach', str(worktree), revision], cwd=repo_root)
+    scrubbed = _scrub_solver_worktree(worktree)
 
     scratch = worktree / f'eval-scratch-{arm}'
     scratch.mkdir(parents=True)
@@ -166,17 +208,25 @@ def prepare_arm(repo_root: Path, revision: str, arm: str, worktree_root: Path, r
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
 
-    # Isolation pre-flight: no JSONL artefacts and no hidden tests in arm reach.
+    # Isolation pre-flight: no JSONL artefacts, no hidden tests, and no
+    # grader/report paths in arm reach.
     jsonl = sorted(str(p) for p in scratch.rglob('*.jsonl'))
     hidden = sorted(str(p) for p in scratch.rglob('*hidden*')) + sorted(str(p) for p in scratch.rglob('*verify*'))
-    if jsonl or hidden:
-        msg = f'isolation pre-flight failed for arm {arm}: jsonl={jsonl} hidden={hidden}'
+    staged = sorted(str(p) for p in scratch.rglob('*') if p.name in ('grading', 'reports'))
+    if jsonl or hidden or staged:
+        msg = f'isolation pre-flight failed for arm {arm}: jsonl={jsonl} hidden={hidden} staged={staged}'
         raise RuntimeError(msg)
 
     prompt = build_prompt(scratch, info['arm_file'])
     prompt_path = reports_dir / f'prompt-arm-{arm}.md'
     prompt_path.write_text(prompt, encoding='utf-8')
-    return {'worktree': worktree, 'scratch': scratch, 'prompt': prompt, 'prompt_path': prompt_path}
+    return {
+        'worktree': worktree,
+        'scratch': scratch,
+        'prompt': prompt,
+        'prompt_path': prompt_path,
+        'scrubbed': scrubbed,
+    }
 
 
 def _sanitized_child_env() -> tuple[dict[str, str], list[str]]:
@@ -367,6 +417,60 @@ def launch_pi(
     }
 
 
+def _self_check() -> None:
+    """Offline harness smoke test: prepare-arm safety without any model run.
+
+    Uses a tempfile fake worktree only — no `pi` binary, no git worktree, no
+    network, no agent. Validates that the solver-worktree scrub removes the
+    tracked grader and reports while leaving task files alone, that the prompt
+    forbids `grading/`, and that the tracked grader hashes cleanly. Raises
+    `RuntimeError` on the first failure; prints a PASS summary otherwise.
+    Run via `run_eval.py --self-check`.
+    """
+    import tempfile
+
+    checks: list[str] = []
+    with tempfile.TemporaryDirectory(prefix='graph-restart-self-check-') as tmp:
+        fake = Path(tmp) / 'arm-worktree'
+        grader = fake / 'utils' / 'benchmarks' / 'graph_restart_eval' / 'grading'
+        grader.mkdir(parents=True)
+        (grader / 'test_acceptance.py').write_text('# fake tracked grader\n', encoding='utf-8')
+        committed_reports = fake / 'reports' / 'graph-restart-study'
+        committed_reports.mkdir(parents=True)
+        (committed_reports / 'report.json').write_text('{}\n', encoding='utf-8')
+        scratch = fake / 'eval-scratch-a'
+        scratch.mkdir(parents=True)
+        (scratch / 'TASK_COMMON.md').write_text('task\n', encoding='utf-8')
+
+        removed = _scrub_solver_worktree(fake)
+        checks.append(f'scrub removed {len(removed)} leak path(s)')
+        if grader.exists() or (fake / 'reports').exists():
+            msg = 'self-check failed: scrub left grader/report paths behind'
+            raise RuntimeError(msg)
+        checks.append('grading/ + reports/ absent from fake solver worktree')
+        if not (scratch / 'TASK_COMMON.md').is_file():
+            msg = 'self-check failed: scrub touched the scratch task files'
+            raise RuntimeError(msg)
+        checks.append('scratch task files untouched')
+        if not (EVAL_DIR / 'run_eval.py').is_file():
+            msg = 'self-check failed: main checkout layout unexpected'
+            raise RuntimeError(msg)
+        checks.append('main checkout untouched (fake worktree lived under tempfile)')
+
+    prompt = build_prompt(EVAL_DIR / 'eval-scratch-self-check', ARMS['a']['arm_file'])
+    if '`grading/`' not in prompt:
+        msg = 'self-check failed: prompt does not forbid grading/'
+        raise RuntimeError(msg)
+    checks.append('prompt forbids grading/')
+    tracked = sorted((EVAL_DIR / 'grading').glob('*.py')) if (EVAL_DIR / 'grading').is_dir() else []
+    if not tracked:
+        msg = 'self-check failed: tracked grading/*.py missing'
+        raise RuntimeError(msg)
+    checks.append(f'tracked grader present ({len(tracked)} file(s); manifest annotates grader_version v2)')
+    for check in checks:
+        print(f'self-check PASS: {check}')
+
+
 def main() -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -378,7 +482,15 @@ def main() -> None:
     parser.add_argument('--arms', default='a,b')
     parser.add_argument('--worktree-root', default=None)
     parser.add_argument('--reports-dir', default=str(EVAL_DIR / 'reports'))
+    parser.add_argument(
+        '--self-check',
+        action='store_true',
+        help='Run the offline harness smoke test (tempfile only; no model, no `pi`, no git worktree).',
+    )
     args = parser.parse_args()
+    if args.self_check:
+        _self_check()
+        return
 
     config = json.loads(Path(args.config).read_text(encoding='utf-8'))
     model = args.model or config['model']
@@ -406,12 +518,19 @@ def main() -> None:
     reports_dir.mkdir(parents=True, exist_ok=True)
     worktree_root = Path(args.worktree_root) if args.worktree_root else repo_root.parent
 
+    # Authoritative hidden tests for FUTURE runs: the tracked v2 grader in
+    # `grading/` (committed after the original solves; physically removed from
+    # solver worktrees by `prepare_arm`). The original v1 `tests_hidden/`
+    # snapshot stays frozen and git-ignored; its results are preserved in the
+    # completed study report, not re-hashed here.
     hidden_tests: dict[str, str] = {}
-    hidden_dir = EVAL_DIR / 'tests_hidden'
+    hidden_dir = EVAL_DIR / 'grading'
     if hidden_dir.is_dir():
         hidden_tests = {p.name: _sha256(p) for p in sorted(hidden_dir.glob('*.py'))}
     manifest = {
         'eval_id': config.get('eval_id'),
+        'grader_version': 'v2',
+        'grader_dir': 'grading',
         'started_utc': _utcnow(),
         'model': model,
         'thinking': thinking,
@@ -498,6 +617,7 @@ def main() -> None:
             'started_utc': manifest['started_utc'],
             'worktree': str(prep['worktree']),
             'scratch': str(prep['scratch']),
+            'scrubbed_worktree_paths': prep['scrubbed'],
             'prewarm_uv_sync': prewarm,
             'session_dir': str(session_dir),
             'session_files': session_files(session_dir),
@@ -519,7 +639,7 @@ def main() -> None:
         )
 
     print('DONE. Hidden acceptance tests were NOT run. Verify afterwards, e.g.:')
-    print('  uv run python utils/benchmarks/graph_restart_eval/tests_hidden/verify_arm.py \\')
+    print('  uv run python utils/benchmarks/graph_restart_eval/grading/verify_arm.py \\')
     print('    --solution-dir <arm-a worktree>/eval-scratch-a/restart_solution --arm a')
 
 

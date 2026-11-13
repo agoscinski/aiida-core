@@ -5,9 +5,13 @@ the **same** transient-failure retry task, one with `BaseRestartWorkChain`
 (arm A), one by constructing `GraphIR` directly (arm B, no `@graph` sugar).
 Judged on correctness (shared hidden acceptance tests) plus time/tokens.
 
-Status: **harness ready — NO agent runs or timings have been collected.**
-`config.json` is filled with the GO values (same budgets for both arms);
-no agent has been launched. No commit/push.
+Status: **completed paired run recorded — harness reusable.** The original
+n=1 paired run (model `gpt-6.1-sol`, thinking `medium`) finished and is
+preserved at `reports/graph-restart-study/` (repository root, with the
+consolidated `report.json` assembled mechanically by `assemble_report.py`).
+`config.json` keeps the same GO values (same budgets for both arms) for
+future reruns; a rerun writes fresh untracked per-run `reports/` in this
+directory and never touches the committed study folder.
 
 ## Layout
 
@@ -25,25 +29,41 @@ no agent has been launched. No commit/push.
   `message_end` usage (`input/output/cacheRead/cacheWrite/totalTokens`),
   provider/model, stop reason; wall time comes from the harness monotonic
   clock; `--check-cap N` does a post-hoc budget check.
-- `tests_hidden/` — shared hidden acceptance tests plus `conftest.py`
+- `grading/` — tracked v2 hidden acceptance tests plus `conftest.py`
   (loads `aiida.tools.pytest_fixtures` outside `tests/`, SQLite + ZeroMQ
   defaults) and `verify_arm.py` (the ONLY supported verification entry
-  point). **LOCAL ONLY, git-ignored, never copied into agent worktrees,
-  never committed, run only AFTER both agents finish.**
-- `reports/` — untracked local run cards, prompts, transcripts, metrics,
-  session logs (outside both arm worktrees and outside this conversation).
+  point for future runs). Committed AFTER the original solves; `prepare_arm`
+  physically removes this directory from every fresh solver worktree before
+  the solve starts, so solvers never see it. Never show it to agents.
+- `tests_hidden/` — frozen v1 snapshot of the original hidden tests:
+  git-ignored, never copied into agent worktrees, never modified. Kept only
+  so the original (defective) scoring stays reproducible; future runs hash
+  (`manifest.json`: `grader_version: v2`) and execute `grading/` instead.
+  The original v1 results are preserved in the completed study report, not
+  re-run.
+- `reports/` — untracked run cards, prompts, transcripts, metrics, session
+  logs for the CURRENT/NEXT run (outside both arm worktrees and outside this
+  conversation). The completed study lives at `reports/graph-restart-study/`
+  (repository root) and is never overwritten by a rerun.
 - `config.json` — GO values: `model=gpt-6.1-sol`, `provider=openai-codex`,
   `thinking=medium`, `timeout_s_each_arm=1800`,
   `max_total_tokens_each_arm=1000000` (same for both arms).
 
-## Ready command (at GO)
+## Rerun command (harness is reusable)
 
 ```sh
-# config.json already holds the GO values (no placeholders left).
+# config.json holds the same GO values used by the completed study run.
 # Confirm the model resolves: pi --list-models gpt-6.1-sol
 # Launch (from this worktree root):
 uv run python utils/benchmarks/graph_restart_eval/run_eval.py \
   --config utils/benchmarks/graph_restart_eval/config.json
+```
+
+Offline smoke test — prepare-arm safety with a tempfile fake worktree only
+(no model, no `pi` binary, no git worktree, no network):
+
+```sh
+uv run python utils/benchmarks/graph_restart_eval/run_eval.py --self-check
 ```
 
 Optional overrides: `--model ... --thinking ... --timeout-s 1800
@@ -53,9 +73,9 @@ Optional overrides: `--model ... --thinking ... --timeout-s 1800
 ## After both agents finish (and only then)
 
 ```sh
-uv run python utils/benchmarks/graph_restart_eval/tests_hidden/verify_arm.py \
+uv run python utils/benchmarks/graph_restart_eval/grading/verify_arm.py \
   --solution-dir <arm-a worktree>/eval-scratch-a/restart_solution --arm a
-uv run python utils/benchmarks/graph_restart_eval/tests_hidden/verify_arm.py \
+uv run python utils/benchmarks/graph_restart_eval/grading/verify_arm.py \
   --solution-dir <arm-b worktree>/eval-scratch-b/restart_solution --arm b
 ```
 
@@ -88,7 +108,13 @@ metrics.
   recorded; `--api-key` is never used).
 - **Separate repository checkouts**: `git worktree add --detach <revision>`
   per arm at the SAME recorded revision; arm cwd is a fresh
-  `eval-scratch-<arm>/` dir inside its own worktree.
+  `eval-scratch-<arm>/` dir inside its own worktree. Immediately after the
+  worktree is created — before the scratch dir is staged and long before the
+  solver starts — `prepare_arm` physically deletes the tracked `grading/`
+  grader directory and any root `reports/` checkout from the NEW disposable
+  worktree only (never this checkout), then asserts both are absent; the
+  per-arm pre-flight additionally asserts no `grading/`/`reports/` paths
+  reached the scratch dir.
 - **Pre-warmed environments, same caches**: `uv sync` runs once per worktree
   for BOTH arms BEFORE either agent launches (outside the timed solve),
   identically for both arms, so neither arm pays install time and both share
@@ -99,17 +125,22 @@ metrics.
   Persisted session logs stay under `reports/` (outside both arm cwds and
   outside this worktree's session) alongside the full-stdout JSONL transcript.
 - **Prompt-level prohibitions**: each prompt forbids reading the other arm's
-  files, `reports/`, `*.jsonl`, `tests_hidden/`/`*verify*` paths, and any git
+  files, `reports/`, `grading/`, `*.jsonl`, `tests_hidden/`/`*verify*` paths, and any git
   history or other worktrees; agents work only inside their scratch.
-- **No report JSONL in arm reach**: pre-flight asserts zero `*.jsonl` plus zero
-  `*hidden*`/`*verify*` files under each arm cwd before launch; hidden tests
-  live only in the git-ignored `tests_hidden/` of THIS worktree and are never
-  copied. Reference/current transcripts and run cards also live only in
-  `reports/` (untracked and invisible inside the fresh arm worktrees).
+- **No report JSONL or grader source in arm reach**: pre-flight asserts zero
+  `*.jsonl` plus zero `*hidden*`/`*verify*`/`grading`/`reports` paths under
+  each arm scratch before launch; the tracked `grading/` grader is deleted
+  from each fresh arm worktree outright, and the frozen v1 `tests_hidden/`
+  snapshot is git-ignored so it never enters a fresh checkout. Reference
+  transcripts and run cards also live only in untracked per-run `reports/`
+  (invisible inside the fresh arm worktrees). Fresh sessions carry no history:
+  there is no transcript carry-over between runs.
 - **Frozen identical inputs**: `manifest.json` records SHA-256 of
-  `TASK_COMMON.md`, both arm files, `fixtures/flaky_child.py`, and the hidden
-  test files before either arm launches. Common tests are frozen (already
-  vetted); do not modify them.
+  `TASK_COMMON.md`, both arm files, `fixtures/flaky_child.py`, and the
+  tracked `grading/*.py` hidden tests (`grader_version: v2`) before either arm
+  launches. Task, arm, and fixture files are frozen (already
+  vetted); do not modify them. The original `manifest.json` and run cards
+  are preserved in the completed study folder.
 - **Identical task except method**: both prompts contain `TASK_COMMON.md` +
   `fixtures/flaky_child.py` verbatim; prompts differ ONLY in the arm file and
   the scratch path.
@@ -123,15 +154,42 @@ metrics.
 
 ## Reading the results
 
-Per arm, `reports/` holds `run-card-arm-<arm>.json` (method, model, thinking,
-revision, `pi --version`, transcript/metrics/prompt/session-file SHA-256,
+The completed study is `reports/graph-restart-study/` (repository root):
+`report.json` is the authoritative consolidated record (assembled
+mechanically by `assemble_report.py`; no hand-transcribed measurements),
+with the benchmark timings under `benchmarks/` and the paired eval
+(transcripts, run cards, prompts, metrics, session logs, preserved v1 and
+v2 verification logs) under `evaluation/`.
+
+Per arm, a fresh run's untracked `reports/` holds `run-card-arm-<arm>.json`
+(method, model, thinking, revision, `pi --version`,
+transcript/metrics/prompt/session-file SHA-256, scrubbed worktree paths,
 prewarm timing, harness timing incl. timeout/cap flags), `metrics-arm-<arm>.json`
 (token totals, provider/model, stop reason, tool-call counts, wall seconds),
 `events-arm-<arm>.jsonl` (full raw stdout JSONL), `stderr-arm-<arm>.log`,
 `prompt-arm-<arm>.md`, `sessions-arm-<arm>/` (raw pi
 session logs), and `manifest.json` (model/thinking/tools/timeout/token-cap,
-revision, frozen input hashes, repo status). Compare correctness
+revision, `grader_version`, frozen input hashes, repo status). Compare correctness
 (hidden tests) against time/tokens.
+
+## Grading correction (v1 import-alias defect, corrected after the solves)
+
+The frozen v1 grader imported the eval-root `flaky_child` module while both
+agent solutions legally import `fixtures.flaky_child` from their scratch, so
+the v1 contract identity check (`is`) and the `QueryBuilder` process-type
+filter found zero children even though the wrappers behaved correctly. The
+corrected v2 grader (`grading/`, committed after the solves) validates the
+scratch `fixtures/flaky_child.py` SHA-256 against the frozen eval fixture,
+then pre-imports the canonical scratch `fixtures.flaky_child` module (aliased
+under both legal import names) before loading the solution. Acceptance
+semantics — output pk identity, retry cap of 5, fatal single-run stop,
+non-zero exit statuses — are unchanged, and no agent was rerun or fixed up:
+time/token metrics are identical to the original paired run. Original v1
+scoring is preserved unchanged (`initial_v1_hidden_tests`,
+`verification-{a,b}.json`, `verify-{a,b}.log`, and the `grader-v1/` snapshot
+in the study folder) and superseded as authoritative by the v2 verification
+(`verification-v2-{a,b}.json`, 4/4 each). Verify future arms with
+`grading/verify_arm.py`, run only AFTER both agents finish.
 
 ## Disclaimer
 
