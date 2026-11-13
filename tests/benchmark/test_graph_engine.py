@@ -22,8 +22,9 @@ Semantic overhead caveats (so benchmark deltas are read as workload-matched, not
 * Graph loop state rewinds through tasks, so every loop benchmark spends one ``decrement`` plus one ``is_positive``
   calcfunction task per iteration (plus one final ``is_positive`` check that exits the loop). The originals keep
   ``counter``/``iter`` in memory and run zero tasks per no-op step.
-* Each loop iteration dispatches one child graph node holding the iteration body, and each ``par_map`` collection
-  dispatches one collector calcfunction that creates the result container. Neither exists in the originals.
+* One ``GraphProcess`` executes the whole graph: nested graphs, loop iterations, branch arms, and map elements run
+  as scopes of that process with hierarchical call labels, never as child graph nodes. Each ``par_map`` collection
+  still dispatches one collector calcfunction that creates the result container, which has no original counterpart.
 * ``threaded-calcjob-loop`` is statically unrolled to exactly four placements (see ``graph_programs``); requesting any
   other iteration count raises ``ValueError`` on the graph side only.
 * Calcjob placements on the graph side require per-placement ``metadata.options`` (``resources``/``withmpi``) under
@@ -73,24 +74,24 @@ _DYNAMIC_WORKLOADS = ('basic-loop', 'serial-wc-loop', 'threaded-wc-loop', 'seria
 _CALCJOB_WORKLOADS = ('serial-calcjob-loop', 'threaded-calcjob-loop')
 _ALL_WORKLOADS = tuple(GRAPH_BENCHMARKS)
 
-# Expected descendant counts at ``BENCHMARK_SIZE`` on the graph side. Each loop
-# iteration dispatches one child graph holding the iteration body, and each loop
+# Expected descendant counts at ``BENCHMARK_SIZE`` on the graph side. One
+# ``GraphProcess`` runs everything, so there are no child graph nodes; every
+# task and collector is a direct child with a hierarchical call label. Each loop
 # benchmark spends one ``decrement`` plus one ``is_positive`` calcfunction per
 # iteration plus one final ``is_positive`` check, so:
-# basic-loop: 4 iteration bodies; 4 + 4 checks + 1 final = 9 calcfunctions.
-# serial-wc-loop: per iteration body + wc_step + one_loop + one_loop body = 4
-#   graph nodes (x4 = 16); per iteration 1 body check + one_loop (2 checks + 1
+# basic-loop: 4 + 4 checks + 1 final = 9 calcfunctions.
+# serial-wc-loop: per iteration 1 body check + one_loop (2 checks + 1
 #   decrement) + 1 wc_step decrement = 5 calcfunctions (x4 = 20) + 1 final = 21.
-# threaded-wc-loop: 4 one_loop children + 4 one_loop bodies = 8 graph nodes;
-#   4 x one_loop (2 checks + 1 decrement) = 12 + 1 par_map collector = 13.
-# serial-calcjob-loop: loop shape of basic-loop (4 bodies, 9 tasks) + 4 direct
+# threaded-wc-loop: 4 x one_loop (2 checks + 1 decrement) = 12 + 1 par_map
+#   collector = 13.
+# serial-calcjob-loop: loop shape of basic-loop (9 tasks) + 4 direct
 #   ArithmeticAddCalculation placements, one per calc_step.
 # threaded-calcjob-loop: 4 direct placements in a single step, no tasks at all.
 _EXPECTED_GRAPH: dict[str, dict[str, int]] = {
-    'basic-loop': {'graphs': 4, 'calcfunctions': 9, 'calcjobs': 0},
-    'serial-wc-loop': {'graphs': 16, 'calcfunctions': 21, 'calcjobs': 0},
-    'threaded-wc-loop': {'graphs': 8, 'calcfunctions': 13, 'calcjobs': 0},
-    'serial-calcjob-loop': {'graphs': 8, 'calcfunctions': 9, 'calcjobs': 4},
+    'basic-loop': {'graphs': 0, 'calcfunctions': 9, 'calcjobs': 0},
+    'serial-wc-loop': {'graphs': 0, 'calcfunctions': 21, 'calcjobs': 0},
+    'threaded-wc-loop': {'graphs': 0, 'calcfunctions': 13, 'calcjobs': 0},
+    'serial-calcjob-loop': {'graphs': 0, 'calcfunctions': 9, 'calcjobs': 4},
     'threaded-calcjob-loop': {'graphs': 0, 'calcfunctions': 0, 'calcjobs': 4},
 }
 
@@ -162,9 +163,9 @@ def test_correctness_matched(aiida_localhost, name) -> None:
 
     WorkChain side: finished ok, no outputs (the originals return nothing), the ``WORKCHAINS`` child counts
     (four child workflows or four calcjobs), and the exact ``sum == 3`` calcjob contract.
-    Graph side: finished ok, the documented workload outputs, one child graph per loop iteration where the
-    source loops, the exact ``sum == 3`` calcjob contract, a stored declaration identical to the lowered
-    template, and no CREATE link from any workflow node on either side.
+    Graph side: finished ok, the documented workload outputs, no child graph node anywhere (one
+    ``GraphProcess`` runs every scope), the exact ``sum == 3`` calcjob contract, a stored declaration
+    identical to the lowered template, and no CREATE link from any workflow node on either side.
     """
     from aiida.engine.processes.graphs.ir import GraphIR
 
@@ -211,14 +212,21 @@ def test_correctness_matched(aiida_localhost, name) -> None:
     assert len(descendants.get('CalcFunctionNode', [])) == expected['calcfunctions']
     assert len(descendants.get('CalcJobNode', [])) == expected['calcjobs']
     direct = _by_type(graph_node.called)
-    if name in ('basic-loop', 'serial-wc-loop', 'serial-calcjob-loop'):
-        # Four dispatched iteration bodies plus the final loop-exit condition check.
-        assert len(direct.get('GraphNode', [])) == 4
-        assert len(direct.get('CalcFunctionNode', [])) == 1
+    # One process runs every scope, so every task and collector is a direct child.
+    assert len(direct.get('GraphNode', [])) == 0
+    if name == 'basic-loop':
+        # The entry condition check plus four iterations of decrement and check.
+        assert len(direct.get('CalcFunctionNode', [])) == 9
+    elif name == 'serial-wc-loop':
+        # The entry check plus four iterations of body check, one_loop, and counter step.
+        assert len(direct.get('CalcFunctionNode', [])) == 21
+    elif name == 'serial-calcjob-loop':
+        # The entry check plus four iterations of calculation step and condition update.
+        assert len(direct.get('CalcFunctionNode', [])) == 9
+        assert len(direct.get('CalcJobNode', [])) == 4
     elif name == 'threaded-wc-loop':
-        # One one_loop child per element plus the single result collector.
-        assert len(direct.get('GraphNode', [])) == 4
-        assert len(direct.get('CalcFunctionNode', [])) == 1
+        # One one_loop body per element plus the single result collector.
+        assert len(direct.get('CalcFunctionNode', [])) == 13
     elif name == 'threaded-calcjob-loop':
         assert len(direct.get('CalcJobNode', [])) == 4
     if name in _CALCJOB_WORKLOADS:

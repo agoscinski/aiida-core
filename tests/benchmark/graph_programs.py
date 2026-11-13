@@ -36,9 +36,9 @@ Semantic differences from the ``WorkChain`` originals:
   iteration (plus one final ``is_positive`` check that exits the loop). The
   originals keep ``counter``/``iter`` in memory and run zero tasks per no-op
   step.
-* Each loop iteration dispatches one child graph node holding the iteration
-  body, and each ``par_map`` collection dispatches one collector calcfunction
-  that creates the result container. Neither exists in the originals.
+* One ``GraphProcess`` runs every scope, so loop iterations and nested graphs run as scopes with
+  hierarchical call labels, never as child graph nodes. Each ``par_map`` collection still dispatches
+  one collector calcfunction that creates the result container, which has no original counterpart.
 * ``threaded-calcjob-loop`` is statically unrolled to exactly four placements
   because ``par_map`` only maps unary tasks and graphs while the calculation
   needs ``x``, ``y``, and ``code``. The benchmark is fixed at four; requesting
