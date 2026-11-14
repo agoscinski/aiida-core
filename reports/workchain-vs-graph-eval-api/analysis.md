@@ -81,3 +81,11 @@ Use the already-working project pre-commit hooks, or provision the intended lint
 There is a substantial **measured testing-time opportunity** and a smaller, plausible **discovery/context opportunity**. This run does not justify further broad graph-language or public-API redesign for performance: the authoring and inspection failures targeted by the last changes are gone from this attempt.
 
 For defensible claims about agent productivity, run multiple fresh matched pairs on the same revision and add tasks outside this bounded-loop recipe (for example declared-failure recovery and CalcJob orchestration). The new guide intentionally matches this workflow family; success here is evidence of discoverability for that pattern, not unseen-task generalization. Keep correctness, tests and provenance checks fixed, and report cache-sensitive estimated cost separately from elapsed time.
+
+## Added workflow resource measurements
+
+A subsequent isolated execution experiment runs each finished implementation on the same 13 cases, three times per case. All 78 executions succeed with checked results and provenance. Maximum observed workflow-window RSS is **118.17 MiB for WorkChain** and **120.39 MiB for graph**; median per-run peaks are 116.79 and 118.71 MiB respectively. These absolute Linux resident-set peaks include the Python/AiiDA baseline and child calculations, not the coding agents. The roughly 2 MiB difference on these tiny workloads does not establish a general memory-scaling result or justify a broad redesign.
+
+L1/L2/L3 hardware counters are **unavailable** because this host's perf security policy rejects access (`kernel.perf_event_paranoid=4`). Their fields are null, not zero; no cache miss/hit behavior can be concluded from these runs. Static cache capacities are not substituted for measured usage. The profiler can attempt supported access/miss counters on a permitted host, with its wider full-process counter scope explicitly documented.
+
+See [runtime-resources/README.md](runtime-resources/README.md) for measurement boundaries, raw per-run data, verification and reproduction. The original authoring time/token/cost measurements remain unchanged.
