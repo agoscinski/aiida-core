@@ -38,6 +38,28 @@ Total tokens include repeated cached context. Cost is Pi's usage-based estimate,
 Solve time includes the agent's discovery, reasoning, edits and own tests, but not independent validation.
 All-tests counts differ because each agent wrote different additional tests; shared acceptance is identical.
 
+## Workflow execution memory and CPU caches
+
+New instrumented reruns executed all 13 shared cases three times per implementation, each in a fresh Python process
+and temporary SQLite profile. These are workflow execution measurements, not coding-agent resource measurements.
+
+| Implementation | Executions | Maximum observed RSS | Median per-run peak RSS | L1 data | L2 | L3/LLC |
+|---|---:|---:|---:|---|---|---|
+| WorkChain | 39 | 118.17 MiB | 116.79 MiB | Unavailable | Unavailable | Unavailable |
+| Graph | 39 | 120.39 MiB | 118.71 MiB | Unavailable | Unavailable | Unavailable |
+
+RSS is the Linux high-water mark during `run_get_node`, including the resident Python/AiiDA baseline and child tasks.
+Initialization and later validation are outside this window; process-wide peaks through completion are also recorded.
+All 78 executions finished successfully and verified their results, budgets and provenance. These small-workload maxima
+are observations, not memory limits or a statistically significant comparison.
+
+**L1/L2/L3 usage counters could not be collected:** this host blocks `perf` with `kernel.perf_event_paranoid=4`.
+Counter fields are null/unavailable, not zero. Hardware cache capacities are recorded separately and are not usage.
+See [resource results and boundaries](runtime-resources/README.md), [raw summary](runtime-resources/summary.json),
+[WorkChain resource JSON](workchain/execution-resources.json), and [graph resource JSON](graph/execution-resources.json).
+The reproducible profiler attempts supported accesses/misses counters automatically on a machine with perf permission.
+Original agent time, token and cost metrics remain unchanged.
+
 ## Conclusions
 
 The graph agent found the new skill and canonical recipe first, used the supported compact loop syntax,
@@ -75,6 +97,8 @@ Shared artifacts:
 - `audit.json`: session/event usage agreement, new-session separation and evaluator integrity checks.
 - `test-timing-probe/`: post-hoc timing commands, logs, JUnit XML and summary.
 - `run_eval.py`, `analyze.py`, `timing_probe.py`: reproducible runner and analysis/probe scripts.
+- `profile_execution.py`, `measure_resources.py`, `runtime-resources/`: workflow RSS and cache-counter profiling,
+  all per-execution data/logs, hardware permissions/capacities, source-integrity checks and profiler tests.
 - [methodology.md](methodology.md): isolation, measurement definitions and comparison limits.
 
 ## Reproduce
