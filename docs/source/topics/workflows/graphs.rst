@@ -34,16 +34,57 @@ For workflows that pass data from step to step, graphs have these advantages ove
 
 * **Less boilerplate:** inputs and outputs come from function signatures, so no ``define`` method, ``spec`` or outline is needed.
 * **No subclassing:** graphs are plain decorated functions; work chains require subclassing ``WorkChain``.
-* **Inspectable before launch:** the graph structure is a plain object that can be checked, drawn, and processed by tools, see :ref:`topics:workflows:graphs:inspecting`.
+* **Validate before launch:** AiiDA validates the whole graph before any task runs, see :ref:`topics:workflows:graphs:inspecting`.
 * **Early errors:** AiiDA checks the whole graph before any task runs, and each error names its source line. A work chain only fails at runtime, when it reaches the faulty step.
 * **Fast iteration:** edit the source and resubmit. Each submission carries its own copy of the graph structure and the task bodies, so the daemon needs no restart.
 * **Recorded structure:** the graph structure is stored as an input of the graph process, so the provenance shows what was planned as well as what ran.
 
+.. _topics:workflows:graphs:recipe:
+
+Authoring recipe
+----------------
+
+Start with the self-contained, tested recipe module ``tests/engine/processes/graphs/test_authoring_recipe.py`` and copy its workflow and collaborators into your own module.
+The ``programs/`` fixtures beside it also include historical edge cases and failure modes; use the recipe as the entry point rather than treating every fixture as recommended authoring style.
+The main graph comes first; its collaborators live in the same module:
+
+.. literalinclude:: ../../../../tests/engine/processes/graphs/test_authoring_recipe.py
+    :language: python
+    :start-after: # recipe-graph-start
+    :end-before: # recipe-graph-end
+
+The collaborators define the science (a ``calcfunction`` step, a ``WorkChain`` placing it, and a ``@task`` summary report).
+The module includes their imports and tests covering ascending, descending/negative, exhaustion, initially-converged, and zero-budget cases plus output provenance identity:
+
+.. literalinclude:: ../../../../tests/engine/processes/graphs/test_authoring_recipe.py
+    :language: python
+    :start-after: # recipe-collaborators-start
+    :end-before: # recipe-collaborators-end
+
+The ``@graph`` body only orchestrates: it wires names, literals, and inline expressions, keeps the step placement local to the ``while`` body, selects a status literal in the branch, and returns the existing summary node without new inline scalars.
+Graph inputs stay flat on the stored node, so ``root.inputs.initial`` reads the launch input while ``outputs['result']`` reads what tasks produced:
+
+.. code:: python
+
+    from aiida.engine import run_get_node
+
+    outputs, root = run_get_node(converge, initial=0, target=3, max_steps=10)
+    assert outputs['result'].get_dict() == {'value': 3, 'target': 3, 'attempts': 3, 'status': 'converged'}
+    assert root.inputs.initial.value == 0
+
+Validate first with ``assert workflow.build() is None``, which checks unsupported syntax, wiring, and static contracts without launching tasks.
+A passing ``build()`` does not catch pytest mistakes or runtime failures.
+Next select one representative case, then run the full suite to avoid repeating long traces:
+
+.. code:: console
+
+    uv run pytest tests/engine/processes/graphs/test_authoring_recipe.py -k ascending -x --tb=short
+    uv run pytest tests/engine/processes/graphs/test_authoring_recipe.py
+
 Graph language
 --------------
 
-AiiDA reads the source of a ``@graph`` function and builds an intermediate representation from it: a JSON-serializable graph of tasks, their typed ports, and the dependencies between them.
-The engine executes this intermediate representation.
+AiiDA reads the source of a ``@graph`` function and compiles it for the engine; the compiled representation stays an implementation detail user code never touches.
 
 .. important::
 
@@ -69,7 +110,7 @@ The graph body supports:
 
 Every call is assigned to a name, including calls to tasks without outputs; ``return`` and the tests of ``if`` and ``while`` also take inline expressions and calls directly.
 Each name is bound once; only ``if`` arms and ``while`` bodies rebind names bound before them.
-Any other construct raises a ``GraphLanguageError`` naming its source line when the intermediate representation is built.
+Any other construct raises a ``GraphLanguageError`` naming its source line when the graph is validated with ``build()``.
 For example, an inline comparison in an ``if`` condition just runs:
 
 .. code:: python
@@ -276,7 +317,7 @@ The launch value can be a mapping or a model instance.
 Tasks receive the namespace as an attribute-accessible mapping, so methods defined on the model are unavailable inside the task.
 Graphs pass whole namespaces or single fields on to tasks, either by naming the whole output or by spreading it with ``**``; the original input nodes are kept.
 Missing required inputs are reported together in one ``MissingRequiredInputsError``.
-Default factories run once, when the intermediate representation is built, and must return JSON values; each launch receives its own copy.
+Default factories run once, when the graph is validated, and must return JSON values; each launch receives its own copy.
 
 .. _topics:workflows:graphs:spreading:
 
@@ -544,7 +585,7 @@ member, optionally under ``not``) lower to ephemeral boolean control values wher
 they work in an ``if`` or ``while`` test, on either side of ``and``/``or``, as named wires such as
 ``present = value is not None``, and inside selections. Only these supported identity forms read as
 booleans; arbitrary ``x is y`` identities never run and fail when the graph is built.
-The intermediate representation holds both arms; at runtime, only the selected arm runs, as a scope of the same graph process.
+Both arms are compiled; at runtime, only the selected arm runs, as a scope of the same graph process.
 With an ``else``, both arms bind the same name to values of the same type:
 
 .. code:: python
@@ -735,57 +776,13 @@ Values a task computes but does not return leave no trace in the provenance grap
 
 .. _topics:workflows:graphs:inspecting:
 
-Inspecting the intermediate representation
-------------------------------------------
+Validating graphs and inspecting runs
+--------------------------------------
 
-``multiply_add.build()`` returns the intermediate representation without running any task.
-Errors in the graph source surface here, before launch.
-Call ``build()`` while developing a graph, or from a test, to catch rejected syntax, missing inputs, and contract mismatches without launching anything: it lowers the source exactly as a launch would.
-
-``to_dict()`` returns it as a JSON-serializable ``dict``, and ``GraphIR.from_dict`` reads it back.
-The ``payload`` of each task holds its pickled copy, see :ref:`topics:workflows:graphs:where_to_define`.
-
-.. dropdown:: JSON for ``multiply_add``, abridged
-
-    .. code:: json
-
-        {
-          "identifier": "my_module:multiply_add",
-          "tasks": [
-            {
-              "name": "multiply",
-              "kind": "process",
-              "spec": {"identifier": "multiply", "executor": {"module": "my_module", "name": "multiply", "payload": "..."}}
-            },
-            {
-              "name": "add",
-              "kind": "process",
-              "spec": {"identifier": "add", "executor": {"module": "my_module", "name": "add", "payload": "..."}}
-            }
-          ],
-          "dependencies": [{"source": "multiply", "target": "add", "source_port": "result", "target_port": "x"}],
-          "inputs": {"x": [["multiply", "x"]], "y": [["multiply", "y"]], "z": [["add", "y"]]},
-          "outputs": {"result": {"task": "add", "port": "result"}}
-        }
-
-:py:func:`~aiida.engine.processes.graphs.viz.to_mermaid` returns Mermaid flowchart source, which any Mermaid renderer draws, such as `mermaid.live <https://mermaid.live>`_.
-
-.. dropdown:: Mermaid source for ``multiply_add``
-
-    .. code:: text
-
-        flowchart TD
-            in__x{{x}}
-            in__x -->|x| multiply
-            in__y{{y}}
-            in__y -->|y| multiply
-            in__z{{z}}
-            in__z -->|y| add
-            multiply["multiply"]
-            add["add"]
-            multiply -->|result -> x| add
-            out__result[/result/]
-            add -->|result| out__result
+Call ``assert workflow.build() is None`` while developing a graph, or from a test, to catch unsupported syntax, bad wiring, and static contract mismatches without launching anything.
+``build()`` only validates the declaration; the representation it compiles is an implementation detail user code never touches.
+Then test one representative execution before running the full suite, as shown in :ref:`topics:workflows:graphs:recipe`; ordinary pytest mistakes and runtime failures are not caught by ``build()``.
+Inspect execution results through the launch outputs and the stored graph node: ``outputs['result']`` reads what tasks produced, while ``root.inputs.initial`` reads the flat workflow argument the run was launched with.
 
 Failures and restarts
 ---------------------
