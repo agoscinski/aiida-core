@@ -289,8 +289,24 @@ Scheduler options are given at launch under ``task_metadata``, keyed by placemen
 
     run_get_node(multiply_add_calc, x=2, y=3, z=4, code=code, task_metadata={'add_calc': {'options': {...}}})
 
-Every ``CalcJob`` placement needs an entry; a missing one fails the launch with a ``GraphValidationError`` naming the placement.
-Nested graphs receive the same ``task_metadata``, keyed by their inner placement names, so give placements with different options distinct names.
+Every ``CalcJob`` placement needs an entry; a missing one fails the launch with a ``GraphValidationError`` naming the placement and its hierarchical instance label.
+Resolution is backward compatible and prefers the most specific entry: an exact full label (``scf__pw_base__pw_calc``) wins, then the longest matching scope rule (``scf__*``), then the leaf placement name (``pw_calc``).
+A scope rule names one scope path with an explicit trailing ``__*`` and covers every ``CalcJob`` under it, including nested graphs, loop iterations, branch arms, retries (``_2`` suffixes), and map items; iteration numbers never need their own entries.
+Longer scope paths beat shorter ones, so ``outer__scf__*`` beats ``outer__*``. Old leaf keys keep working: ``{'pw_calc': {...}}`` still applies everywhere no exact or scope entry covers.
+Any other ``*`` in a key fails the launch, so ``scf*`` or ``scf_*`` never silently match; write the exact label or one explicit ``<scope>__*`` rule instead. There is no per-iteration metadata: loops reuse their scope rule on every pass.
+
+.. code:: python
+
+    # Two scopes reuse one nested graph holding a single `pw_calc` placement:
+    run_get_node(top, x=2, y=3, code=code, task_metadata={
+        'scf__pw_base__pw_calc': {'options': {'max_wallclock_seconds': 3600}},
+        'nscf__pw_base__pw_calc': {'options': {'max_wallclock_seconds': 7200}},
+    })
+    # ... or one rule per reusable scope, covering inner tasks, loops, and retries:
+    run_get_node(top, x=2, y=3, code=code, task_metadata={
+        'scf__*': {'options': {'max_wallclock_seconds': 3600}},
+        'nscf__*': {'options': {'max_wallclock_seconds': 7200}},
+    })
 Standard ``metadata`` such as ``label`` applies to the graph process itself.
 
 Static optional inputs, such as a restart folder, need no declaration: wire `None`

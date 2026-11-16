@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import re
 import typing as t
 from collections.abc import Callable, Mapping
 from types import UnionType
@@ -568,22 +569,92 @@ def _needs_metadata(task: t.Any) -> t.TypeGuard[ProcessTask]:
     return issubclass(task.spec.process_class, CalcJob)
 
 
-def _merge_task_metadata(
-    task: ProcessTask, provided: Mapping[str, t.Any], inputs: dict[str, t.Any]
-) -> dict[str, t.Any]:
-    """Merge the stashed per-placement `CalcJob` metadata, failing loudly when absent."""
+_SCOPE_SUFFIX = '__*'
+_ITERATION_RE = re.compile(r'_iteration_\d+')
+
+
+def _normalize_scope_label(label: str) -> str:
+    """Strip loop iteration suffixes so one scope key covers every pass."""
+    return _ITERATION_RE.sub('', label)
+
+
+def _scope_matches(instance: str, scope_path: str) -> bool:
+    """Return whether a hierarchical instance label runs under a scope path."""
+    normalized_instance = _normalize_scope_label(instance)
+    normalized_scope = _normalize_scope_label(scope_path)
+    if not normalized_scope:
+        return False
+    return normalized_instance == normalized_scope or normalized_instance.startswith(f'{normalized_scope}__')
+
+
+def _resolve_task_metadata(task: ProcessTask, provided: Mapping[str, t.Any], *, instance: str) -> dict[str, t.Any]:
+    """Return the metadata mapping for one dispatched instance, documenting the precedence.
+
+    Exact full labels (``scf__pw_calc``) win, then the longest matching scope rule
+    (``scf__*`` covers every placement under ``scf``, including loop iterations and
+    retries), then the leaf placement name (``pw_calc``) for backward compatibility.
+    Only a trailing ``__*`` marks a scope rule; any other ``*`` fails loudly.
+    """
+    for key in provided:
+        if '*' in key and not key.endswith(_SCOPE_SUFFIX):
+            msg = (
+                f'task_metadata key `{key}` is not an exact label or a `<scope>{_SCOPE_SUFFIX}` rule; '
+                f'use the full instance label or a trailing `{_SCOPE_SUFFIX}` scope key instead.'
+            )
+            raise GraphValidationError(msg)
+        if key.endswith(_SCOPE_SUFFIX) and ('*' in key[:-3] or not key[:-3]):
+            msg = (
+                f'task_metadata key `{key}` is not an exact label or a `<scope>{_SCOPE_SUFFIX}` rule; '
+                f'use the full instance label or a trailing `{_SCOPE_SUFFIX}` scope key instead.'
+            )
+            raise GraphValidationError(msg)
+    if instance in provided:
+        metadata = provided[instance]
+        if not isinstance(metadata, Mapping):
+            msg = f'task `{instance}` metadata must be a mapping of metadata inputs, not `{type(metadata)}`.'
+            raise GraphValidationError(msg)
+        return dict(metadata)
+    best: str | None = None
+    for key in provided:
+        if not key.endswith(_SCOPE_SUFFIX):
+            continue
+        scope_path = key[:-3]
+        if _scope_matches(instance, scope_path) and (best is None or len(scope_path) > len(best)):
+            best = scope_path
+    if best is not None:
+        metadata = provided[f'{best}{_SCOPE_SUFFIX}']
+        if not isinstance(metadata, Mapping):
+            msg = f'task `{instance}` metadata must be a mapping of metadata inputs, not `{type(metadata)}`.'
+            raise GraphValidationError(msg)
+        return dict(metadata)
+    if task.name in provided:
+        metadata = provided[task.name]
+        if not isinstance(metadata, Mapping):
+            msg = f'task `{task.name}` metadata must be a mapping of metadata inputs, not `{type(metadata)}`.'
+            raise GraphValidationError(msg)
+        return dict(metadata)
     placement = task.name
-    try:
-        metadata = provided[placement]
-    except KeyError:
+    if instance == placement:
         msg = (
             f'task `{placement}` is a `CalcJob` and needs launch metadata; '
             f"pass it keyed by placement name, e.g. `task_metadata={{'{placement}': {{...}}}}`."
         )
-        raise GraphValidationError(msg) from None
-    if not isinstance(metadata, Mapping):
-        msg = f'task `{placement}` metadata must be a mapping of metadata inputs, not `{type(metadata)}`.'
         raise GraphValidationError(msg)
+    msg = (
+        f'task `{placement}` (instance `{instance}`) is a `CalcJob` and needs launch metadata; '
+        f"pass it keyed by placement name, e.g. `task_metadata={{'{placement}': {{...}}}}`, "
+        f"by exact instance label `task_metadata={{'{instance}': {{...}}}}`, "
+        f'or by scope rule `<scope>__*`.'
+    )
+    raise GraphValidationError(msg)
+
+
+def _merge_task_metadata(
+    task: ProcessTask, provided: Mapping[str, t.Any], inputs: dict[str, t.Any], *, instance: str | None = None
+) -> dict[str, t.Any]:
+    """Merge the stashed per-placement `CalcJob` metadata, failing loudly when absent."""
+    resolved_instance = instance if instance is not None else task.name
+    metadata = _resolve_task_metadata(task, provided, instance=resolved_instance)
     # The stash wins: graph-wired inputs never carry `metadata` (it is excluded from the
     # graph contract and popped at launch).
     return {**inputs, 'metadata': dict(metadata)}

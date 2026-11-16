@@ -223,7 +223,7 @@ class GraphProcess(Process):
             raise GraphTypeCheckError(msg)
         if _needs_metadata(start.task):
             stored = self._stored_task_metadata()
-            inputs = _merge_task_metadata(start.task, stored, inputs)
+            inputs = _merge_task_metadata(start.task, stored, inputs, instance=start.instance)
         metadata = {**inputs.get('metadata', {}), 'call_link_label': start.instance}
         node = self.submit(process_class, **{**inputs, 'metadata': metadata})
         assert node.pk is not None

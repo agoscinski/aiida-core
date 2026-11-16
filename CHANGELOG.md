@@ -115,6 +115,10 @@ Loading a node whose storage has not been migrated now raises `IncompatibleStora
 
 ### New features
 
+#### Scope-aware `CalcJob` metadata in graphs
+
+`task_metadata` now resolves against the hierarchical instance label (`scf__pw_base__pw_calc`), not just the leaf placement name. An exact full label wins, then the longest matching `<scope>__*` rule (covering nested graphs, loop iterations, branch arms, retries, and map items under that scope), then the leaf placement name, which keeps working exactly as before. Only a trailing `__*` marks a scope rule; any other `*` in a key fails loudly. No per-iteration metadata is introduced: loops reuse their scope rule on every pass.
+
 #### Parallel maps in source graphs
 
 `aiida.engine.par_map(task_or_graph, values)` maps a unary task or graph over an `orm.DataList` or the values of an `orm.DataDict` inside a `@graph` body.
