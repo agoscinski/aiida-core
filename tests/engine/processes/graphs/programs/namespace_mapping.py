@@ -6,11 +6,19 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Processes with nested dynamic input namespaces for specialization tests."""
+"""Lightweight dynamic-namespace processes for container-forwarding tests.
+
+The fixtures mirror calculation specs with open ports (such as ``pseudos`` mappings)
+without depending on plugin packages: `ItemCalcJob` declares a flat dynamic namespace,
+`NestedGather` exposes one under ``sub`` like a nested ``pw.pseudos`` mapping, and
+`ItemGather` is the runnable `WorkChain` behind both shapes. Expectations live in
+``tests/engine/processes/graphs/test_namespace_mapping.py``.
+"""
 
 from aiida.engine import WorkChain, calcfunction, task
+from aiida.engine.processes.calcjobs import CalcJob
 from aiida.engine.processes.graphs.lowering import graph
-from aiida.orm import Int
+from aiida.orm import DataDict, Int
 
 
 @calcfunction
@@ -57,7 +65,65 @@ class NestedGather(WorkChain):
         self.out('total', _scaled_sum(Int(subtotal), sub.factor, sub.offset))
 
 
+class ItemCalcJob(CalcJob):
+    """Declare a flat dynamic namespace without running; mirrors open calculation ports."""
+
+    @classmethod
+    def define(cls, spec) -> None:  # type: ignore[override]
+        super().define(spec)
+        spec.input_namespace('members', valid_type=Int, dynamic=True, required=True)
+        spec.input('factor', valid_type=Int, required=True)
+        spec.output('total', valid_type=Int)
+
+
+flat_calc = task(ItemCalcJob, inputs={'members': DataDict})
+flat_gather = task(ItemGather, inputs={'members': DataDict})
+optional_gather = task(ItemGather, inputs={'members': DataDict, 'extras': DataDict})
+nested_gather = task(NestedGather, inputs={'sub': {'members': DataDict}})
+static_members = task(ItemGather, inputs={'members': {'a': Int}})
 static_nested_gather = task(NestedGather, inputs={'sub': {'members': {'a': Int}}})
+
+
+@task
+def make_bundle(count: int) -> DataDict:
+    """Build a `DataDict` of ``count`` members for forwarding tests."""
+    return DataDict({f'item_{index}': Int(index) for index in range(count)})
+
+
+@graph
+def forward_flat(items: DataDict, factor: int) -> int:
+    """Forward one `DataDict` wire into a dynamic namespace."""
+    total = flat_gather(members=items, factor=factor)
+    return total.total
+
+
+@graph
+def forward_optional(items: DataDict, extras: DataDict, factor: int) -> int:
+    """Forward two `DataDict` wires, one into an optional namespace."""
+    total = optional_gather(members=items, extras=extras, factor=factor)
+    return total.total
+
+
+@graph
+def forward_nested(items: DataDict, factor: int) -> int:
+    """Forward one `DataDict` wire into a nested dynamic namespace."""
+    total = nested_gather(sub={'members': items, 'factor': factor})
+    return total.total
+
+
+@graph
+def forward_chained(count: int, factor: int) -> int:
+    """Forward a task-produced `DataDict` into a dynamic namespace."""
+    bundle = make_bundle(count=count)
+    total = flat_gather(members=bundle, factor=factor)
+    return total.total
+
+
+@graph
+def forward_calc(items: DataDict, factor: int) -> int:
+    """Forward one `DataDict` wire into a calculation with open ports (build only)."""
+    total = flat_calc(members=items, factor=factor)
+    return total.total
 
 
 @graph

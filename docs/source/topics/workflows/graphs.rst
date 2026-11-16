@@ -324,6 +324,30 @@ A task fixes the names and node types inside such namespaces with ``inputs`` and
 Declarations only add names inside dynamic namespaces; names the class already declares are rejected.
 A task that finishes without one of its declared outputs counts as failed.
 
+.. _topics:workflows:graphs:namespace_forwarding:
+
+Where the members are only known at runtime, such as one file per structure kind, a task declares the whole namespace with a bare ``DataDict`` instead of naming entries.
+The graph wires one ``DataDict`` there, and dispatch expands its members into the namespace:
+
+.. code:: python
+
+    from aiida.orm import DataDict
+
+    files = task(ShellJob, inputs={'nodes': DataDict}, outputs={'stdout': SinglefileData})
+
+    @graph
+    def run_with_files(payload: DataDict, code: Code, arguments: list[str]) -> SinglefileData:
+        ran = files(code=code, arguments=arguments, nodes=payload)
+        return ran.stdout
+
+A bare ``DataDict``, or a one-tuple of it, marks a dynamic namespace as container-forwarded; anywhere else a ``DataDict`` keeps its plain node-typed meaning.
+The marker is allowed only where the process spec holds a dynamic namespace: unknown paths, static namespaces, and already declared ports fail when the task is built.
+Nested namespaces forward the same way, such as ``inputs={'sub': {'members': DataDict}}`` for an exposed mapping.
+The ``DataDict`` may itself come from a task, so a producer can build the container the consumer forwards.
+Dispatch checks every member against the namespace's accepted types, and a missing wire, an empty wire on a required namespace, or a wrong-typed member fails before the child dispatches.
+An empty wire on a non-required namespace leaves the input unwired instead.
+Static entries still wire node by node beside forwarding, and declared outputs keep their usual contract.
+
 .. _topics:workflows:graphs:structured_inputs:
 
 Structured inputs

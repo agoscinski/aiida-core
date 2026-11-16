@@ -1270,6 +1270,8 @@ class GraphRun:
                     # An absent arm on an optional input means the input is unwired.
                     continue
                 _place(inputs, target, value)
+        if isinstance(task, ProcessTask) and task.spec.forwarded:
+            inputs = task.spec.expand_forwarded(inputs)
         return inputs
 
     def _placement_value(self, scope_key: str, name: str, path: str) -> t.Any:
