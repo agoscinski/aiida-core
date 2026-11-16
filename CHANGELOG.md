@@ -113,7 +113,15 @@ Stored nodes are migrated automatically: `verdi storage migrate` rewrites `data.
 The migration invalidates the hashes of the migrated nodes, so run `verdi node rehash` afterwards if you rely on caching.
 Loading a node whose storage has not been migrated now raises `IncompatibleStorageSchema` instead of silently falling back to the `Data` class.
 
+#### Structured `task_metadata` in graphs
+
+`task_metadata` is now a strict nested mapping that mirrors the graph's call structure: each `CalcJob` placement takes its normal metadata mapping under its authored placement name, and placements inside a nested graph nest under the subgraph placement name (for example `{'scf': {'pw_base': {'pw_calc': {...}}}}`). Flat leaf keys no longer reach into nested scopes, and the exact hierarchical `__`-joined labels and trailing `__*` scope rules are no longer accepted. Branch arms, loop bodies, and map bodies are transparent to this addressing, and one entry covers every loop iteration. Calling the same `CalcJob` task twice in one graph now needs two module-level task names (for example `first_add` and `second_add`) so each placement keeps a stable address instead of a generated numeric suffix. A missing entry, an unknown path, or a non-mapping entry fails the launch with a `GraphValidationError` naming the offending path.
+
 ### New features
+
+#### Structured `CalcJob` metadata in graphs
+
+`task_metadata` mirrors the graph's call structure: one nested entry per `CalcJob` placement, keyed by authored placement names, with the normal `CalcJob` metadata mapping at each leaf. Entries for placements inside a nested graph nest under the subgraph placement name, so two scopes reusing one nested graph take different options (`{'scf': {'pw_base': {'pw_calc': {...}}}}`). Branch arms, loop bodies, and map bodies add no nesting level, and a single entry covers every loop iteration. The launch validates the mapping against the graph before execution and rejects missing entries, unknown paths, and non-mapping entries with the offending path.
 
 #### Parallel maps in source graphs
 

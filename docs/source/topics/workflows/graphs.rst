@@ -283,14 +283,43 @@ Calls to a ``CalcJob`` task inside a graph pass all inputs except ``metadata``:
         total = add_calc(x=product, y=z, code=code)
         return total.sum
 
-Scheduler options are given at launch under ``task_metadata``, keyed by placement name:
+Scheduler options are given at launch under ``task_metadata``: a nested mapping that mirrors the graph's call structure, keyed by authored placement names with one entry per ``CalcJob`` placement holding the normal ``CalcJob`` metadata mapping:
 
 .. code:: python
 
     run_get_node(multiply_add_calc, x=2, y=3, z=4, code=code, task_metadata={'add_calc': {'options': {...}}})
 
-Every ``CalcJob`` placement needs an entry; a missing one fails the launch with a ``GraphValidationError`` naming the placement.
-Nested graphs receive the same ``task_metadata``, keyed by their inner placement names, so give placements with different options distinct names.
+Placements inside a nested graph nest under the subgraph placement name, so two scopes reusing one nested graph holding a single ``pw_calc`` placement take different options:
+
+.. code:: python
+
+    # `top` calls `scf` and `nscf`; each calls `pw_base`, which calls `pw_calc`:
+    run_get_node(top, x=2, y=3, code=code, task_metadata={
+        'scf': {'pw_base': {'pw_calc': {'options': scf_options}}},
+        'nscf': {'pw_base': {'pw_calc': {'options': nscf_options}}},
+    })
+
+Branch arms, loop bodies, and map bodies are transparent: a placement inside them is keyed as if it sat directly in the enclosing graph, and one entry covers every loop iteration.
+Calling the same ``CalcJob`` task twice in one graph needs two module-level names so each placement has a stable address; generated numeric suffixes are not addressable:
+
+.. code:: python
+
+    first_add = task(ArithmeticAddCalculation)
+    second_add = task(ArithmeticAddCalculation)
+
+    @graph
+    def add_twice(x: int, y: int, code: Code) -> int:
+        first = first_add(x=x, y=y, code=code)
+        second = second_add(x=first.sum, y=y, code=code)
+        return second.sum
+
+    run_get_node(add_twice, x=2, y=3, code=code, task_metadata={
+        'first_add': {'options': {...}},
+        'second_add': {'options': {...}},
+    })
+
+Every ``CalcJob`` placement needs an entry; a missing entry, an unknown path, or a non-mapping entry fails the launch with a ``GraphValidationError`` naming the offending path. There are no wildcards, no scope defaults, and no precedence between entries: each placement is addressed by exactly one nested path. Flat leaf keys do not reach into nested scopes.
+Provenance labels are unchanged: children still carry their hierarchical call labels (``scf__pw_base__pw_calc``), and configuration addressing stays separate from that formatting.
 Standard ``metadata`` such as ``label`` applies to the graph process itself.
 
 Static optional inputs, such as a restart folder, need no declaration: wire `None`

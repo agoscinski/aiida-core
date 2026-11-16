@@ -213,6 +213,7 @@ class _Start:
     instance: str
     task: GraphTask
     inputs: dict[str, t.Any]
+    metadata_path: tuple[str, ...] = ()
 
 
 def _drops_none(task: GraphTask, path: str) -> bool:
@@ -227,9 +228,17 @@ class _Step:
 
     starts: list[_Start] = field(default_factory=list)
 
-    def begin(self, instance: str, task: GraphTask, inputs: dict[str, t.Any]) -> None:
-        """Record the dispatch of one task instance within this step."""
-        self.starts.append(_Start(instance=instance, task=task, inputs=inputs))
+    def begin(
+        self, instance: str, task: GraphTask, inputs: dict[str, t.Any], *, metadata_path: tuple[str, ...] = ()
+    ) -> None:
+        """Record the dispatch of one task instance within this step.
+
+        :param metadata_path: the structural config path: enclosing `subgraph` placement
+            names plus the dispatched placement name as the leaf. Control scopes
+            (branch, loop, map) contribute no segment, so iterations and static branches
+            share their placement's configuration.
+        """
+        self.starts.append(_Start(instance=instance, task=task, inputs=inputs, metadata_path=metadata_path))
 
 
 @dataclass(frozen=True)
@@ -1004,8 +1013,25 @@ class GraphRun:
         else:
             label = self._claim(scope['prefix'] + name)
             scope.setdefault('instances', {}).setdefault(name, []).append(label)
-            step.begin(label, task, inputs)
+            step.begin(label, task, inputs, metadata_path=self._metadata_path(scope_key, name))
         self._invalidate()
+
+    def _metadata_path(self, scope_key: str, leaf: str) -> tuple[str, ...]:
+        """Return the structural config path of one placement: enclosing `subgraph` names plus the leaf.
+
+        The path derives from scope lineage (`parent` / `kind` / `placement`), never from
+        provenance labels: branch, loop, and map scopes are transparent, so static branches
+        share one config and iterations reuse their placement's. Checkpointed lineage
+        rebuilds identical paths after a restart without new persisted state.
+        """
+        segments = [leaf]
+        key: str | None = scope_key
+        while key is not None and key != _ROOT_SCOPE:
+            scope = self.scopes[key]
+            if scope.get('kind') == 'subgraph':
+                segments.append(scope.get('placement', ''))
+            key = scope.get('parent')
+        return tuple(reversed(segments))
 
     def _run_inline(self, scope_key: str, task: InlineOperation) -> None:
         """Evaluate one inline operation synchronously inside the scheduling fixed point.
@@ -1152,7 +1178,12 @@ class GraphRun:
             if task.spec is not None:
                 label = self._claim(scope['prefix'] + base)
                 scope.setdefault('instances', {}).setdefault(task.name, []).append(label)
-                step.begin(label, ProcessTask(name=label, inputs={}, spec=task.spec), item_inputs)
+                step.begin(
+                    label,
+                    ProcessTask(name=label, inputs={}, spec=task.spec),
+                    item_inputs,
+                    metadata_path=self._metadata_path(scope_key, task.name),
+                )
             else:
                 assert task.body is not None
                 child = self._new_scope(
@@ -1195,7 +1226,7 @@ class GraphRun:
             collected['keys'] = keys
         collect = self._collect_label(scope_key, task.name)
         scope.setdefault('instances', {}).setdefault(task.name, []).append(collect)
-        step.begin(collect, task, collected)
+        step.begin(collect, task, collected, metadata_path=self._metadata_path(scope_key, task.name))
         self._invalidate()
 
     def _continue_map(self, scope_key: str, task: MapControl, step: _Step) -> None:

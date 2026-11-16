@@ -1861,6 +1861,78 @@ def _claim_name(state: _LoweringState, name: str) -> str:
     return instance
 
 
+def _template_has_calcjob(template: GraphIR, seen: set[int] | None = None) -> bool:
+    """Return whether a lowered template transitively dispatches a `CalcJob`.
+
+    Structured `task_metadata` descends by placement name, so only callables
+    reaching a `CalcJob` need distinct aliases per scope. Pure task functions,
+    `WorkChain` tasks, and pure nested graphs keep numeric suffixes.
+    """
+    current = seen if seen is not None else set()
+    if id(template) in current:
+        return False
+    current.add(id(template))
+    for placed in template.tasks:
+        if isinstance(placed, ProcessTask):
+            if issubclass(placed.spec.process_class, CalcJob):
+                return True
+        elif isinstance(placed, SubgraphTask):
+            if _template_has_calcjob(placed.body, current):
+                return True
+        elif isinstance(placed, BranchControl):
+            if _template_has_calcjob(placed.body, current) or _template_has_calcjob(placed.otherwise, current):
+                return True
+        elif isinstance(placed, LoopControl):
+            if _template_has_calcjob(placed.body, current):
+                return True
+        elif isinstance(placed, MapControl):
+            if placed.spec is not None and issubclass(placed.spec.process_class, CalcJob):
+                return True
+            if placed.body is not None and _template_has_calcjob(placed.body, current):
+                return True
+    return False
+
+
+def _callee_needs_metadata(
+    target: FunctionTaskHandle[t.Any, t.Any] | CalcJobTaskHandle | WorkChainTaskHandle | GraphHandle,
+) -> bool:
+    """Return whether a call target transitively needs structured `task_metadata`."""
+    if isinstance(target, CalcJobTaskHandle):
+        return True
+    if isinstance(target, GraphHandle):
+        return _template_has_calcjob(compile_graph(target))
+    return False
+
+
+def _reject_duplicate_metadata_alias(
+    state: _LoweringState,
+    node: ast.AST,
+    name: str,
+    target: FunctionTaskHandle[t.Any, t.Any] | CalcJobTaskHandle | WorkChainTaskHandle | GraphHandle,
+) -> None:
+    """Reject a repeated metadata-bearing alias in the same authored scope.
+
+    The check reads the exact source placement-state counter (`state.used`): one
+    claim per alias per `_LoweringState`. Branch arms and loop bodies lower in
+    their own child state, so the same alias across those scopes stays allowed
+    and shares one configuration (control frames are transparent). Only a second
+    claim of the same alias in the same state rejects, and only when the callee
+    transitively dispatches a `CalcJob`. Provenance naming (`_claim_name`
+    suffixes) is unchanged; callers disambiguate with distinct Python aliases.
+    """
+    if state.used.get(name, 0) == 0:
+        return
+    if not _callee_needs_metadata(target):
+        return
+    msg = (
+        f'task `{name}` is called twice in the same scope and carries `CalcJob` metadata; '
+        + 'structured `task_metadata` descends by placement name and cannot tell repeated calls apart; '
+        + f'bind the declaration to distinct Python aliases (e.g. `{name}_a = {name}` and '
+        + f'`{name}_b = {name}`) and call each alias once instead'
+    )
+    _reject(state, node=node, reason=msg)
+
+
 def _probe_shape(state: _LoweringState, expression: ast.expr) -> Shape | None:
     """Return the static contract of a generic-call argument without placing anything."""
     if isinstance(expression, ast.Name):
@@ -1996,6 +2068,7 @@ def _lower_par_map(state: _LoweringState, expression: ast.Call) -> _Reference:
     _check_par_map_callable(state, node=func_expr, label=call_name, spec=mapped_spec, body=mapped_body)
     collection = _lower_value(state, collection_expr)
     container = _check_par_map_collection(state, node=collection_expr, value=collection)
+    _reject_duplicate_metadata_alias(state, expression, f'map_{call_name}', target)
     instance = _claim_name(state, f'map_{call_name}')
     given: dict[str, _CapturedValue] = {}
     _wire(state, instance=instance, port='collection', value=collection, given=given)
@@ -2290,6 +2363,7 @@ def _lower_call(state: _LoweringState, expression: ast.expr) -> _Reference:
     target: FunctionTaskHandle[t.Any, t.Any] | CalcJobTaskHandle | WorkChainTaskHandle | GraphHandle = (
         _registered_target(state, expression=expression, name=name)
     )
+    _reject_duplicate_metadata_alias(state, expression, name, target)
     instance: str = _claim_name(state, name=name)
     if isinstance(target, GraphHandle):
         body: GraphIR = _lower_graph(target, stack=state.stack)

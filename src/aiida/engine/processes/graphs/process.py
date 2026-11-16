@@ -21,6 +21,7 @@ from aiida.common.processes import ProcessState
 from aiida.engine.processes.exit_code import ExitCode
 from aiida.engine.processes.graphs.inputs import _at, _prepare_graph_inputs
 from aiida.engine.processes.graphs.ir import GraphIR, InlineOperation, MapControl, ProcessTask, _input_ports_at
+from aiida.engine.processes.graphs.metadata import validate_task_metadata
 from aiida.engine.processes.graphs.par_map import _collect_dict, _collect_list
 from aiida.engine.processes.graphs.run import GraphRun, _GraphRunState, _Start
 from aiida.engine.processes.graphs.tasks import _merge_task_metadata, _needs_metadata
@@ -109,6 +110,7 @@ class GraphProcess(Process):
     @override
     def _create_and_setup_db_record(self) -> t.Any:
         graph = GraphIR.from_dict(self.inputs[self._GRAPH].get_dict())
+        validate_task_metadata(graph, self._stored_task_metadata())
         stored = _serialize_graph_inputs(graph, dict(self.inputs.get(self._GRAPH_INPUTS, {})))
         self._input_sources = AttributesFrozendict({**self._input_sources, self._GRAPH_INPUTS: stored})
         self._parsed_inputs = AttributesFrozendict(
@@ -123,6 +125,7 @@ class GraphProcess(Process):
     ) -> dict[str, t.Any]:
         """Fill graph arguments and stash per-placement `CalcJob` metadata."""
         prepared = _prepare_graph_inputs(body.build_input_namespace(), inputs, body.identifier)
+        validate_task_metadata(body, task_metadata)
         return {
             cls._GRAPH: Dict(dict=body.to_dict()),
             cls._GRAPH_INPUTS: prepared,
@@ -223,7 +226,7 @@ class GraphProcess(Process):
             raise GraphTypeCheckError(msg)
         if _needs_metadata(start.task):
             stored = self._stored_task_metadata()
-            inputs = _merge_task_metadata(start.task, stored, inputs)
+            inputs = _merge_task_metadata(start.task, stored, inputs, metadata_path=start.metadata_path)
         metadata = {**inputs.get('metadata', {}), 'call_link_label': start.instance}
         node = self.submit(process_class, **{**inputs, 'metadata': metadata})
         assert node.pk is not None

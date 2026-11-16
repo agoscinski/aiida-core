@@ -27,6 +27,7 @@ from aiida.engine.processes.exit_code import ExitCode, ExitCodeEnum
 from aiida.engine.processes.functions import FunctionProcessBase, P, ProcessFunctionType, process_function
 from aiida.engine.processes.generic.ports import UNSPECIFIED, Port
 from aiida.engine.processes.graphs.ir import TaskIR, TypevarPositions
+from aiida.engine.processes.graphs.metadata import resolve_metadata_path
 from aiida.engine.processes.graphs.results import Err, Ok, Result, _error_contract, _error_types, _result_contract
 from aiida.engine.processes.graphs.shapes import (
     LeafShape,
@@ -568,22 +569,32 @@ def _needs_metadata(task: t.Any) -> t.TypeGuard[ProcessTask]:
     return issubclass(task.spec.process_class, CalcJob)
 
 
-def _merge_task_metadata(
-    task: ProcessTask, provided: Mapping[str, t.Any], inputs: dict[str, t.Any]
+def _resolve_task_metadata(
+    task: ProcessTask, provided: Mapping[str, t.Any], *, metadata_path: tuple[str, ...]
 ) -> dict[str, t.Any]:
-    """Merge the stashed per-placement `CalcJob` metadata, failing loudly when absent."""
-    placement = task.name
+    """Return the metadata mapping stored under one structural path, unchanged.
+
+    :param task: the dispatched `CalcJob` placement, naming the leaf on failure.
+    :param provided: the launch `task_metadata` mapping.
+    :param metadata_path: the structural path: enclosing `subgraph` placement names plus
+        the `CalcJob` placement name as the leaf.
+    """
     try:
-        metadata = provided[placement]
-    except KeyError:
-        msg = (
-            f'task `{placement}` is a `CalcJob` and needs launch metadata; '
-            f"pass it keyed by placement name, e.g. `task_metadata={{'{placement}': {{...}}}}`."
-        )
-        raise GraphValidationError(msg) from None
-    if not isinstance(metadata, Mapping):
-        msg = f'task `{placement}` metadata must be a mapping of metadata inputs, not `{type(metadata)}`.'
-        raise GraphValidationError(msg)
+        return resolve_metadata_path(provided, metadata_path)
+    except GraphValidationError as exception:
+        if not metadata_path:
+            raise
+        placement = metadata_path[-1]
+        instance = '__'.join(metadata_path)
+        msg = f'{exception} (task `{placement}`, instance `{instance}`).'
+        raise GraphValidationError(msg) from exception
+
+
+def _merge_task_metadata(
+    task: ProcessTask, provided: Mapping[str, t.Any], inputs: dict[str, t.Any], *, metadata_path: tuple[str, ...]
+) -> dict[str, t.Any]:
+    """Merge the structured per-placement `CalcJob` metadata, failing loudly when absent."""
+    metadata = _resolve_task_metadata(task, provided, metadata_path=metadata_path)
     # The stash wins: graph-wired inputs never carry `metadata` (it is excluded from the
     # graph contract and popped at launch).
     return {**inputs, 'metadata': dict(metadata)}

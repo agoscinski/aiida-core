@@ -1148,7 +1148,9 @@ def test_calcjob_task_runs_straight_line_graph(aiida_code_installed) -> None:
 def test_nested_calcjob_graph_forwards_task_metadata(aiida_code_installed) -> None:
     """Stashed placement metadata reaches `CalcJob` tasks in nested graphs."""
     code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
-    outputs, node = run_get_node(calcjobs.add_nested, x=2, y=3, code=code, task_metadata={'add_calc': {'options': {}}})
+    outputs, node = run_get_node(
+        calcjobs.add_nested, x=2, y=3, code=code, task_metadata={'add_inner': {'add_calc': {'options': {}}}}
+    )
     assert node.is_finished_ok
     assert outputs['result'].value == 5
 
@@ -1162,13 +1164,13 @@ def test_calcjob_task_chains_values(aiida_code_installed) -> None:
         x=2,
         y=3,
         code=code,
-        task_metadata={'add_calc': {'options': {}}, 'add_calc_2': {'options': {}}},
+        task_metadata={'first_add': {'options': {}}, 'second_add': {'options': {}}},
     )
     assert node.is_finished_ok
     assert outputs['result'].value == 8
     assert {link.link_label for link in node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all()} == {
-        'add_calc_2',
-        'add_calc',
+        'second_add',
+        'first_add',
     }
 
 
@@ -1176,7 +1178,7 @@ def test_calcjob_task_chains_values(aiida_code_installed) -> None:
 def test_calcjob_task_missing_metadata_fails_loudly(aiida_code_installed) -> None:
     """A `CalcJob` placement without launch metadata names the placement."""
     code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
-    with pytest.raises(GraphValidationError, match='task `add_calc` is a `CalcJob` and needs launch metadata'):
+    with pytest.raises(GraphValidationError, match='add_calc'):
         run_get_node(calcjobs.add_single, x=2, y=3, code=code)
 
 
@@ -1320,7 +1322,7 @@ def test_merge_task_metadata_rejects_non_mapping() -> None:
 
     task = compile_graph(calcjobs.add_single).tasks[0]
     with pytest.raises(GraphValidationError, match='must be a mapping'):
-        _merge_task_metadata(task, {'add_calc': ['options']}, {'x': 1})
+        _merge_task_metadata(task, {'add_calc': ['options']}, {'x': 1}, metadata_path=('add_calc',))
 
 
 @pytest.mark.requires_broker

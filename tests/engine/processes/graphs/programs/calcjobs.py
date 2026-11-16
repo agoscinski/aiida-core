@@ -14,6 +14,9 @@ from aiida.orm import Code
 
 add_calc = task(ArithmeticAddCalculation)
 
+first_add = task(ArithmeticAddCalculation)
+second_add = task(ArithmeticAddCalculation)
+
 
 @graph
 def add_single(x: int, y: int, code: Code) -> int | float:
@@ -38,6 +41,6 @@ def add_inner(x: int, y: int, code: Code) -> int | float:
 @graph
 def add_twice(x: int, y: int, code: Code) -> int | float:
     """Add two numbers through two chained `CalcJob` placements."""
-    first = add_calc(x=x, y=y, code=code)
-    second = add_calc(x=first.sum, y=y, code=code)
+    first = first_add(x=x, y=y, code=code)
+    second = second_add(x=first.sum, y=y, code=code)
     return second.sum
