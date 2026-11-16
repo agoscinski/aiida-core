@@ -21,11 +21,11 @@ from dataclasses import dataclass, field
 from functools import cached_property
 
 from aiida.common import _callables as callables
-from aiida.common.exceptions import GraphTypeCheckError
+from aiida.common.exceptions import GraphTypeCheckError, GraphValidationError
 from aiida.common.lang import override
 from aiida.common.loaders import get_object_loader
 from aiida.engine.processes.exit_code import ExitCode
-from aiida.engine.processes.graphs.inputs import _port_for_shape, _shape_from_port
+from aiida.engine.processes.graphs.inputs import _at, _port_for_shape, _shape_from_port
 from aiida.engine.processes.graphs.operations import (
     BINARY_OPERATIONS,
     CONSTANT_PORT,
@@ -138,12 +138,16 @@ def _close_dynamic(
     path: str = '',
     *,
     narrow: bool = False,
+    forwarded: t.Collection[str] = (),
 ) -> PortNamespace:
     """Return a copy of ``ports`` whose dynamic namespaces hold exactly the declared fields.
 
     The class spec is shared by every placement, so declared ports go into a copy: a namespace
-    receiving new names becomes static, and every other port is kept as is. Solved generic
-    outputs narrow matching static leaves instead, when ``narrow`` holds.
+    receiving new names becomes static, and every other port is kept as is. A namespace whose
+    child closed into a static contract counts as declared too, so nested declarations fix
+    every enclosing parent. Solved generic outputs narrow matching static leaves instead,
+    when ``narrow`` holds. Paths in ``forwarded`` hold one `DataDict` wire that dispatch expands
+    into the dynamic namespace, so they close into a static `DataDict` leaf instead.
     """
     closed = PortNamespace(ports.name, help=ports.help, required=ports.required)
     for name, child in ports.items():
@@ -153,7 +157,20 @@ def _close_dynamic(
         location = f'{path}.{name}' if path else name
         existing = ports.get(name)
         if isinstance(existing, PortNamespace) and isinstance(shape, NamespaceShape):
-            closed[name] = _close_dynamic(existing, shape, port_class, location)
+            nested = _close_dynamic(existing, shape, port_class, location, forwarded=forwarded)
+            closed[name] = nested
+            if not nested.dynamic:
+                added = True
+            continue
+        if location in forwarded:
+            if not isinstance(existing, PortNamespace) or not existing.dynamic:
+                msg = f'`{location}` forwards a `DataDict` into a dynamic namespace; declare it there.'
+                raise GraphTypeCheckError(msg)
+            if not isinstance(shape, LeafShape) or tuple(shape.types or ()) != (DataDict,):
+                msg = f'`{location}` forwards bare `DataDict`; declare static entries with node types instead.'
+                raise GraphTypeCheckError(msg)
+            closed[name] = port_class(name, valid_type=(DataDict,), required=existing.required, help=existing.help)
+            added = True
             continue
         if existing is not None:
             narrowed = _narrowed_port(existing, shape) if narrow else None
@@ -182,11 +199,13 @@ def _close_dynamic(
     return closed
 
 
-def _static_inputs(process_class: type[Process], declared: NamespaceShape) -> PortNamespace:
+def _static_inputs(
+    process_class: type[Process], declared: NamespaceShape, *, forwarded: t.Collection[str] = ()
+) -> PortNamespace:
     """Return the fixed input ports of a task process, rejecting dynamic namespaces."""
     ports = process_class.spec().inputs
     if declared.fields:
-        ports = _close_dynamic(ports, declared, InputPort)
+        ports = _close_dynamic(ports, declared, InputPort, forwarded=forwarded)
     _reject_dynamic_inputs(ports)
     return ports
 
@@ -198,6 +217,81 @@ def _static_outputs(process_class: type[Process], declared: NamespaceShape) -> P
         ports = _close_dynamic(ports, declared, OutputPort, narrow=True)
     _reject_dynamic_outputs(ports)
     return ports
+
+
+def _forwarded_paths(process_class: type[Process], declared: NamespaceShape) -> tuple[str, ...]:
+    """Return the dotted input paths a `DataDict` wire expands into a dynamic namespace.
+
+    A bare `DataDict` (or a one-tuple of it) declared where the spec holds a dynamic
+    namespace marks that namespace as container-forwarded: the graph wires one `DataDict`
+    there, and dispatch expands its members into the namespace. A `DataDict` leaf anywhere
+    else keeps its plain node-typed meaning, so static leaves still wire nodes directly.
+    """
+    live = process_class.spec().inputs
+    found: list[str] = []
+
+    def visit(shape: NamespaceShape, prefix: str) -> None:
+        for name, child in shape.fields:
+            location = f'{prefix}.{name}' if prefix else name
+            if isinstance(child, NamespaceShape):
+                visit(child, location)
+                continue
+            if tuple(child.types or ()) != (DataDict,):
+                continue
+            target = _port_at(live, location)
+            if isinstance(target, PortNamespace) and target.dynamic:
+                found.append(location)
+                continue
+            if target is None:
+                reason = 'it names no process input; check the spelling instead'
+            elif isinstance(target, PortNamespace):
+                reason = 'it is a static namespace; wire its ports one by one instead'
+            else:
+                reason = 'it is an already declared port; wire the node directly instead'
+            msg = f'forwarded input `{location}` declares bare `DataDict`, but {reason}.'
+            raise GraphTypeCheckError(msg)
+
+    visit(declared, '')
+    return tuple(found)
+
+
+def _copied_parent(container: dict[str, t.Any], path: str) -> dict[str, t.Any]:
+    """Return the nested mapping holding ``path``'s leaf, copying each level instead of mutating shared inputs."""
+    *levels, _leaf = path.split('.')
+    target = container
+    for level in levels:
+        child = target.get(level)
+        if child is None:
+            child = {}
+            target[level] = child
+        elif not isinstance(child, dict):
+            msg = f'`{path}` puts an input inside a value rather than a namespace; rename one of them instead.'
+            raise GraphValidationError(msg)
+        else:
+            child = dict(child)
+            target[level] = child
+        target = child
+    return target
+
+
+def _drop_leaf(container: dict[str, t.Any], path: str) -> None:
+    """Remove ``path``'s leaf from nested mappings, copying each level instead of mutating shared inputs.
+
+    Absent parents stay absent: dropping a missing optional wire must not wire an empty namespace.
+    """
+    *levels, leaf = path.split('.')
+    target = container
+    for level in levels:
+        child = target.get(level)
+        if child is None:
+            return
+        if not isinstance(child, dict):
+            msg = f'`{path}` puts an input inside a value rather than a namespace; rename one of them instead.'
+            raise GraphValidationError(msg)
+        child = dict(child)
+        target[level] = child
+        target = child
+    target.pop(leaf, None)
 
 
 def _input_ports_at(task: GraphTask, path: str) -> list[t.Any]:
@@ -269,7 +363,10 @@ class TaskIR:
     """A task's executor and its static input/output contracts.
 
     ``declared_inputs`` and ``declared_outputs`` fix the names and types inside dynamic
-    namespaces of the process spec, so the task contract stays static.
+    namespaces of the process spec, so the task contract stays static. ``forwarded`` names
+    the dotted input paths where a bare `DataDict` declaration marks a dynamic namespace
+    as container-forwarded: the graph wires one `DataDict` there, and dispatch expands its
+    members into the namespace (see :meth:`expand_forwarded`).
     ``typevar_inputs`` and ``typevar_output`` serve lowering only: solved types land in
     ``declared_outputs``, so neither is serialized nor compared.
     """
@@ -278,6 +375,7 @@ class TaskIR:
     executor: ExecutorReference
     declared_inputs: NamespaceShape = field(default_factory=NamespaceShape)
     declared_outputs: NamespaceShape = field(default_factory=NamespaceShape)
+    forwarded: tuple[str, ...] = field(default_factory=tuple)
     typevar_inputs: TypevarPositions = field(default_factory=dict, compare=False)
     typevar_output: t.Any = field(default=None, compare=False)
     exit_codes: dict[str, ExitCode] = field(default_factory=dict)
@@ -286,6 +384,7 @@ class TaskIR:
 
     def __post_init__(self) -> None:
         """Normalize containers so copies compare equal on this frozen dataclass."""
+        object.__setattr__(self, 'forwarded', tuple(self.forwarded))
         object.__setattr__(self, 'exit_codes', dict(self.exit_codes))
         object.__setattr__(self, 'error_enums', tuple(self.error_enums))
 
@@ -318,8 +417,10 @@ class TaskIR:
         inputs: NamespaceShape = declared_inputs or NamespaceShape()
         outputs: NamespaceShape = declared_outputs or NamespaceShape()
         payload: str | None = None
+        forwarded: tuple[str, ...] = ()
         if process_class is not None:
-            _static_inputs(process_class, inputs)
+            forwarded = _forwarded_paths(process_class, inputs)
+            _static_inputs(process_class, inputs, forwarded=forwarded)
             _static_outputs(process_class, outputs)
             import cloudpickle
 
@@ -338,6 +439,7 @@ class TaskIR:
             executor=ExecutorReference(module, name, payload),
             declared_inputs=inputs,
             declared_outputs=outputs,
+            forwarded=forwarded,
             typevar_inputs=typevar_inputs or {},
             typevar_output=typevar_output,
             exit_codes=dict(exit_codes or {}),
@@ -352,7 +454,69 @@ class TaskIR:
     @property
     def inputs(self) -> PortNamespace:
         """Return the fixed input ports of the task process."""
-        return _static_inputs(self.process_class, self.declared_inputs)
+        return _static_inputs(self.process_class, self.declared_inputs, forwarded=self.forwarded)
+
+    def expand_forwarded(self, inputs: Mapping[str, t.Any]) -> dict[str, t.Any]:
+        """Expand forwarded `DataDict` wires into their dynamic namespaces.
+
+        Each forwarded path holds one `DataDict` whose members become the entries of the
+        declared dynamic namespace, checked against the namespace's accepted types. Static
+        ports, required flags, and defaults pass through untouched; the returned mapping
+        validates against the live process spec, and members keep their node identities
+        since no copies are made. An empty container on a non-required namespace leaves the
+        input unwired.
+
+        This runs at dispatch, once wiring resolved every reference to a node: the `DataDict`
+        contents only exist at runtime, so build-time lowering cannot expand them.
+
+        :raises GraphValidationError: if a wire is missing on a required path, holds no
+            `DataDict`, is empty on a required namespace, or holds members outside the
+            namespace's accepted types.
+        """
+        if not self.forwarded:
+            return dict(inputs)
+        live = self.process_class.spec().inputs
+        expanded: dict[str, t.Any] = dict(inputs)
+        for path in self.forwarded:
+            namespace = _port_at(live, path)
+            if not isinstance(namespace, PortNamespace) or not namespace.dynamic:
+                msg = f'forwarded input `{path}` needs a dynamic namespace in the process spec.'
+                raise GraphTypeCheckError(msg)
+            try:
+                wire = _at(expanded, path)
+            except KeyError:
+                wire = None
+            if wire is None:
+                _drop_leaf(expanded, path)
+                if namespace.required and _ancestry_required(live, path):
+                    msg = f'forwarded input `{path}` is required but missing; wire a `DataDict`.'
+                    raise GraphValidationError(msg)
+                continue
+            if not isinstance(wire, DataDict):
+                msg = (
+                    f'forwarded input `{path}` takes a `DataDict` wire, '
+                    f'not `{type(wire).__name__}`; wire one `DataDict` node instead.'
+                )
+                raise GraphValidationError(msg)
+            members = {key: wire[key] for key in wire}
+            if not members:
+                _drop_leaf(expanded, path)
+                if namespace.required:
+                    msg = f'forwarded input `{path}` holds an empty `DataDict`, but the namespace is required.'
+                    raise GraphValidationError(msg)
+                continue
+            accepted = namespace.valid_type
+            kinds = (accepted,) if isinstance(accepted, type) else tuple(accepted or ())
+            for key, member in members.items():
+                if kinds and not isinstance(member, kinds):
+                    expected = ', '.join(f'`{kind.__name__}`' for kind in kinds)
+                    msg = (
+                        f'forwarded input `{path}` member `{key}` is `{type(member).__name__}`, '
+                        f'outside the accepted {expected}.'
+                    )
+                    raise GraphValidationError(msg)
+            _copied_parent(expanded, path)[path.rpartition('.')[2] or path] = members
+        return expanded
 
     @property
     def outputs(self) -> PortNamespace:
@@ -400,6 +564,8 @@ class TaskIR:
             data['declared_inputs'] = dump_shape(self.declared_inputs)
         if self.declared_outputs.fields:
             data['declared_outputs'] = dump_shape(self.declared_outputs)
+        if self.forwarded:
+            data['forwarded'] = list(self.forwarded)
         if self.exit_codes:
             data['exit_codes'] = {label: code._asdict() for label, code in self.exit_codes.items()}
         if self.error_enums:
@@ -414,6 +580,7 @@ class TaskIR:
             executor=ExecutorReference.from_dict(data['executor']),
             declared_inputs=_load_declared(data.get('declared_inputs')),
             declared_outputs=_load_declared(data.get('declared_outputs')),
+            forwarded=tuple(data.get('forwarded', ())),
             exit_codes={label: ExitCode(**code) for label, code in data.get('exit_codes', {}).items()},
             error_enums=tuple(data.get('error_enums', ())),
             version=_require_version(data.get('version'), _TASK_IR_VERSION, 'task'),

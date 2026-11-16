@@ -521,8 +521,8 @@ class GraphRun:
     def _is_mapped_failure(self, spec: TaskIR, label: str) -> bool:
         """Return whether a run failed with a declared error mapping.
 
-        The success arms of such a failure are absent by design, like the missing
-        arm of a `Result` task, so they read as `None` downstream.
+        Stored outputs remain available beside the synthesized error. Only outputs
+        the child did not store read as `None` downstream.
         """
         if label not in self.done:
             return False
@@ -743,11 +743,25 @@ class GraphRun:
         if isinstance(task, InlineOperation):
             return {task.result_port: scope.get('values', {})[name]}
         if isinstance(task, ProcessTask):
-            node = self._node(self.done[scope['instances'][name][-1]])
-            if 'error' not in node.outputs and self._is_mapped_failure(task.spec, scope['instances'][name][-1]):
-                # A mapped failure synthesizes its member from the child exit status;
-                # absent success arms read as `None` downstream like a `Result` arm.
-                return {'error': _error_member(task.spec, scope['instances'][name][-1], node)}
+            label = scope['instances'][name][-1]
+            node = self._node(self.done[label])
+            if 'error' not in node.outputs and self._is_mapped_failure(task.spec, label):
+                # A mapped failure synthesizes its member from the child exit status, keeping
+                # every stored declared output: a failed `CalcJob` still stores `remote_folder`
+                # and any parsed files, so retries can chain them. Undeclared dynamic outputs
+                # stay out, like on the success path, so scope entry keeps validating; absent
+                # declared arms stay absent and read as `None` downstream like a `Result` arm.
+                # The stored node is never mutated; the member joins a fresh mapping only.
+                declared = task.output_ports()
+                stored = {
+                    key: value
+                    for key, value in node.base.links.get_outgoing(link_type=(LinkType.CREATE, LinkType.RETURN))
+                    .nested()
+                    .items()
+                    if key in declared
+                }
+                stored['error'] = _error_member(task.spec, label, node)
+                return stored
             return node.outputs
         if isinstance(task, MapControl):
             return self._node(self.done[scope['collectors'][name]]).outputs
@@ -1256,6 +1270,8 @@ class GraphRun:
                     # An absent arm on an optional input means the input is unwired.
                     continue
                 _place(inputs, target, value)
+        if isinstance(task, ProcessTask) and task.spec.forwarded:
+            inputs = task.spec.expand_forwarded(inputs)
         return inputs
 
     def _placement_value(self, scope_key: str, name: str, path: str) -> t.Any:

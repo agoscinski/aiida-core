@@ -95,11 +95,20 @@ def _typevar_positions(function: Callable[..., t.Any]) -> tuple[TypevarPositions
 
 
 PortDeclaration: t.TypeAlias = Mapping[str, 'type[DataNode] | tuple[type[DataNode], ...] | PortDeclaration']
-"""Names and node types inside dynamic namespaces, nested like the namespaces they fill."""
+"""Names and node types inside dynamic namespaces, nested like the namespaces they fill.
+
+A bare `DataDict` value (or a one-tuple of it) instead marks a container-forwarded
+namespace: the graph wires one `DataDict` there, and dispatch expands its members into
+the dynamic namespace (see `TaskIR.expand_forwarded`).
+"""
 
 
 def _declared_shape(declaration: PortDeclaration | None, *, leaves: bool = False, path: str = '') -> NamespaceShape:
-    """Return the static shape a dynamic-namespace declaration fixes, rejecting non-node types."""
+    """Return the static shape a dynamic-namespace declaration fixes, rejecting non-node types.
+
+    A bare `DataDict` value declares a container-forwarded namespace as a `DataDict` leaf;
+    `TaskIR` resolves it against the process spec and records the expansion path.
+    """
     fields: list[tuple[str, LeafShape | NamespaceShape]] = []
     for name, value in (declaration or {}).items():
         location = f'{path}.{name}' if path else name
