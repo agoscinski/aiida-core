@@ -23,7 +23,7 @@ from aiida.engine.processes.graphs.lowering import compile_graph
 from aiida.engine.processes.graphs.process import GraphProcess
 from aiida.orm import Dict, Float, GraphNode, WorkChainNode
 from aiida.orm.nodes.process.process import ProcessNode
-from tests.engine.processes.graphs.programs.matched_restart import (
+from utils.benchmarks.graph_engine.programs.matched_restart import (
     RECOVER_RUNS,
     RECOVER_VALUE,
     RESTART_BENCHMARKS,

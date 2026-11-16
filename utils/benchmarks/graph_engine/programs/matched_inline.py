@@ -29,7 +29,7 @@ task outputs.
 How to invoke each benchmark::
 
     from aiida.engine.launch import run_get_node
-    from tests.engine.processes.graphs.programs.matched_inline import (
+    from utils.benchmarks.graph_engine.programs.matched_inline import (
         GRAPH_BENCHMARKS_INLINE, prepare_benchmark_inputs_inline,
     )
 
@@ -59,7 +59,7 @@ from aiida.calculations.arithmetic.add import ArithmeticAddCalculation
 from aiida.engine import graph, par_map, task
 from aiida.engine.processes.graphs.lowering import GraphHandle, compile_graph
 from aiida.orm import Code, DataList, Int
-from tests.engine.processes.graphs.programs.matched import _calc_task_metadata
+from utils.benchmarks.graph_engine.programs.matched import _calc_task_metadata
 
 __all__ = (
     'GRAPH_BENCHMARKS_INLINE',

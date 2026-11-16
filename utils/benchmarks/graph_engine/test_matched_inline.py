@@ -23,13 +23,13 @@ from aiida.engine.launch import run_get_node
 from aiida.engine.processes.graphs.lowering import compile_graph
 from aiida.orm import CalcJobNode, GraphNode, Int, ProcessNode, WorkChainNode
 from tests.benchmark.test_engine import WORKCHAINS
-from tests.engine.processes.graphs.programs.matched import GRAPH_BENCHMARKS, prepare_benchmark_inputs
-from tests.engine.processes.graphs.programs.matched_inline import (
+from utils.benchmarks.graph_engine.programs.matched import GRAPH_BENCHMARKS, prepare_benchmark_inputs
+from utils.benchmarks.graph_engine.programs.matched_inline import (
     GRAPH_BENCHMARKS_INLINE,
     prepare_benchmark_inputs_inline,
     validate_benchmarks_inline,
 )
-from tests.engine.processes.graphs.test_matched import (
+from utils.benchmarks.graph_engine.test_matched import (
     _assert_calcjobs_success,
     _assert_no_workflow_create,
     _by_type,

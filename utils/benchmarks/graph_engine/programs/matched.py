@@ -17,7 +17,7 @@ placements with ``x=1`` and ``y=2``.
 How to invoke each benchmark::
 
     from aiida.engine.launch import run_get_node
-    from tests.engine.processes.graphs.programs.matched import GRAPH_BENCHMARKS, prepare_benchmark_inputs
+    from utils.benchmarks.graph_engine.programs.matched import GRAPH_BENCHMARKS, prepare_benchmark_inputs
 
     handle, iterations = GRAPH_BENCHMARKS['serial-calcjob-loop']
     outputs, node = run_get_node(handle, **prepare_benchmark_inputs('serial-calcjob-loop', code))

@@ -23,7 +23,7 @@ from aiida.engine.processes.graphs.lowering import compile_graph
 from aiida.orm import CalcJobNode, GraphNode, InstalledCode, Int, WorkChainNode
 from aiida.orm.nodes.process.process import ProcessNode
 from tests.benchmark.test_engine import WORKCHAINS
-from tests.engine.processes.graphs.programs.matched import (
+from utils.benchmarks.graph_engine.programs.matched import (
     GRAPH_BENCHMARKS,
     prepare_benchmark_inputs,
     validate_benchmarks,
