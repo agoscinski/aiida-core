@@ -205,6 +205,40 @@ def retry_chain_until_repaired(max_retries: int = 1, attempt: int = 0) -> float 
     return ran.result
 
 
+class FlakyForwardChain(WorkChain):
+    """Fail twice, then forward the existing input node instead of creating data."""
+
+    @classmethod
+    def define(cls, spec) -> None:  # type: ignore[override]
+        super().define(spec)
+        spec.input('shared', valid_type=Float)
+        spec.input('attempt', valid_type=Int)
+        spec.output('result', valid_type=Float)
+        spec.outline(cls.produce)
+
+    def produce(self):
+        """Exit mapped while the attempt is early, else expose the input unchanged."""
+        if self.inputs.attempt.value < 2:
+            return ChainErrors.UNSTABLE.value
+        self.out('result', self.inputs.shared)
+
+
+flaky_forward_chain = task(FlakyForwardChain, errors=ChainErrors)
+
+
+@graph
+def retry_forward_until_repaired(shared: Float, max_retries: int = 2, attempt: int = 0) -> Float:
+    """Retry the forwarding chain, returning the existing input node on success."""
+    ran = flaky_forward_chain(shared=shared, attempt=attempt)
+    retry = retry_chain_allowed(error=ran.error, attempt=attempt, limit=max_retries)
+    while retry:
+        attempt = attempt + 1
+        ran = flaky_forward_chain(shared=shared, attempt=attempt)
+        retry = retry_chain_allowed(error=ran.error, attempt=attempt, limit=max_retries)
+    checked = check_chain_result(value=ran.result)  # noqa: F841 - the guard validates without feeding the return
+    return ran.result
+
+
 @task
 def recover_chain(error: ChainErrors) -> str:
     """Recover from the declared chain failure."""

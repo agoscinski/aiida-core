@@ -1173,6 +1173,30 @@ def test_calcjob_task_chains_values(aiida_code_installed) -> None:
 
 
 @pytest.mark.usefixtures('aiida_profile_clean')
+def test_serial_calcjobs_wait_for_unused_output(aiida_code_installed) -> None:
+    """Loop iterations stay sequential when the counter ignores the calculation output."""
+    import itertools
+
+    code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')
+    outputs, node = run_get_node(
+        calcjobs.serial_add_unused,
+        x=1,
+        y=2,
+        code=code,
+        rounds=2,
+        task_metadata={'add_calc': {'options': {}}},
+    )
+    assert node.is_finished_ok
+    assert dict(outputs) == {}
+    calcjobs_run = [child for child in node.called_descendants if isinstance(child, orm.CalcJobNode)]
+    assert len(calcjobs_run) == 2
+    ordered = sorted(calcjobs_run, key=lambda child: (child.ctime, child.pk))
+    for previous, nxt in itertools.pairwise(ordered):
+        assert nxt.ctime is not None and previous.mtime is not None
+        assert nxt.ctime >= previous.mtime
+
+
+@pytest.mark.usefixtures('aiida_profile_clean')
 def test_calcjob_task_missing_metadata_fails_loudly(aiida_code_installed) -> None:
     """A `CalcJob` placement without launch metadata names the placement."""
     code = aiida_code_installed(default_calc_job_plugin='core.arithmetic.add', filepath_executable='/bin/bash')

@@ -30,14 +30,39 @@ For example, to construct our favorite multiply-add workflow:
         product = multiply(x=x, y=y)
         return add(x=product, y=z)
 
-For workflows that pass data from step to step, graphs have these advantages over work chains:
+Work chains and graphs
+---------------------
 
-* **Less boilerplate:** inputs and outputs come from function signatures, so no ``define`` method, ``spec`` or outline is needed.
-* **No subclassing:** graphs are plain decorated functions; work chains require subclassing ``WorkChain``.
-* **Validate before launch:** AiiDA validates the whole graph before any task runs, see :ref:`topics:workflows:graphs:inspecting`.
-* **Early errors:** AiiDA checks the whole graph before any task runs, and each error names its source line. A work chain only fails at runtime, when it reaches the faulty step.
-* **Fast iteration:** edit the source and resubmit. Each submission carries its own copy of the graph structure and the task bodies, so the daemon needs no restart.
-* **Recorded structure:** the graph structure is stored as an input of the graph process, so the provenance shows what was planned as well as what ran.
+Both styles support reusable workflows with declared interfaces and the same provenance rules: calculations create data, while workflows return existing data.
+Use a work chain when you need its explicit outline, process methods, or existing work-chain abstractions.
+Use a graph when the orchestration reads naturally as wired function calls, as in ``multiply_add`` above.
+
+.. list-table:: Authoring differences
+    :header-rows: 1
+    :widths: 20 40 40
+
+    * - Aspect
+      - Work chain
+      - Graph
+    * - Interface
+      - A ``WorkChain`` subclass declares ports in ``define``.
+      - Function signatures declare inputs and outputs.
+    * - State and ordering
+      - Outline methods keep state in ``self.ctx``; ``ToContext`` waits for submitted children.
+      - Data dependencies order calls; ``after=`` orders otherwise independent calls, and ``while`` runs iterations sequentially.
+    * - Validation
+      - The process spec validates inputs; outline logic is evaluated at runtime.
+      - ``build()`` checks supported syntax, wiring, and static contracts before launch; task bodies still need runtime testing.
+    * - Failure handling
+      - Outline methods inspect child states and decide whether to retry or return an exit code; ``BaseRestartWorkChain`` provides reusable handlers.
+      - Declared ``Result`` error arms let branches and loops handle expected failures; undeclared failures block dependents.
+    * - Nested workflows
+      - Each nested work chain has its own workflow node.
+      - Nested graphs execute as scopes of one graph process, with hierarchical task call labels.
+
+For graph retry examples, see :ref:`topics:workflows:graphs:retries`; for reusable work-chain handlers, see :ref:`how-to:restart-workchain`.
+A graph submission carries its structure and task bodies, so editing and resubmitting does not require restarting the daemon.
+The stored structure records what was planned as well as what ran.
 
 .. _topics:workflows:graphs:recipe:
 

@@ -98,6 +98,31 @@ def test_retry_recovers() -> None:
     assert owners[0].process_label == 'FlakyChain'
 
 
+@pytest.mark.usefixtures('aiida_profile_clean')
+def test_retry_forwards_existing_node() -> None:
+    """A retried chain returning an existing node keeps its identity in the graph output."""
+    from aiida.orm import Float
+
+    shared = Float(1.5)
+    outputs, node = run_get_node(workchains.retry_forward_until_repaired, shared=shared, max_retries=2)
+    assert node.is_finished_ok
+    assert outputs['result'].value == 1.5
+    assert outputs['result'].uuid == shared.uuid
+    attempts = sorted(
+        (child for child in node.called_descendants if child.process_label == 'FlakyForwardChain'),
+        key=lambda child: child.inputs.attempt.value,
+    )
+    assert [child.inputs.attempt.value for child in attempts] == [0, 1, 2]
+    assert [child.exit_status for child in attempts] == [410, 410, 0]
+    owners = [
+        child
+        for child in node.called_descendants
+        if 'result' in child.outputs and child.outputs.result.uuid == shared.uuid
+    ]
+    assert len(owners) == 1
+    assert owners[0].process_label == 'FlakyForwardChain'
+
+
 def _subgraphs(template: t.Any) -> list[SubgraphTask]:
     """Return every graph-call expansion of a template, including nested bodies."""
     found: list[SubgraphTask] = []
