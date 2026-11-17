@@ -9,8 +9,8 @@
 """Tasks and graphs shared by the `par_map` behavior suite.
 
 Tasks take and return plain values or owned containers; graphs map unary
-tasks and nested graphs over `DataList`/`DataDict` wires, including empty and
-task-produced collections, downstream chaining, and invalid declarations.
+tasks over `DataList`/`DataDict` wires, including empty and task-produced
+collections, downstream chaining, and invalid declarations.
 """
 
 import typing as t
@@ -159,12 +159,6 @@ def no_output(x: int) -> None:
 
 
 @graph
-def add_one(x: int) -> int:
-    """Add one inside a nested graph."""
-    return increment(x=x)
-
-
-@graph
 def map_list(values: DataList) -> DataList:
     """Map a task over an owned list."""
     return par_map(increment, values)
@@ -174,12 +168,6 @@ def map_list(values: DataList) -> DataList:
 def map_mapping(values: DataDict) -> DataDict:
     """Map a task over owned mapping values, keeping keys."""
     return par_map(increment, values)
-
-
-@graph
-def map_nested(values: DataList) -> DataList:
-    """Map a nested graph over an owned list."""
-    return par_map(add_one, values)
 
 
 @graph

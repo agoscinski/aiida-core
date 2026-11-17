@@ -159,7 +159,11 @@ def _validate_region(task: GraphTask) -> None:
 
 
 def _validate_map(task: MapControl) -> None:
-    """Check that a map carries one unary callable with a single leaf output."""
+    """Check that a map carries one unary callable with a single leaf output.
+
+    Task maps wire the element into their single scientific input; execution inputs covered
+    by the task's runtime paths arrive through `runtime_config` instead.
+    """
 
     if (task.spec is None) == (task.body is None):
         msg = f'map `{task.name}` carries exactly one mapped callable: a task `spec` or a nested graph `body`.'
@@ -167,16 +171,27 @@ def _validate_map(task: MapControl) -> None:
     if task.body is not None:
         validate_graph(task.body)
     fields = task.mapped_inputs.fields
-    if len(fields) != 1:
+    if task.spec is not None and len(fields) > 1:
+        roots = task.spec.runtime_input_paths()
+        eligible = [name for name, _ in fields if name not in roots]
+        if len(eligible) != 1:
+            names = ', '.join(f'`{name}`' for name, _ in fields)
+            msg = (
+                f'map `{task.name}` wires one element into one scientific input, with execution inputs coming '
+                f'from `runtime_config`; the callable declares {len(fields)} inputs ({names}); '
+                'map a unary task instead.'
+            )
+            raise GraphTypeCheckError(msg)
+    elif len(fields) != 1:
         msg = (
             f'map `{task.name}` wires one element into one input, so the callable takes exactly one input; '
-            'map a unary task or graph instead.'
+            'map a unary task instead.'
         )
         raise GraphTypeCheckError(msg)
     if not task.mapped_result_port:
         msg = (
             f'map `{task.name}` collects one output per element, so the callable returns exactly one value; '
-            'map a unary task or graph with one output instead.'
+            'map a unary task with one output instead.'
         )
         raise GraphTypeCheckError(msg)
 

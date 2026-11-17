@@ -1155,7 +1155,7 @@ class GraphRun:
             elements = list(collection)
         else:
             elements = [collection[key] for key in collection]
-        item_input = task.mapped_inputs.fields[0][0]
+        item_input = task.mapped_element_port
         template = self._template_of(scope_key)
         for index, element in enumerate(elements):
             base = self._item_base(template, task.name, index)

@@ -9,14 +9,16 @@
 """`par_map` inside branch arms and loop bodies.
 
 Covers positional and `func=` keyword binding, including attribute-qualified
-mapped callables, over `@task` as well as `@graph` callables. Collections stay
-wired reads: every region still routes the outer `values` input.
+mapped callables, over `@task` callables. Collections stay wired reads: every
+region still routes the outer `values` input. The two `@graph` cases fail the
+build, since maps take tasks only.
 """
 
 from aiida.engine import graph, par_map
 from aiida.orm import DataList
 from tests.engine.processes.graphs.programs import par_maps
-from tests.engine.processes.graphs.programs.par_maps import add_one, double, increment
+from tests.engine.processes.graphs.programs.map_graphs import add_one
+from tests.engine.processes.graphs.programs.par_maps import double, increment
 from tests.engine.processes.graphs.programs.tasks import decrement, is_positive
 
 
@@ -32,7 +34,7 @@ def map_task_in_branch(values: DataList, flag: bool) -> DataList:
 
 @graph
 def map_graph_in_branch(values: DataList, flag: bool) -> DataList:
-    """Map a nested graph in one arm and a task in the other."""
+    """Map a nested graph in one arm; the build rejects the graph callable."""
     if flag:
         mapped = par_map(add_one, values)
     else:
@@ -82,7 +84,7 @@ def map_task_in_loop(values: DataList, flag: bool, value: int) -> DataList:
 
 @graph
 def map_graph_in_loop(values: DataList, flag: bool, value: int) -> DataList:
-    """Rebind a mapped nested graph result inside a loop body."""
+    """Map a nested graph result inside a loop body; the build rejects the graph callable."""
     mapped = par_map(add_one, values)
     while flag:
         mapped = par_map(add_one, values)

@@ -12,7 +12,7 @@ import pytest
 
 from aiida.calculations.arithmetic.add import ArithmeticAddCalculation
 from aiida.common.exceptions import GraphLanguageError, GraphValidationError
-from aiida.engine import PortModel, WorkChain, graph, par_map, run_get_node, submit, task
+from aiida.engine import PortModel, WorkChain, graph, par_for, run_get_node, submit, task
 from aiida.engine.processes.graphs.ir import TaskIR
 from aiida.engine.processes.graphs.process import GraphProcess
 from aiida.engine.processes.persistence import CheckpointPayload
@@ -157,8 +157,8 @@ def loop(x: int, count: int) -> int:
 
 
 @graph
-def mapped(values: DataList) -> DataList:
-    return par_map(configured, values)
+def fanned(values: DataList) -> DataList:
+    return par_for(configured_chain, values)
 
 
 @pytest.fixture
@@ -312,11 +312,11 @@ def test_loop_config(executable, count):
 
 
 @pytest.mark.parametrize('values', [[], [1, 2]])
-def test_map_config(executable, values):
+def test_for_config(executable, values):
     outputs, node = run_get_node(
-        mapped,
+        fanned,
         values=DataList([Int(value) for value in values]),
-        runtime_config={'configured_chain': {'executable': executable}},
+        runtime_config={'for_configured_chain': {'executable': executable}},
     )
     assert node.is_finished_ok
     assert [value.value for value in outputs['result']] == values

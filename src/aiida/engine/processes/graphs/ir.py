@@ -463,6 +463,24 @@ class TaskIR:
         assert isinstance(selected, (InputPort, OutputPort, PortNamespace))
         return _shape_from_port(selected)
 
+    @property
+    def collected_output(self) -> str:
+        """Return the single leaf output a map collects per element, or `''`.
+
+        A map collects the single declared `outputs=` leaf when the task names exactly
+        one, which narrows static outputs or closes dynamic ones; otherwise it collects
+        the single output port of the task contract.
+        """
+        declared = self.declared_outputs
+        if declared.fields:
+            if len(declared.fields) != 1:
+                return ''
+            ((name, shape),) = declared.fields
+            if not isinstance(shape, LeafShape):
+                return ''
+            return name if isinstance(self.outputs.get(name), OutputPort) else ''
+        return self.result_port
+
     def runtime_input_paths(self) -> frozenset[str]:
         """Return the minimal input path prefixes runtime configuration may supply.
 
@@ -913,10 +931,26 @@ class MapControl(GraphTask):
         return self.body.input_shape
 
     @property
+    def mapped_element_port(self) -> str:
+        """Return the input port receiving each element.
+
+        Task maps wire the element into their single scientific input; inputs covered by the
+        task's runtime paths arrive through `runtime_config` instead. Graph maps wire the
+        element into their single graph input.
+        """
+        fields = self.mapped_inputs.fields
+        if self.spec is not None and len(fields) > 1:
+            roots = self.spec.runtime_input_paths()
+            eligible = [name for name, _ in fields if name not in roots]
+            if len(eligible) == 1:
+                return eligible[0]
+        return fields[0][0]
+
+    @property
     def mapped_result_port(self) -> str:
         """Return the single output port the mapped callable produces per element."""
         if self.spec is not None:
-            return self.spec.result_port
+            return self.spec.collected_output
         assert self.body is not None
         return self.body.result_port
 

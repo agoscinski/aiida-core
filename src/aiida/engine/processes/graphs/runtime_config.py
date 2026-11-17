@@ -38,7 +38,11 @@ def _copy_config(value: t.Any) -> t.Any:
 def _runtime_placements(
     graph: GraphIR, prefix: tuple[str, ...] = ()
 ) -> Iterator[tuple[tuple[str, ...], ProcessTask, GraphIR]]:
-    """Visit static process addresses, independently of control-flow execution."""
+    """Visit static process addresses, independently of control-flow execution.
+
+    Branches, loops, and mapped graph bodies contribute no level; a task map contributes its
+    own placement name, so every item shares the one entry keyed by that name.
+    """
     for task in graph.tasks:
         if isinstance(task, ProcessTask):
             yield (*prefix, task.name), task, graph
@@ -51,6 +55,8 @@ def _runtime_placements(
             yield from _runtime_placements(task.body, prefix)
         elif isinstance(task, MapControl) and task.body is not None:
             yield from _runtime_placements(task.body, prefix)
+        elif isinstance(task, MapControl) and task.spec is not None:
+            yield (*prefix, task.name), ProcessTask(name=task.name, inputs={}, spec=task.spec), graph
 
 
 def _wired_paths(graph: GraphIR, task: ProcessTask) -> set[str]:

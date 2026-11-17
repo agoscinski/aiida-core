@@ -10,13 +10,14 @@
 
 The mapped callable (positional, `func=` keyword, or attribute-qualified) is a
 declaration reference, not a wire read, so region collection must exclude it
-while still routing the mapped collection. Covers `@task` as well as `@graph`
-callables in branch arms (taken, otherwise, and missing-`else` rebind) and in
-loop bodies.
+while still routing the mapped collection. Covers `@task` callables in branch
+arms (taken, otherwise, and missing-`else` rebind) and in loop bodies; mapping
+a `@graph` in either region fails the build naming the callable.
 """
 
 import pytest
 
+from aiida.common.exceptions import GraphLanguageError
 from aiida.engine.launch import run_get_node
 from aiida.engine.processes.graphs.lowering import compile_graph
 from aiida.orm import DataList
@@ -40,12 +41,10 @@ def _result_values(outputs: dict) -> list[int]:
     'declaration',
     [
         map_regions.map_task_in_branch,
-        map_regions.map_graph_in_branch,
         map_regions.map_keyword_in_branch,
         map_regions.map_namespaced_in_branch,
         map_regions.map_task_in_missing_else,
         map_regions.map_task_in_loop,
-        map_regions.map_graph_in_loop,
         map_regions.map_keyword_namespaced_in_loop,
     ],
 )
@@ -54,14 +53,25 @@ def test_region_maps_lower(declaration) -> None:
     declaration.build()
 
 
+@pytest.mark.parametrize(
+    'declaration',
+    [
+        map_regions.map_graph_in_branch,
+        map_regions.map_graph_in_loop,
+    ],
+)
+def test_region_graph_maps_rejected(declaration) -> None:
+    """Mapping a graph inside a branch arm or loop body fails naming the callable."""
+    with pytest.raises(GraphLanguageError, match='add_one'):
+        declaration.build()
+
+
 @pytest.mark.usefixtures('aiida_profile_clean')
 @pytest.mark.parametrize(
     'declaration, flag, expected',
     [
         (map_regions.map_task_in_branch, True, [2, 3]),
         (map_regions.map_task_in_branch, False, [2, 4]),
-        (map_regions.map_graph_in_branch, True, [2, 3]),
-        (map_regions.map_graph_in_branch, False, [2, 4]),
         (map_regions.map_keyword_in_branch, True, [2, 3]),
         (map_regions.map_keyword_in_branch, False, [2, 4]),
         (map_regions.map_namespaced_in_branch, True, [2, 3]),
@@ -90,8 +100,6 @@ def test_missing_else_map_executes(flag: bool, expected: list[int]) -> None:
     [
         (map_regions.map_task_in_loop, False, [2, 3]),
         (map_regions.map_task_in_loop, True, [2, 4]),
-        (map_regions.map_graph_in_loop, False, [2, 3]),
-        (map_regions.map_graph_in_loop, True, [2, 3]),
         (map_regions.map_keyword_namespaced_in_loop, False, [2, 3]),
         (map_regions.map_keyword_namespaced_in_loop, True, [2, 4]),
     ],
@@ -107,7 +115,6 @@ def test_loop_maps_execute(declaration, flag: bool, expected: list[int]) -> None
     'declaration',
     [
         map_regions.map_task_in_branch,
-        map_regions.map_graph_in_branch,
         map_regions.map_keyword_in_branch,
         map_regions.map_namespaced_in_branch,
     ],
@@ -121,7 +128,6 @@ def test_branch_regions_route_collection_not_callable(declaration) -> None:
         assert 'values' in body.inputs
         assert 'increment' not in body.inputs
         assert 'double' not in body.inputs
-        assert 'add_one' not in body.inputs
 
 
 def test_loop_regions_route_collection_not_callable() -> None:

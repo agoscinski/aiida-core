@@ -8,7 +8,7 @@
 ###########################################################################
 """Fan-out maps over owned containers with provenance-safe aggregation.
 
-A ``@graph`` body calls :func:`par_map` with a unary task or graph and a
+A ``@graph`` body calls :func:`par_map` with a unary task and a
 :class:`~aiida.orm.DataList` or :class:`~aiida.orm.DataDict` wire. The lowering
 expands the call to a static map placement; the scheduler dispatches one child
 per element and then a collector calculation that *creates* the result
@@ -51,7 +51,7 @@ def par_map(func: t.Any, values: t.Any, *, after: t.Any = None) -> t.Any:
     ``@graph`` body and the graph compiler expands it to a fan-out placement.
     Calling it anywhere else fails loudly.
 
-    :param func: a unary ``@task`` or ``@graph`` with exactly one input and one output.
+    :param func: a unary ``@task`` (a task function or a `WorkChain`) with exactly one input and one output.
     :param values: a :class:`~aiida.orm.DataList` or :class:`~aiida.orm.DataDict` wire;
         lists iterate elements in order, mappings iterate values keeping keys.
     :param after: ordering dependency on earlier placements, like task calls.
@@ -59,7 +59,7 @@ def par_map(func: t.Any, values: t.Any, *, after: t.Any = None) -> t.Any:
     """
     msg = (
         '`par_map` declares a fan-out inside a `@graph` body and never runs directly; '
-        'call it with a unary `@task` or `@graph` and a `DataList`/`DataDict` wire on one line, '
+        'call it with a unary `@task` and a `DataList`/`DataDict` wire on one line, '
         'for example `mapped = par_map(increment, values)`.'
     )
     raise GraphLanguageError(msg)

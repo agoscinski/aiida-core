@@ -19,7 +19,7 @@ import pytest
 
 from aiida.common.exceptions import GraphMaxIterationsError
 from aiida.common.links import LinkType
-from aiida.engine import graph, par_map, task
+from aiida.engine import graph, task
 from aiida.engine.launch import run_get_node
 from aiida.engine.processes.graphs.lowering import compile_graph
 from aiida.engine.processes.graphs.process import GraphProcess
@@ -28,7 +28,7 @@ from aiida.orm import DataList
 from aiida.orm.nodes.data.int import Int
 from aiida.orm.nodes.process.process import ProcessNode
 from aiida.orm.nodes.process.workflow.graph import GraphNode
-from tests.engine.processes.graphs.programs import branches, calls, loops, map_graphs, par_maps
+from tests.engine.processes.graphs.programs import branches, calls, loops, par_fors, par_maps
 from tests.engine.processes.graphs.programs import tasks as task_programs
 
 pytestmark = pytest.mark.presto
@@ -51,18 +51,6 @@ def outer_failing(x: int) -> int:
     """Consume a nested graph that fails, so the downstream task never dispatches."""
     intermediate = inner_failing(x=x)
     return task_programs.add(x=intermediate, y=1)
-
-
-@graph
-def passthrough_identity(x: int) -> int:
-    """Pass one input through with no tasks; map elements settle synchronously."""
-    return x
-
-
-@graph
-def map_passthrough_graph(values: DataList) -> DataList:
-    """Map a task-free graph over a list; the collector must still dispatch."""
-    return par_map(passthrough_identity, values)
 
 
 @graph
@@ -139,14 +127,13 @@ def _call_labels(node: ProcessNode) -> set[str]:
         pytest.param(branches.external_choice, {'value': 2, 'condition': True}, id='branch-taken'),
         pytest.param(branches.external_choice, {'value': 2, 'condition': False}, id='branch-otherwise'),
         pytest.param(par_maps.map_list, {'values': [1, 2]}, id='map-task'),
-        pytest.param(par_maps.map_nested, {'values': [1, 2]}, id='map-graph'),
-        pytest.param(map_graphs.map_two_step, {'values': [1, 2]}, id='map-multistep-graph'),
+        pytest.param(par_fors.for_list, {'values': [1, 2]}, id='for-task'),
         pytest.param(loops.nested_loops, {'value': 2}, id='nested-loops'),
         pytest.param(branches.loop_in_branch, {'value': 2, 'flag': True}, id='loop-in-branch'),
     ],
 )
 def test_single_graph_node_invariant(declaration, inputs: dict) -> None:
-    """Nested graphs, loops, branches, and maps execute without child graph processes."""
+    """Nested graphs, loops, branches, and task maps execute without child graph processes."""
     if 'values' in inputs:
         inputs = {**inputs, 'values': DataList([Int(value) for value in inputs['values']])}
     _, node = run_get_node(declaration, **inputs)
@@ -263,20 +250,6 @@ def test_map_pending_items_reattach_without_resubmission() -> None:
     starts = restored.step().starts
     assert [start.instance for start in starts] == ['map_increment_collect']
     assert starts[0].inputs['item_0'].value == 2
-
-
-@pytest.mark.usefixtures('aiida_profile_clean')
-def test_nested_graph_map_collects_synchronously() -> None:
-    """A map over a task-free graph dispatches its collector without child tasks."""
-    values = DataList([Int(1), Int(2)])
-    state = GraphRun(compile_graph(map_passthrough_graph), given={'values': values})
-    starts = state.step().starts
-    assert [start.instance for start in starts] == ['map_passthrough_identity_collect']
-    assert [starts[0].inputs['item_0'], starts[0].inputs['item_1']] == [1, 2]
-    outputs, node = run_get_node(map_passthrough_graph, values=values)
-    assert node.is_finished_ok
-    assert [member.value for member in outputs['result']] == [1, 2]
-    assert _graph_nodes(node) == [node]
 
 
 @pytest.mark.usefixtures('aiida_profile_clean')

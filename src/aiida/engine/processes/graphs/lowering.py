@@ -58,6 +58,7 @@ from aiida.engine.processes.graphs.operations import (
     const_result_shape,
     infer_operation_shape,
 )
+from aiida.engine.processes.graphs.par_for import par_for
 from aiida.engine.processes.graphs.par_map import par_map
 from aiida.engine.processes.graphs.process import GraphProcess
 from aiida.engine.processes.graphs.shapes import (
@@ -78,11 +79,11 @@ from aiida.engine.processes.graphs.tasks import (
     _build_task,
     _typevar_solution,
 )
-from aiida.engine.processes.ports import _node_type
+from aiida.engine.processes.ports import OutputPort, _node_type
 from aiida.engine.processes.workchains.workchain import WorkChain
 from aiida.orm import Bool, DataDict, DataList
 
-__all__ = ('Forward', 'GraphHandle', 'graph', 'par_map', 'task')
+__all__ = ('Forward', 'GraphHandle', 'graph', 'par_for', 'par_map', 'task')
 
 # `compile_graph` is intentionally absent from `__all__` and from the
 # `aiida.engine.processes.graphs` and `aiida.engine` re-exports: it is the
@@ -332,7 +333,7 @@ class _DeclarationNamespace:
         if isinstance(target, PlacementHandle):
             msg = 'stored `.alias(...)` handles are not declarations; construct the alias inline at the call instead'
             raise GraphLanguageError(msg)
-        if isinstance(target, (FunctionTaskHandle, GraphHandle)) or target is par_map:
+        if isinstance(target, (FunctionTaskHandle, GraphHandle)) or target in (par_map, par_for):
             valid = name == getattr(target, '__name__', name) and name not in self.aliases
         elif isinstance(target, (CalcJobTaskHandle, WorkChainTaskHandle)):
             valid = name not in self.aliases
@@ -1659,16 +1660,16 @@ def _assigned_names(statements: list[ast.stmt]) -> set[str]:
     }
 
 
-def _is_par_map_call(state: _LoweringState, node: ast.Call) -> bool:
-    """Recognize the map intrinsic during region collection without rejecting other calls."""
+def _is_map_call(state: _LoweringState, node: ast.Call) -> bool:
+    """Recognize a map intrinsic during region collection without rejecting other calls."""
     try:
         target, _ = _resolve_base(state, node.func)
     except GraphLanguageError:
         return False
-    return target is par_map
+    return target is par_map or target is par_for
 
 
-def _par_map_callable_expr(node: ast.Call) -> ast.expr | None:
+def _map_callable_expr(node: ast.Call) -> ast.expr | None:
     """Return the mapped callable expression of a `par_map` call, without validating the collection."""
     if node.args:
         return node.args[0]
@@ -1703,8 +1704,8 @@ def _callee_ids(state: _LoweringState, statements: list[ast.stmt], enclosing: Ma
             func = func.value
         if isinstance(func, ast.Name) and func.id not in enclosing:
             callees.add(id(func))
-        if _is_par_map_call(state, node):
-            callable_expr = _par_map_callable_expr(node)
+        if _is_map_call(state, node):
+            callable_expr = _map_callable_expr(node)
             if isinstance(callable_expr, ast.Call):
                 for inner in ast.walk(callable_expr):
                     if isinstance(inner, ast.Name) and isinstance(inner.ctx, ast.Load) and inner.id not in enclosing:
@@ -1927,6 +1928,7 @@ def _resolve_callable(
     if (
         isinstance(target, (FunctionTaskHandle, CalcJobTaskHandle, WorkChainTaskHandle, GraphHandle))
         or target is par_map
+        or target is par_for
     ):
         return target, label.rsplit('.', 1)[-1], explicit
     if target is None and label in vars(builtins):
@@ -1936,14 +1938,16 @@ def _resolve_callable(
     _reject(state, node=expression, reason=msg)
 
 
-def _claim_placement(state: _LoweringState, name: str, node: ast.AST, *, is_map: bool = False) -> str:
+def _claim_placement(
+    state: _LoweringState, name: str, node: ast.AST, *, is_map: bool = False, op: str = 'par_map'
+) -> str:
     """Claim one authored placement name, rejecting reuse within the same static body."""
     taken: set[str] = {placed.name for placed in state.tasks}
     if name in taken or state.used.get(name, 0) > 0:
         if is_map:
             msg = (
                 f'map placement name `{name}` is already used in this graph; '
-                + "pass a unique name with `par_map(task.alias('name'), values)` instead"
+                + f"pass a unique name with `{op}(task.alias('name'), values)` instead"
             )
         else:
             msg = (
@@ -2070,54 +2074,66 @@ def _solved_spec(
     return replace(spec, declared_outputs=narrowed)
 
 
-def _lower_par_map(state: _LoweringState, expression: ast.Call) -> _Reference:
+def _lower_map(state: _LoweringState, expression: ast.Call, *, op: t.Literal['par_map', 'par_for']) -> _Reference:
     """Place a fan-out map over an owned container."""
     if isinstance(expression.func, ast.Call):
         msg = (
             'maps take their name from the mapped callable, so the map call itself takes no alias; '
-            + "pass the alias on the callable instead, e.g. `par_map(task.alias('name'), values)`"
+            + f"pass the alias on the callable instead, e.g. `{op}(task.alias('name'), values)`"
         )
         _reject(state, node=expression.func, reason=msg)
-    func_expr, collection_expr, after_keyword = _bind_par_map_arguments(state, expression=expression)
+    func_expr, collection_expr, after_keyword = _bind_map_arguments(state, expression=expression, op=op)
     target, call_name, explicit = _resolve_callable(state, func_expr)
-    if not isinstance(target, (FunctionTaskHandle, CalcJobTaskHandle, WorkChainTaskHandle, GraphHandle)):
-        msg = 'maps apply registered declarations per element; pass a task or graph instead'
+    if isinstance(target, GraphHandle):
+        if op == 'par_map':
+            msg = (
+                f'`{call_name}` is a `@graph`, but `par_map` maps tasks; '
+                'map a unary `@task` (a task function or a `WorkChain`) instead'
+            )
+        else:
+            msg = (
+                f'`{call_name}` is a `@graph`, but `par_for` fans out tasks as independent child processes; '
+                'map a unary `@task` (a task function, a `CalcJob`, or a `WorkChain`) instead'
+            )
         _reject(state, node=func_expr, reason=msg)
-    if isinstance(target, CalcJobTaskHandle):
+    if not isinstance(target, (FunctionTaskHandle, CalcJobTaskHandle, WorkChainTaskHandle)):
+        if op == 'par_map':
+            msg = 'maps apply registered declarations per element; pass a task instead'
+        else:
+            msg = (
+                'maps apply registered declarations per element; '
+                'pass a task function, a `CalcJob`, or a `WorkChain` instead'
+            )
+        _reject(state, node=func_expr, reason=msg)
+    if op == 'par_map' and isinstance(target, CalcJobTaskHandle):
         msg = (
             'maps dispatch one child per element with shared inputs, so per-item launch metadata has no placement '
-            f'to key by; `CalcJob` task `{call_name}` cannot run under `par_map`; map a task function, '
-            'a `WorkChain`, or a nested graph instead'
+            f'to key by; `CalcJob` task `{call_name}` cannot run under `par_map`; map a task function '
+            'or a `WorkChain` instead'
         )
         _reject(state, node=func_expr, reason=msg)
-    mapped_body: GraphIR | None = None
-    mapped_spec: TaskIR | None = None
+    prefix = 'map' if op == 'par_map' else 'for'
     if explicit is not None:
-        instance = _claim_placement(state, explicit, node=func_expr, is_map=True)
+        instance = _claim_placement(state, explicit, node=func_expr, is_map=True, op=op)
     else:
-        instance = _claim_placement(state, f'map_{call_name}', node=func_expr, is_map=True)
-    if isinstance(target, GraphHandle):
-        mapped_body = _lower_graph(target, stack=state.stack)
-        mapped_spec = None
-    else:
-        mapped_body = None
-        mapped_spec = target._task_spec
-    _check_par_map_callable(state, node=func_expr, label=call_name, spec=mapped_spec, body=mapped_body)
+        instance = _claim_placement(state, f'{prefix}_{call_name}', node=func_expr, is_map=True, op=op)
+    mapped_spec: TaskIR = target._task_spec
+    _check_map_callable(state, node=func_expr, label=call_name, spec=mapped_spec, op=op)
     collection = _lower_value(state, collection_expr)
-    container = _check_par_map_collection(state, node=collection_expr, value=collection)
+    container = _check_map_collection(state, node=collection_expr, value=collection)
     given: dict[str, _CapturedValue] = {}
     _wire(state, instance=instance, port='collection', value=collection, given=given)
-    state.tasks.append(MapControl(name=instance, inputs=given, spec=mapped_spec, body=mapped_body, container=container))
+    state.tasks.append(MapControl(name=instance, inputs=given, spec=mapped_spec, body=None, container=container))
     if after_keyword is not None:
         _wire_after(state, instance=instance, keyword=after_keyword)
     collected = DataList if container == 'list' else DataDict
     return _Reference(instance, port='result', shape=LeafShape(types=(collected,)))
 
 
-def _bind_par_map_arguments(
-    state: _LoweringState, expression: ast.Call
+def _bind_map_arguments(
+    state: _LoweringState, expression: ast.Call, *, op: t.Literal['par_map', 'par_for']
 ) -> tuple[ast.expr, ast.expr, ast.keyword | None]:
-    """Bind `par_map(func, values)` positionally or by keyword, separating `after` ordering."""
+    """Bind a map call positionally or by keyword, separating `after` ordering."""
     after: ast.keyword | None = None
     positional: list[ast.expr] = list(expression.args)
     named: dict[str, ast.expr] = {}
@@ -2137,39 +2153,57 @@ def _bind_par_map_arguments(
             msg = f'`{key}` is given twice, positionally and by keyword; pass it once instead.'
             _reject(state, node=expression, reason=msg)
     if positional and named:
-        msg = 'pass the callable and the collection positionally as `par_map(func, values)`, or by keyword instead.'
+        msg = f'pass the callable and the collection positionally as `{op}(func, values)`, or by keyword instead.'
         _reject(state, node=expression, reason=msg)
     if len(positional) == 2:
         return positional[0], positional[1], after
     if len(positional) == 1 or len(positional) > 2 or set(named) != {'func', 'values'}:
-        msg = 'maps apply one callable to one collection; call `par_map(func, values)` with both instead.'
+        msg = f'maps apply one callable to one collection; call `{op}(func, values)` with both instead.'
         _reject(state, node=expression, reason=msg)
     return named['func'], named['values'], after
 
 
-def _check_par_map_callable(
-    state: _LoweringState, node: ast.AST, label: str, spec: TaskIR | None, body: GraphIR | None
+def _check_map_callable(
+    state: _LoweringState, node: ast.AST, label: str, spec: TaskIR, *, op: t.Literal['par_map', 'par_for']
 ) -> None:
-    """Reject mapped callables that are not unary with exactly one leaf output."""
-    shape = spec.input_shape if spec is not None else body.input_shape  # type: ignore[union-attr]
+    """Reject mapped callables that are not unary with exactly one leaf output.
+
+    `par_for` fans out process tasks whose execution inputs arrive through `runtime_config`, so
+    inputs covered by the task's runtime paths do not count against the unary element input.
+    """
+    shape = spec.input_shape
     assert isinstance(shape, NamespaceShape)
-    if len(shape.fields) != 1:
+    if op == 'par_for':
+        roots = spec.runtime_input_paths()
+        eligible = [name for name, _ in shape.fields if name not in roots]
+        if len(eligible) != 1:
+            names = ', '.join(f'`{name}`' for name, _ in shape.fields)
+            msg = (
+                'maps wire one element into one scientific input, with execution inputs coming from '
+                + f'`runtime_config`; `{label}` declares {len(shape.fields)} inputs ({names}); '
+                + 'map a task with exactly one scientific input instead'
+            )
+            _reject(state, node=node, reason=msg)
+    elif len(shape.fields) != 1:
         msg = (
             'maps wire one element into one input, so the callable takes exactly one input; '
-            + f'`{label}` declares {len(shape.fields)} inputs; map a unary task or graph instead'
+            + f'`{label}` declares {len(shape.fields)} inputs; map a unary task instead'
         )
         _reject(state, node=node, reason=msg)
-    result_port = spec.result_port if spec is not None else body.result_port  # type: ignore[union-attr]
-    result_shape = spec.result_shape if spec is not None else body.result_shape  # type: ignore[union-attr]
-    if not result_port or not isinstance(result_shape, LeafShape):
+    result_port = spec.collected_output
+    collected = spec.outputs.get(result_port) if result_port else None
+    if not result_port or not isinstance(collected, OutputPort):
+        hint = ''
+        if len(spec.outputs) > 1 and not spec.declared_outputs.fields:
+            hint = " to collect one port of a multi-output task, name it with `task(..., outputs={'name': Type})`;"
         msg = (
             'maps collect one output per element into the result container, so the callable returns exactly one value; '
-            + f'`{label}` must declare a single output; map a unary task or graph with one output instead'
+            + f'`{label}` must declare a single output;{hint} map a unary task with one output instead'
         )
         _reject(state, node=node, reason=msg)
 
 
-def _check_par_map_collection(
+def _check_map_collection(
     state: _LoweringState,
     node: ast.AST,
     value: _Reference | int | float | str | bool | dict[str, _CapturedValue] | None,
@@ -2361,7 +2395,9 @@ def _lower_call(state: _LoweringState, expression: ast.expr) -> _Reference:
     assert isinstance(expression, ast.Call)
     target, name, explicit = _resolve_callable(state, expression.func)
     if target is par_map:
-        return _lower_par_map(state, expression)
+        return _lower_map(state, expression, op='par_map')
+    if target is par_for:
+        return _lower_map(state, expression, op='par_for')
     assert isinstance(target, (FunctionTaskHandle, CalcJobTaskHandle, WorkChainTaskHandle, GraphHandle))
     if explicit is not None:
         instance = _claim_placement(state, explicit, node=expression)

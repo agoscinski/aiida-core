@@ -112,6 +112,9 @@ With an AiiDA profile loaded, run a representative case and inspect the result:
     }
     assert root.inputs.initial.value == 0
 
+To run independent items in parallel instead of stepping through them, fan out over an owned container with ``par_for`` (or ``par_map``); ``for`` loops live in ``@task`` bodies, never in ``@graph`` bodies.
+See :ref:`topics:workflows:graphs:maps` and :ref:`topics:workflows:graphs:fanout`.
+
 
 .. _topics:workflows:graphs:why:
 
@@ -486,7 +489,7 @@ Calls resolve by declaration name, not by what a module-global variable happens 
 * a ``task(ArithmeticAddCalculation)`` factory variable such as ``add_calc`` resolves under its assigned variable name;
 * rebinding either under another module-global name does not declare a new task: ``alias = add`` and ``alias = nested_graph`` fail when the graph is built, as does a stored ``alias = add.alias('scf')`` handle or a renamed import.
   Name repeated placements inline at the call site with ``add.alias('scf')(...)`` instead;
-* enum members in member tests, module-qualified targets such as ``tasks.add``, and the callable mapped with ``par_map`` keep their existing resolution;
+* enum members in member tests, module-qualified targets such as ``tasks.add``, and the callables mapped with ``par_map`` and ``par_for`` keep their existing resolution;
 * values that are not declarations (module-global numbers, nodes, mappings, or attributes) are not wires.
   Pass them as graph inputs instead of reading a global, which the build reports as a missing graph input rather than a name to assign on an earlier line.
 
@@ -504,9 +507,10 @@ A task or graph called through ``.alias('scf')`` names its placement explicitly 
         first = add.alias('scf')(x=x, y=y)
         return add.alias('nscf')(x=first, y=y)
 
-* The constructor works for function tasks, ``CalcJob`` and ``WorkChain`` tasks, nested graphs, generic tasks, dotted and module call targets such as ``tasks.add.alias('scf')``, and the callable mapped with ``par_map``.
+* The constructor works for function tasks, ``CalcJob`` and ``WorkChain`` tasks, nested graphs, generic tasks, dotted and module call targets such as ``tasks.add.alias('scf')``, and the callables mapped with ``par_map`` and ``par_for``.
 * Each placement in one graph body needs its own name: calling one task or graph twice without aliases fails when the graph is built, as does reusing one alias for two placements or mixing a bare call with an alias on the same name.
-* The same rule covers maps: two default ``par_map`` placements over one callable share one map name and fail, so pass the alias on the callable (``par_map(task.alias('name'), values)``), which names the map placement exactly.
+* The same rule covers maps: two default placements over one callable share one map name and fail, so pass the alias on the callable, which names the map placement exactly.
+  ``par_map`` defaults to ``map_<callable>`` and ``par_for`` to ``for_<callable>``; pass ``task.alias('name')`` to either call to name the placement explicitly.
 * Names are scoped to their body: branch arms, loop bodies, and nested graphs each keep their own placements, so both arms of an ``if`` or a loop body may reuse an outer alias.
 * Generated branch, loop, and inline-operation names, as well as runtime map items and loop iteration labels, keep their automatic numbering.
 * The alias is local to the call: it never mutates the task handle, so a later plain ``add(...)`` still places under its own name.
@@ -582,7 +586,8 @@ Nested graph placements introduce a configuration mapping level:
 Here ``relax`` names a nested graph placement containing ``add_calc``.
 For a WorkChain task, its exposed namespaces instead belong directly in its process input mapping, for example ``{'relax': {'base': {'pw': {'code': code}}}}``.
 Configuration never reaches through an opaque WorkChain to its unexposed children.
-Branch, loop and mapped-graph bodies introduce no configuration level; iterations and map items reuse the same static bindings.
+Branch and loop bodies introduce no configuration level; iterations reuse the same static bindings.
+A task map takes one shared entry under its own placement name, applied to every item.
 Aliases name placements in the template.
 Labels the engine generates at runtime (loop iterations, map items) keep their automatic names.
 
@@ -1007,7 +1012,7 @@ Task functions cannot have a parameter named ``after``.
 Parallel maps over containers
 -----------------------------
 
-``par_map`` dispatches a unary task or graph for every element of an ``orm.DataList`` or every value of an ``orm.DataDict``.
+``par_map`` dispatches a unary task for every element of an ``orm.DataList`` or every value of an ``orm.DataDict``.
 All items are dispatched before waiting for their results.
 The result has the same container kind, preserving list order or dictionary keys and insertion order.
 
@@ -1028,34 +1033,82 @@ The result has the same container kind, preserving list order or dictionary keys
     result = run(increment_all, values=orm.DataList([orm.Int(1), orm.Int(2)]))
     assert [item.value for item in result['result']] == [2, 3]
 
-The mapped callable can also be a multi-step graph:
+Mapping over a ``DataDict`` keeps keys and insertion order:
 
 .. code:: python
 
     @graph
-    def increment_twice(value: int) -> int:
-        first = increment(value=value)
-        return increment.alias('increment_2')(value=first)
+    def increment_mapped(values: orm.DataDict) -> orm.DataDict:
+        return par_map(increment, values)
 
-    @graph
-    def apply_graph(values: orm.DataList) -> orm.DataList:
-        return par_map(increment_twice, values)
+    result = run(increment_mapped, values=orm.DataDict({'a': orm.Int(1), 'b': orm.Int(2)}))
+    assert {key: item.value for key, item in result['result'].items()} == {'a': 2, 'b': 3}
 
-Each list element then runs as its own scope of the same graph process, including all of that graph's tasks dispatched with hierarchical call labels.
-Graphs containing ``par_map`` can themselves be mapped over lists of lists.
 ``par_map`` also works inside ``if`` branches and ``while`` bodies.
 
 The callable must declare exactly one input and one leaf output.
+Mapping a ``@graph`` fails when the graph is built, naming the mapped callable; extract the steps into one ``@task`` instead.
 The collection must be a wire annotated as ``DataList`` or ``DataDict``; plain Python lists and dictionaries are not owned containers.
 A task can produce the collection before it is mapped, and downstream tasks can consume the mapped result.
 Element types are checked when each child receives its input.
-Mapped ``CalcJob`` tasks and per-item metadata are not supported yet.
+``par_map`` accepts task functions and ``WorkChain`` tasks; ``CalcJob`` tasks fan out with ``par_for`` instead, and per-item metadata is not supported.
 
 Empty collections produce empty containers without dispatching any item tasks.
 A collector calculation creates the result container from the child outputs; the graph only returns it, preserving calculation/workflow provenance rules.
 If any item fails or omits its declared output, the graph fails with ``ERROR_TASK_FAILED`` and does not run the collector.
 Map progress is checkpointed, so restarting does not resubmit completed items.
 Like task calls, ``par_map`` accepts ``after=placement`` for explicit ordering.
+
+.. _topics:workflows:graphs:fanout:
+
+Parallel fan-out with ``par_for``
+---------------------------------
+
+``par_for`` fans out a unary task over an ``orm.DataList`` or an ``orm.DataDict``, dispatching one independent child process per element before waiting for their results.
+It accepts task functions as well as ``CalcJob`` and ``WorkChain`` tasks, so the same fan-out carries calculations that need a computer.
+The task declares exactly one scientific input, which receives the element; every other input arrives through one shared ``runtime_config`` entry under the map placement name, so the same code and options apply to all items while the inputs vary.
+Per-item execution inputs are not supported.
+
+.. code:: python
+
+    from aiida import orm
+    from aiida.engine import graph, par_for, run, task
+
+    @task
+    def increment(value: int) -> int:
+        return value + 1
+
+    @graph
+    def increment_all(values: orm.DataList) -> orm.DataList:
+        fanned = par_for(increment, values)
+        return fanned
+
+    result = run(increment_all, values=orm.DataList([orm.Int(1), orm.Int(2)]))
+    assert [item.value for item in result['result']] == [2, 3]
+
+A ``CalcJob`` task declaring one scientific input fans out the same way, with the shared entry supplying its execution inputs for every item:
+
+.. code:: python
+
+    # `SingleInputCalculation` stands for a `CalcJob` plugin with one scientific input.
+    single_input_calc = task(SingleInputCalculation)
+
+    @graph
+    def calculate_all(values: orm.DataList) -> orm.DataList:
+        return par_for(single_input_calc, values)
+
+    result = run(
+        calculate_all,
+        values=orm.DataList([orm.Int(1), orm.Int(2)]),
+        runtime_config={'for_single_input_calc': {'code': code}},
+    )
+
+Here ``for_single_input_calc`` names the map placement, and every item launches with the same code.
+See :ref:`topics:workflows:graphs:runtime_config` for the configuration channel.
+Mapping a ``@graph`` fails when the graph is built, naming the mapped callable; graphs stay scopes of the single graph process instead of running as child processes.
+Like ``par_map``, ``par_for`` accepts ``after=placement`` for explicit ordering and works inside ``if`` branches and ``while`` bodies.
+Empty collections produce empty containers without dispatching any item tasks, and a collector calculation creates the result container from the child outputs.
+If any item fails, the graph fails with ``ERROR_TASK_FAILED`` without running the collector.
 
 Provenance
 ----------
@@ -1315,8 +1368,8 @@ These are gaps in the current implementation, expected to be closed with further
 * **No dry runs:** graph metadata rejects ``dry_run``.
 * **Monitor wiring:** dynamic ``CalcJob`` monitor mappings can be supplied through ``runtime_config``; graph wiring still needs a fixed namespace declaration.
 * **Local function tasks:** a function task runs in the interpreter that runs the graph, on a daemon worker when submitted. Running it on a remote computer is not yet supported.
-* **Serial loops:** a ``while`` runs one iteration at a time. Use ``par_map`` to run independent items of an owned container in parallel.
-* **No per-iteration outputs:** a graph output holds one node, so a loop cannot return one result per iteration, such as the trajectory of each relaxation step. A task can copy the values into one list node, without links to the original nodes. Owned ``DataList``/``DataDict`` containers hold the original nodes in one output instead; use ``par_map`` to build one from per-item tasks.
+* **Serial loops:** a ``while`` runs one iteration at a time. Use ``par_map`` or ``par_for`` to run independent items of an owned container in parallel.
+* **No per-iteration outputs:** a graph output holds one node, so a loop cannot return one result per iteration, such as the trajectory of each relaxation step. A task can copy the values into one list node, without links to the original nodes. Owned ``DataList``/``DataDict`` containers hold the original nodes in one output instead; use ``par_map`` or ``par_for`` to build one from per-item tasks.
 * **No value validators:** port types are checked, and ``PortModel`` fields reject pydantic validators; check values inside a task.
 * **Source-only authoring:** graphs are written as Python source. A graphical editor is planned.
 

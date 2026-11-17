@@ -9,10 +9,9 @@
 """Execution contracts for `par_map` fan-out maps over owned containers.
 
 Covers list/dict mapping with order and key preservation, empty and computed
-collections, nested graph callables, downstream chaining, serialized IR
-execution, provenance (graphs never `CREATE` result containers), failure
-propagation, scheduler fan-out, checkpoint restoration, and explicit
-rejections of unsupported declarations.
+collections, downstream chaining, serialized IR execution, provenance (graphs
+never `CREATE` result containers), failure propagation, scheduler fan-out,
+checkpoint restoration, and explicit rejections of unsupported declarations.
 """
 
 import json
@@ -98,16 +97,6 @@ def test_map_empty_input_executes() -> None:
 
 
 @pytest.mark.usefixtures('aiida_profile_clean')
-@pytest.mark.parametrize('serialized', [pytest.param(False, id='declaration'), pytest.param(True, id='serialized')])
-def test_map_nested_graph_executes(serialized: bool) -> None:
-    """A nested graph mapped over a list applies per element."""
-    original = DataList([Int(1), Int(2)])
-    outputs, node = _launch(par_maps.map_nested, {'values': original}, serialized)
-    assert node.is_finished_ok
-    assert [member.value for member in outputs['result']] == [2, 3]
-
-
-@pytest.mark.usefixtures('aiida_profile_clean')
 def test_map_computed_collection_executes() -> None:
     """A map over a task-produced list consumes that existing container."""
     outputs, node = run_get_node(par_maps.map_computed, a=1, b=2, c=3)
@@ -173,19 +162,6 @@ def test_map_mapping_provenance() -> None:
     collector = calls['map_increment_collect']
     assert {key: member.value for key, member in collector.outputs.result.items()} == {'b': 2, 'a': 3}
     assert {key: member.value for key, member in outputs['result'].items()} == {'b': 2, 'a': 3}
-    assert node.base.links.get_outgoing(link_type=LinkType.CREATE).all() == []
-
-
-@pytest.mark.usefixtures('aiida_profile_clean')
-def test_map_nested_graph_provenance() -> None:
-    """Mapped nested graphs run as scopes of the root graph under one collector."""
-    original = DataList([Int(1), Int(2)])
-    outputs, node = run_get_node(par_maps.map_nested, values=original)
-    assert node.is_finished_ok
-    assert node.base.links.get_outgoing(link_type=LinkType.CALL_WORK).all() == []
-    calc_calls = node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all_link_labels()
-    assert set(calc_calls) == {'map_add_one_0__increment', 'map_add_one_1__increment', 'map_add_one_collect'}
-    assert [member.value for member in outputs['result']] == [2, 3]
     assert node.base.links.get_outgoing(link_type=LinkType.CREATE).all() == []
 
 

@@ -136,6 +136,10 @@ Stored nodes are migrated automatically: `verdi storage migrate` rewrites `data.
 The migration invalidates the hashes of the migrated nodes, so run `verdi node rehash` afterwards if you rely on caching.
 Loading a node whose storage has not been migrated now raises `IncompatibleStorageSchema` instead of silently falling back to the `Data` class.
 
+#### `par_map` maps tasks only
+
+`aiida.engine.par_map` no longer accepts `@graph` callables: mapping a graph now fails the build while naming the offending callable. Extract the mapped steps into one unary `@task` instead, or fan out with `par_for` when the task needs a computer. `par_map` keeps its task mapping behavior, placement naming (`map_<callable>`), and provenance.
+
 ### New features
 
 #### Explicit placement names in source graphs
@@ -144,9 +148,15 @@ A task or graph call accepts an explicit placement name through `task.alias('scf
 
 #### Parallel maps in source graphs
 
-`aiida.engine.par_map(task_or_graph, values)` maps a unary task or graph over an `orm.DataList` or the values of an `orm.DataDict` inside a `@graph` body.
+`aiida.engine.par_map(task, values)` maps a unary task over an `orm.DataList` or the values of an `orm.DataDict` inside a `@graph` body.
 Items run independently, results preserve list order or dictionary keys, and a collector calculation creates the output container with full provenance.
 Empty containers, checkpoint restarts, and serialized graph declarations are supported.
+
+#### Parallel fan-out with `par_for`
+
+`aiida.engine.par_for(task, values)` fans out a unary task over an `orm.DataList` or the values of an `orm.DataDict` inside a `@graph` body, dispatching one independent child process per element in parallel.
+It accepts task functions as well as `CalcJob` and `WorkChain` tasks: the task declares exactly one scientific input, which receives the element, while every other input arrives through one shared `runtime_config` entry under the map placement name (`for_<callable>` by default), so the same code and options apply to all items.
+Mapping a `@graph` fails the build while naming the callable, and a multi-output task selects its collected port with `task(..., outputs={'name': Type})` naming exactly one leaf.
 
 #### Processes defined in a notebook cell
 

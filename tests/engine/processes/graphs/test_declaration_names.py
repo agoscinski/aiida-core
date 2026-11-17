@@ -25,6 +25,7 @@ from aiida.engine.processes.graphs.lowering import GraphHandle, compile_graph
 from tests.engine.processes.graphs.programs import (
     calls,
     declaration_aliases,
+    par_fors,
     par_maps,
     workchains,
 )
@@ -107,6 +108,11 @@ def test_inline_alias_still_resolves() -> None:
 def test_par_map_callable_resolution_unchanged() -> None:
     """`par_map` still takes the declared callable by name."""
     assert compile_graph(par_maps.map_list).task_names == ('map_increment',)
+
+
+def test_par_for_callable_resolution_unchanged() -> None:
+    """`par_for` takes the declared callable by name under its own placement prefix."""
+    assert compile_graph(par_fors.for_list).task_names == ('for_increment',)
 
 
 def test_enum_member_resolution_unchanged() -> None:
