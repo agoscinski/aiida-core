@@ -9,6 +9,10 @@
 
 ### Breaking changes
 
+#### Graph runtime failures finish with exit status 401
+
+`GraphRuntimeError` (including `GraphMaxIterationsError`) raised during graph scheduling or output validation now finishes the stored graph node as failed with exit status `401` (`ERROR_GRAPH_RUNTIME`) and the runtime diagnostic in its exit message, rather than excepting the node without an exit status. Callers of `run_get_node` should inspect the node's failure status instead of catching these runtime errors. Build-time language/type errors and launch-time validation errors still raise exceptions; direct `GraphRun.step()` calls also continue to raise runtime errors. Child task failures retain exit status `400` (`ERROR_TASK_FAILED`).
+
 #### Local child completion no longer waits for database polling
 
 `Runner.call_on_process_finish` now notifies watchers directly when a child scheduled through the same runner's `submit` or `schedule` terminates, including unsuccessful exits, exceptions and kills. Local graphs and nested WorkChains consequently resume without waiting for `runner.poll.interval`, even without a broker. Callbacks still observe finalized terminal process state; execution tasks that fail or are cancelled before recording termination fall back to polling. Processes not tracked by the current runner, including children after checkpoint restoration, retain broadcast notifications and database polling. No configuration or database migration is required.
