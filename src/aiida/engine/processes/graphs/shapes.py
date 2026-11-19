@@ -52,6 +52,7 @@ class LeafShape(_ValueShape):
     """One value with optional valid types."""
 
     types: tuple[type, ...] | None = None
+    error_enums: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -272,6 +273,8 @@ def dump_shape(shape: Shape, *, defaults: bool = True) -> dict[str, t.Any]:
             if shape.types is None
             else [None if kind is type(None) else get_object_loader().identify_object(kind) for kind in shape.types],
         )
+        if shape.error_enums:
+            result['error_enums'] = sorted(shape.error_enums)
     elif isinstance(shape, NamespaceShape):
         result.update(
             kind='namespace', fields={name: dump_shape(field, defaults=defaults) for name, field in shape.fields}
@@ -296,6 +299,7 @@ def load_shape(data: Mapping[str, t.Any]) -> Shape:
             types=None
             if types is None
             else tuple(type(None) if kind is None else get_object_loader().load_object(kind) for kind in types),
+            error_enums=frozenset(data.get('error_enums', ())),
             required=required,
             help=help,
             default=default,

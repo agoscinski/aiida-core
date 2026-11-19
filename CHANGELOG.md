@@ -9,6 +9,16 @@
 
 ### Breaking changes
 
+#### Fallible graph calls propagate by default
+
+In graph bodies, a bare function task call declared as `Result[T, E]` now exposes only its success value.
+Replace `value, error = step(...)` with `value, error = catch_error(step(...))` to handle a declared failure explicitly, importing the new intrinsic from `aiida.engine`.
+The intrinsic also works on nested graphs that can propagate declared failures.
+Uncaught declared failures fail the root with the original status and message.
+Process-class tasks using `errors=` still expose partial outputs and an error arm as before.
+Graph run checkpoints from before this change cannot resume; finish them before upgrading or relaunch them.
+Templates using the new result policies serialize as graph declaration version `0.4`; older templates remain readable with their original failure behavior.
+
 #### Function tasks require input type annotations
 
 `@task` now raises `GraphTypeCheckError` at decoration time if any function parameter lacks a type annotation, even if it has a default.
