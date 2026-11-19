@@ -289,6 +289,8 @@ class GraphProcess(Process):
     def _finish(self) -> ExitCode | None:
         """Return the task failure exit code, or expose the graph outputs."""
         state = self._run_state
+        if (exit_code := state.propagated_exit_code) is not None:
+            return exit_code
         if failures := state.failures():
             failure = failures[0]
             if failure.items:

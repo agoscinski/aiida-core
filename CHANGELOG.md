@@ -13,6 +13,16 @@ Graph bodies accept a general `partial(...)` input binding that needs no import:
 
 ### Breaking changes
 
+#### Fallible graph calls propagate by default
+
+In graph bodies, a bare function task call declared as `Result[T, E]` now exposes only its success value.
+Replace `value, error = step(...)` with `value, error = catch_error(step(...))` to handle a declared failure explicitly, importing the new intrinsic from `aiida.engine`.
+The intrinsic also works on nested graphs that can propagate declared failures.
+Uncaught declared failures fail the root with the original status and message.
+Process-class tasks using `errors=` still expose partial outputs and an error arm as before.
+Graph run checkpoints from before this change cannot resume; finish them before upgrading or relaunch them.
+Templates using the new result policies serialize as graph declaration version `0.4`; older templates remain readable with their original failure behavior.
+
 #### Inline collection expressions in source graphs
 
 Graph bodies now accept inline collection expressions over typed `list[T]`/`dict[str, T]` collections: integer indexing of lists with negatives, string-key lookup of mappings with runtime keys, public annotated item reads such as `item.value`, one-type list/dict literals within collection expressions, and filtered, nested list/dict comprehensions with `mapping.items()` pair iteration.
@@ -20,7 +30,7 @@ Previously each of these forms failed at build time with a diagnostic telling au
 The engine semantics match scalar inline operations: no child processes, no `CREATE` links, checkpointed scope values, and only task outputs entering the provenance.
 A root graph cannot return a newly computed collection or scalar, and returning an existing owned member itself still fails at launch under the unchanged owned-container contract.
 Still rejected at build time are task or method calls inside an expression, slices, set/generator comprehensions, private attribute reads, missing element annotations, and `DataList[T]` generics (prefer `list[orm.Int]` hints, or an explicit `orm.DataList` passed whole without inline indexing).
-Templates carrying expressions serialize as graph declaration version `0.3`, while existing scalar-only `0.2` and no-op `0.1` declarations remain readable; stored declarations and checkpoints that avoid the new forms need no migration.
+Templates carrying expressions serialize as graph declaration version `0.3`, while existing scalar-only `0.2` and no-op `0.1` declarations remain readable; older declarations without inline collection expressions remain readable.
 
 #### Python ORM containers in graphs store as owned containers
 
