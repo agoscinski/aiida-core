@@ -13,6 +13,12 @@ Graph bodies accept a general `partial(...)` input binding that needs no import:
 
 ### Breaking changes
 
+#### Function tasks require input type annotations
+
+`@task` now raises `GraphTypeCheckError` at decoration time if any function parameter lacks a type annotation, even if it has a default.
+Previously, unannotated parameters silently became generic `DataNode` ports.
+Annotate each parameter with its intended type, or with `DataNode` if it intentionally accepts any data node.
+
 #### Inline collection expressions in source graphs
 
 Graph bodies now accept inline collection expressions over typed `list[T]`/`dict[str, T]` collections: integer indexing of lists with negatives, string-key lookup of mappings with runtime keys, public annotated item reads such as `item.value`, one-type list/dict literals within collection expressions, and filtered, nested list/dict comprehensions with `mapping.items()` pair iteration.
