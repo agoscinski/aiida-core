@@ -9,6 +9,10 @@
 
 ### Breaking changes
 
+#### Graph execution environments and placement recovery
+
+Graphs accept `execution_environment` or the separate `runtime_config` and `execution_policy` channels at launch. An opt-in memory policy retries only a supported CalcJob placement with confirmed scheduler OOM, preserving each attempt node and exposing only the final attempt to the workflow. Slurm accounting is the first built-in integration. `PreparedRun` packages plugin-resolved scientific inputs, the environment, and versioned protocol provenance. The launch keywords `execution_environment`, `execution_policy`, and `prepared_run` are reserved at the graph launch boundary; pass scientific arguments with those names inside the explicit `inputs` mapping alongside a launch channel. The `graph_attempt_` call-label prefix is reserved; ordinary task labels starting with it are escaped. Existing checkpoints and stored graph nodes require no migration.
+
 #### Fallible graph calls propagate by default
 
 In graph bodies, a bare function task call declared as `Result[T, E]` now exposes only its success value.
