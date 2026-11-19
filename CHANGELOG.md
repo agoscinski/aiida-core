@@ -162,6 +162,10 @@ Loading a node whose storage has not been migrated now raises `IncompatibleStora
 
 ### New features
 
+#### Return declared failures directly from graphs
+
+A graph annotated with `Result[Success, Errors]` can return `Err(Errors.MEMBER)` from a top-level `if` guard and finish with `return Ok(...)` on success. The failure preserves its exit status and message without dispatching a guard task, and can be handled by a parent with `catch_error`.
+
 #### Explicit placement names in source graphs
 
 A task or graph call accepts an explicit placement name through `task.alias('scf')(...)`, for function tasks, `CalcJob` and `WorkChain` tasks, nested graphs, generic tasks, dotted and module call targets, and `par_map` callables. The alias names the compiled placement, the provenance call label, and the `task_metadata` entry, without mutating the task handle. It takes a non-empty string literal following the link-label contract; anything else fails at build time. Repeating a task, graph, or map placement in one graph body without a distinct alias fails at build time; branch arms, loop bodies, and nested graphs scope names independently, while generated branch, loop, and inline-operation names keep their automatic numbering.

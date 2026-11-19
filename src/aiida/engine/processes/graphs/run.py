@@ -279,7 +279,7 @@ class _ScopeState(t.TypedDict, total=False):
     collectors: dict[str, str]
     passed: dict[str, dict[str, t.Any]]
     values: dict[str, t.Any]
-    failure: str  # Originating task label; its node holds the exact member, status and message.
+    failure: str | tuple[str, str]  # Child label or the enum identity and name from a graph-level return.
 
 
 class _GraphRunState(t.TypedDict, total=False):
@@ -369,9 +369,17 @@ class GraphRun:
         """Return the original exit code if a declared failure reached the root."""
         if (label := self.scopes[_ROOT_SCOPE].get('failure')) is None:
             return None
+        if isinstance(label, tuple):
+            return self._returned_member(label).value
         node = self._node(self.done[label])
         member = node.outputs['error'].get_member()
         return ExitCode(node.exit_status, node.exit_message, member.value.invalidates_cache)
+
+    @staticmethod
+    def _returned_member(failure: tuple[str, str]) -> ExitCodeEnum:
+        """Resolve a graph-level error without creating an output node."""
+        enum_type = get_object_loader().load_object(failure[0])
+        return enum_type[failure[1]]
 
     @cached_property
     def _propagating_instances(self) -> dict[str, tuple[str, TaskIR]]:
@@ -395,14 +403,14 @@ class GraphRun:
             current = scope['parent']
         return False
 
-    def _propagate_failure(self, key: str, label: str) -> None:
+    def _propagate_failure(self, key: str, failure: str | tuple[str, str]) -> None:
         """Unwind internal regions, stopping at the nearest explicit invocation capture."""
         if self._scope_stopped(key):
             return
         current: str | None = key
         while current is not None:
             scope = self.scopes[current]
-            scope['failure'] = label
+            scope['failure'] = failure
             parent = scope['parent']
             if parent is not None and scope['kind'] == 'subgraph':
                 task = self._template_of(parent).task(scope['placement'])
@@ -847,7 +855,12 @@ class GraphRun:
             child = scope['frames'][name][-1]
             if isinstance(task, SubgraphTask) and task.capture_error:
                 if (origin := self.scopes[child].get('failure')) is not None:
-                    return {'error': self._node(self.done[origin]).outputs['error']}
+                    error = (
+                        self._returned_member(origin)
+                        if isinstance(origin, tuple)
+                        else self._node(self.done[origin]).outputs['error']
+                    )
+                    return {'error': error}
                 outputs = self._scope_outputs(child)
                 return {'value': outputs.get(task.body.result_port) if task.body.result_port else outputs}
             return self._scope_outputs(child)
@@ -1070,7 +1083,8 @@ class GraphRun:
             if 'given' in saved:
                 state['given'] = dict(saved['given'])
             if 'failure' in saved:
-                state['failure'] = saved['failure']
+                failure = saved['failure']
+                state['failure'] = failure if isinstance(failure, str) else tuple(failure)
             state['instances'] = {name: list(labels) for name, labels in saved.get('instances', {}).items()}
             state['frames'] = {name: list(keys) for name, keys in saved.get('frames', {}).items()}
             state['collectors'] = dict(saved.get('collectors', {}))
@@ -1181,7 +1195,7 @@ class GraphRun:
         else:
             selected = _holds(condition)
         taken = task.body if selected else task.otherwise
-        selector = 'taken' if taken is task.body else 'otherwise'
+        selector = 'taken' if selected else 'otherwise'
         raw = {key: value for key, value in inputs.items() if key in taken.inputs}
         child = self._new_scope(
             parent=scope_key,
@@ -1192,6 +1206,8 @@ class GraphRun:
             prefix=f'{scope["prefix"]}{task.name}__',
         )
         scope.setdefault('frames', {}).setdefault(task.name, []).append(child)
+        if selected and task.return_error is not None:
+            self._propagate_failure(child, task.return_error)
         self._invalidate()
 
     def _begin_loop(self, scope_key: str, task: LoopControl, inputs: dict[str, t.Any]) -> None:

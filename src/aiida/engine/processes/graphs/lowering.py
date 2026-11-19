@@ -61,7 +61,7 @@ from aiida.engine.processes.graphs.operations import (
 )
 from aiida.engine.processes.graphs.par_map import par_map
 from aiida.engine.processes.graphs.process import GraphProcess
-from aiida.engine.processes.graphs.results import catch_error
+from aiida.engine.processes.graphs.results import Err, Ok, _error_types, _result_contract, catch_error
 from aiida.engine.processes.graphs.shapes import (
     Forward,
     LeafShape,
@@ -728,9 +728,22 @@ def _lower_function(state: _LoweringState) -> GraphIR:
             + 'end the graph with a return declaring its outputs'
         )
         raise GraphLanguageError(msg)
+    annotation = state.definition.hints.get('return')
+    success, errors = _result_contract(annotation)
+    error_enums = (
+        {get_object_loader().identify_object(kind) for kind in _error_types(t.get_args(annotation)[1])}
+        if errors
+        else set()
+    )
+    previous_guard: str | None = None
     for statement in statements[:-1]:
+        start = len(state.tasks)
+        guard = None
         if isinstance(statement, ast.If):
-            _lower_branch(state, statement=statement)
+            if len(statement.body) == 1 and isinstance(returned := statement.body[0], ast.Return):
+                guard = _lower_error_guard(state, statement, returned, error_enums)
+            else:
+                _lower_branch(state, statement=statement)
         elif isinstance(statement, ast.While):
             _lower_loop(state, statement=statement)
         elif isinstance(statement, (ast.For, ast.AsyncFor)):
@@ -760,6 +773,9 @@ def _lower_function(state: _LoweringState) -> GraphIR:
             _lower_unpack(state, statement=statement)
         else:
             _lower_assignment(state, statement=statement)
+        _order_after_guard(state, previous_guard, start)
+        if guard is not None:
+            previous_guard = guard
     result: ast.expr | None = statements[-1].value
     if result is None:
         msg = (
@@ -767,7 +783,11 @@ def _lower_function(state: _LoweringState) -> GraphIR:
             + 'return must name a task or graph input; return placements, input leaves, or mappings'
         )
         _reject(state, node=statements[-1], reason=msg)
-    outputs, output_typehints = _lower_outputs(state, result=result)
+    if errors:
+        result = _result_argument(state, result, Ok)
+    start = len(state.tasks)
+    outputs, output_typehints = _lower_outputs(state, result=result, annotation=success)
+    _order_after_guard(state, previous_guard, start)
     return GraphIR(
         tasks=tuple(state.tasks),
         dependencies=tuple(state.dependencies),
@@ -780,12 +800,11 @@ def _lower_function(state: _LoweringState) -> GraphIR:
 
 
 def _lower_outputs(
-    state: _LoweringState, result: ast.expr
+    state: _LoweringState, result: ast.expr, annotation: object
 ) -> tuple[dict[str, OutputTree], dict[str, tuple[type, ...]]]:
     """Lower the return statement to named endpoints and their type hints."""
-    hints = state.definition.hints
     references = _lower_return(state, expression=result)
-    returned = shape_for_annotation(hints.get('return'))
+    returned = shape_for_annotation(annotation)
     outputs: dict[str, OutputTree] = {
         name: _endpoint_tree(reference, preserve_optional_namespaces=True) for name, reference in references.items()
     }
@@ -801,6 +820,54 @@ def _lower_outputs(
         else {}
     )
     return outputs, typehints
+
+
+def _result_argument(state: _LoweringState, expression: ast.expr, wrapper: type[Ok] | type[Err]) -> ast.expr:
+    """Unwrap the single positional argument of an explicit result constructor."""
+    if isinstance(expression, ast.Call):
+        base, parts = _attribute_path(expression.func)
+        if isinstance(base, ast.Name) and base.id not in state.names:
+            resolved = state.definition.symbols.values.get(base.id)
+            for part in parts:
+                resolved = getattr(resolved, part, None)
+            if resolved is wrapper and len(expression.args) == 1 and not expression.keywords:
+                return expression.args[0]
+    _reject(state, node=expression, reason=f'expected `{wrapper.__name__}(...)` with one positional argument')
+
+
+def _lower_error_guard(state: _LoweringState, statement: ast.If, returned: ast.Return, error_enums: set[str]) -> str:
+    """Place an outputless branch which returns a declared error when selected."""
+    if statement.orelse or not error_enums or returned.value is None:
+        _reject(
+            state, node=returned, reason='early returns require `if condition: return Err(...)` and a Result annotation'
+        )
+    error = _result_argument(state, returned.value, Err)
+    member = _resolve_enum_member(state, error)
+    if member is None or member[0] not in error_enums:
+        _reject(state, node=error, reason='Err must name a member of an exit-code enum declared in Result')
+    test, condition_test, condition_member = _lower_branch_condition(state, statement.test)
+    instance = _claim_name(state, f'branch_{len(state.tasks) + 1}')
+    given: dict[str, _CapturedValue] = {}
+    _wire(state, instance=instance, port=_CONDITION_PORT, value=_lower_value(state, test), given=given)
+    empty = GraphIR(tasks=(), input_shape=NamespaceShape(fields=()))
+    state.tasks.append(
+        BranchControl(
+            name=instance,
+            inputs=given,
+            body=empty,
+            otherwise=empty,
+            condition_test=condition_test,
+            condition_member=condition_member,
+            return_error=member,
+        )
+    )
+    return instance
+
+
+def _order_after_guard(state: _LoweringState, guard: str | None, start: int) -> None:
+    """Do not start placements after an early return until its guard has passed."""
+    if guard is not None:
+        state.dependencies.extend(Dependency(guard, target=task.name) for task in state.tasks[start:])
 
 
 def _endpoint_tree(reference: _ReferenceTree, *, preserve_optional_namespaces: bool = False) -> OutputTree:
@@ -1278,10 +1345,14 @@ def _lower_ifexp(state: _LoweringState, node: ast.IfExp) -> _Reference:
     return state.names[armed]
 
 
-def _lower_branch(state: _LoweringState, statement: ast.If) -> str:
-    """Lower an if statement to a branch control task, returning the exposed wire."""
-    _check_branch_shape(state, statement=statement)
-    test: ast.expr = statement.test
+_ConditionTest: t.TypeAlias = t.Literal['truthy', 'is_none', 'is_not_none', 'is_member', 'is_not_member']
+
+
+def _lower_branch_condition(
+    state: _LoweringState, test: ast.expr
+) -> tuple[ast.expr, _ConditionTest, tuple[str, str] | None]:
+    """Prepare the test and its runtime dispatch mode."""
+    original = test
     if isinstance(test, (ast.Call, ast.BoolOp, ast.IfExp)):
         test = _bind_test_condition(state, test=test)
     condition_test: t.Literal['truthy', 'is_none', 'is_not_none', 'is_member', 'is_not_member'] = 'truthy'
@@ -1292,11 +1363,18 @@ def _lower_branch(state: _LoweringState, statement: ast.If) -> str:
         test, condition_test, condition_member = matched
         shape = _probe_shape(state, test)
         if isinstance(shape, LeafShape) and shape.error_enums and condition_member[0] not in shape.error_enums:
-            _reject(state, node=statement.test, reason='this enum is not declared by the captured invocation')
+            _reject(state, node=original, reason='this enum is not declared by the captured invocation')
     elif isinstance(test, (ast.BinOp, ast.Compare, ast.UnaryOp)):
         # Numeric inline operations bind to a fresh boolean wire; `is`/`is not`
         # presence and member tests above must win over this numeric path.
         test = _bind_test_condition(state, test=test)
+    return test, condition_test, condition_member
+
+
+def _lower_branch(state: _LoweringState, statement: ast.If) -> str:
+    """Lower an if statement to a branch control task, returning the exposed wire."""
+    _check_branch_shape(state, statement=statement)
+    test, condition_test, condition_member = _lower_branch_condition(state, statement.test)
     first = _lower_arm(state, statements=statement.body)
     if statement.orelse:
         second = _lower_arm(state, statements=statement.orelse)

@@ -67,6 +67,70 @@ def nested_flaky(x: int) -> int:
     return value
 
 
+@graph
+def reject_odd(x: int) -> Result[bool, FlakyErrors]:
+    """Reject odd values before starting an independent downstream task."""
+    if x % 2 != 0:
+        return Err(FlakyErrors.ODD)
+    if x > 10:
+        return Err(FlakyErrors.TOO_BIG)
+    return Ok(mark_present(value=2))
+
+
+@graph
+def catch_graph_return(x: int) -> bool:
+    """Catch the inline failure and handle it using an ordinary task."""
+    value, error = catch_error(reject_odd(x=x))
+    if error is FlakyErrors.ODD:
+        selected = mark_absent()
+    else:
+        selected = value
+    return selected
+
+
+@graph
+def undeclared_return(x: int) -> Result[int, FlakyErrors]:
+    """Attempt to return an enum outside the graph's contract."""
+    if x > 0:
+        return Err(results.DivisionErrors.ZERO_DENOMINATOR)
+    return Ok(x)
+
+
+@pytest.mark.parametrize(('x', 'error'), [(1, FlakyErrors.ODD), (12, FlakyErrors.TOO_BIG)])
+def test_graph_returns_error_without_dispatching_tasks(x, error):
+    """Neither the error nor success continuation launches a child on this path."""
+    _, node = run_get_node(reject_odd, x=x)
+    assert node.exit_status == error.value.status
+    assert node.exit_message == error.value.message
+    assert not node.called
+
+
+def test_catch_graph_return():
+    """An inline Err is catchable, while Ok exposes the existing success node."""
+    for x, expected in [(1, True), (2, False)]:
+        outputs, node = run_get_node(catch_graph_return, x=x)
+        assert node.is_finished_ok
+        assert outputs['result'].value is expected
+        assert len(node.called) == 1
+
+
+def test_graph_error_return_roundtrip():
+    """Error-return templates and stopped scopes round-trip without a child node."""
+    template = compile_graph(reject_odd)
+    restored = GraphIR.from_dict(json.loads(json.dumps(template.to_dict())))
+    assert restored.version == '0.5'
+    run = GraphRun(graph=restored, given={'x': 1})
+    assert not run.step().starts
+    checkpoint = json.loads(json.dumps(run.to_dict()))
+    resumed = GraphRun.from_dict(restored, {'x': 1}, checkpoint)
+    assert resumed.propagated_exit_code == FlakyErrors.ODD.value
+
+
+def test_graph_rejects_undeclared_error_return():
+    with pytest.raises(GraphLanguageError, match='declared in Result'):
+        undeclared_return.build()
+
+
 @task
 def mark_absent() -> bool:
     """Report that the nested scope left no value arm."""

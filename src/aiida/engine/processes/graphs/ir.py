@@ -61,6 +61,7 @@ __all__ = (
 )
 
 _GRAPH_IR_RESULT_VERSION: t.Final = '0.4'
+_GRAPH_IR_ERROR_RETURN_VERSION: t.Final = '0.5'
 _GRAPH_IR_VERSION: t.Final = '0.2'
 _GRAPH_IR_LEGACY_VERSION: t.Final = '0.1'
 _TASK_IR_VERSION: t.Final = '0.1'
@@ -764,6 +765,7 @@ class GraphTask(abc.ABC):
                     condition_port=data.get('condition_port', _CONDITION_PORT),
                     condition_test=condition_test,
                     condition_member=condition_member,
+                    return_error=tuple(data['return_error']) if 'return_error' in data else None,
                     **common,
                 )
             if kind == 'loop':
@@ -863,6 +865,7 @@ class BranchControl(BodyTask):
     otherwise: GraphIR
     condition_test: t.Literal['truthy', 'is_none', 'is_not_none', 'is_member', 'is_not_member'] = 'truthy'
     condition_member: tuple[str, str] | None = None
+    return_error: tuple[str, str] | None = None
 
     def __post_init__(self) -> None:
         """Reject unknown condition tests and member tests without exactly one error member."""
@@ -901,6 +904,7 @@ class BranchControl(BodyTask):
             'condition_test': self.condition_test,
             'condition_member': list(self.condition_member) if self.condition_member is not None else None,
             'otherwise': self.otherwise.to_dict(),
+            **({'return_error': list(self.return_error)} if self.return_error is not None else {}),
         }
 
 
@@ -1165,12 +1169,24 @@ class GraphIR:
         from aiida.engine.processes.graphs.validate import validate_graph
 
         validate_graph(self)
-        if self._uses_result_policy:
+        if self._uses_error_return:
+            version = _GRAPH_IR_ERROR_RETURN_VERSION
+        elif self._uses_result_policy:
             version = _GRAPH_IR_RESULT_VERSION
         else:
             version = _GRAPH_IR_VERSION if _graph_contains_operation(self) else _GRAPH_IR_LEGACY_VERSION
         if self.version != version:
             object.__setattr__(self, 'version', version)
+
+    @cached_property
+    def _uses_error_return(self) -> bool:
+        """Version templates that can finish without a failing child node."""
+        for task in self.tasks:
+            if isinstance(task, BranchControl) and (task.return_error is not None or task.otherwise._uses_error_return):
+                return True
+            if isinstance(task, (BodyTask, MapControl)) and task.body is not None and task.body._uses_error_return:
+                return True
+        return False
 
     @cached_property
     def _uses_result_policy(self) -> bool:
@@ -1195,6 +1211,8 @@ class GraphIR:
                 errors.update(task.spec.result_errors)
             elif isinstance(task, BranchControl):
                 errors.update(task.body.declared_errors, task.otherwise.declared_errors)
+                if task.return_error is not None:
+                    errors.add(task.return_error[0])
             elif isinstance(task, LoopControl) or (isinstance(task, SubgraphTask) and not task.capture_error):
                 errors.update(task.body.declared_errors)
             elif isinstance(task, MapControl) and task.body is not None:
@@ -1326,6 +1344,7 @@ class GraphIR:
             _GRAPH_IR_LEGACY_VERSION,
             _GRAPH_IR_VERSION,
             _GRAPH_IR_RESULT_VERSION,
+            _GRAPH_IR_ERROR_RETURN_VERSION,
         )
         if version not in supported:
             msg = f'cannot read a graph declaration of version `{version}`; supported versions are {supported}.'

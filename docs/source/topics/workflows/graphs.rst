@@ -890,7 +890,21 @@ Use ``value, error = catch_error(divide_signed(...))`` to handle a failure inste
 On success, ``error`` is ``None``; on declared failure, ``value`` is ``None`` and ``error`` is the declared member.
 For a nullable success type, check ``error`` to distinguish a successful ``None`` from failure.
 ``catch_error`` also accepts a direct nested graph call if that graph can propagate declared failures.
-A graph return annotation describes its successful value, not whether it can fail.
+When a graph only propagates failures from its calls, its return annotation can describe just its successful value.
+To return a declared failure directly, annotate the graph with ``Result[Success, Errors]``:
+
+.. code-block:: python
+
+    @graph
+    def checked_ratio(numerator: float, denominator: float) -> Result[float, DivisionErrors]:
+        if denominator == 0.0:
+            return Err(DivisionErrors.ZERO_DENOMINATOR)
+        return Ok(divide_signed(numerator=numerator, denominator=denominator))
+
+An error return is supported as the sole statement of a top-level ``if`` with no ``else`` and must name a member of a declared exit-code enum directly.
+The final ``return Ok(...)`` follows the usual graph output rules and returns existing nodes.
+Placements below an error guard wait for it to pass; on failure the graph preserves the declared status and message without launching a guard task or returning a success output.
+An enclosing graph can handle the failure with ``catch_error``.
 
 Standard Python type checkers see the bare call's success type but cannot infer the context-sensitive capture types.
 The intrinsic's Python signature uses ``Any`` for the captured success arm and ``ExitCodeEnum | None`` for the captured error arm.
