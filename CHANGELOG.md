@@ -9,6 +9,12 @@
 
 ### Breaking changes
 
+#### Function tasks require input type annotations
+
+`@task` now raises `GraphTypeCheckError` at decoration time if any function parameter lacks a type annotation, even if it has a default.
+Previously, unannotated parameters silently became generic `DataNode` ports.
+Annotate each parameter with its intended type, or with `DataNode` if it intentionally accepts any data node.
+
 #### Graph runtime failures finish with exit status 401
 
 `GraphRuntimeError` (including `GraphMaxIterationsError`) raised during graph scheduling or output validation now finishes the stored graph node as failed with exit status `401` (`ERROR_GRAPH_RUNTIME`) and the runtime diagnostic in its exit message, rather than excepting the node without an exit status. Callers of `run_get_node` should inspect the node's failure status instead of catching these runtime errors. Build-time language/type errors and launch-time validation errors still raise exceptions; direct `GraphRun.step()` calls also continue to raise runtime errors. Child task failures retain exit status `400` (`ERROR_TASK_FAILED`).
