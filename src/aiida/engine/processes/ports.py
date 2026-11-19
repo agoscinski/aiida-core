@@ -24,7 +24,7 @@ from aiida.common.loaders import get_object_loader
 from aiida.engine.processes.generic import ports
 from aiida.engine.processes.generic.ports import breadcrumbs_to_port
 from aiida.engine.processes.port_model import _is_a_plain_class, _is_structured, _namespace_value, _without_marks
-from aiida.orm import Bool, Dict, EnumData, Float, Int, List, Node, Str, from_aiida_type, to_aiida_type
+from aiida.orm import Bool, DataList, Dict, EnumData, Float, Int, List, Node, Str, from_aiida_type, to_aiida_type
 from aiida.orm.nodes.data.datanode import DataNode
 
 __all__ = (
@@ -454,6 +454,8 @@ def _has_conversion(annotation: type) -> bool:
 
 def _origin_storable(origin: t.Any, annotation: t.Any) -> bool:
     """Return whether a generic alias stores through its origin or its members."""
+    if origin is DataList:
+        return True
     if origin in (list, dict, t.Union, UnionType):
         return all(_is_storable(argument) for argument in t.get_args(annotation))
     return False
@@ -527,7 +529,7 @@ def _infer_runtime_types(annotation: t.Any) -> tuple[t.Any, ...]:
     origin = t.get_origin(annotation)
     inferred: tuple[t.Any, ...] = ()
 
-    if _is_a_plain_class(annotation) or origin in (list, dict):
+    if _is_a_plain_class(annotation) or origin in (list, dict, DataList):
         inferred = (_runtime_type(annotation),)
     elif origin is t.Union or origin is UnionType:
         inferred = tuple(_runtime_type(item) for item in t.get_args(annotation))
@@ -565,7 +567,7 @@ def _runtime_type(annotation: t.Any) -> t.Any | None:
     """Return the runtime type for one annotation, or None when it declares none."""
     if annotation is t.Any:
         return None
-    if t.get_origin(annotation) in (list, dict):
+    if t.get_origin(annotation) in (list, dict, DataList):
         return t.get_origin(annotation)
     if _is_a_plain_class(annotation):
         return annotation
