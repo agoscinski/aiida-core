@@ -13,6 +13,10 @@ Graph bodies accept a general `partial(...)` input binding that needs no import:
 
 ### Breaking changes
 
+#### Graph execution environments and placement recovery
+
+Graphs accept `execution_environment` or the separate `runtime_config` and `execution_policy` channels at launch. An opt-in memory policy retries only a supported CalcJob placement with confirmed scheduler OOM, preserving each attempt node and exposing only the final attempt to the workflow. Slurm accounting is the first built-in integration. `PreparedRun` packages plugin-resolved scientific inputs, the environment, and versioned protocol provenance. The launch keywords `execution_environment`, `execution_policy`, and `prepared_run` are reserved at the graph launch boundary; pass scientific arguments with those names inside the explicit `inputs` mapping alongside a launch channel. The `graph_attempt_` call-label prefix is reserved; ordinary task labels starting with it are escaped. Existing checkpoints and stored graph nodes require no migration.
+
 #### Inline collection expressions in source graphs
 
 Graph bodies now accept inline collection expressions over typed `list[T]`/`dict[str, T]` collections: integer indexing of lists with negatives, string-key lookup of mappings with runtime keys, public annotated item reads such as `item.value`, one-type list/dict literals within collection expressions, and filtered, nested list/dict comprehensions with `mapping.items()` pair iteration.
