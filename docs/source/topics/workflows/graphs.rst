@@ -248,7 +248,7 @@ The graph body supports:
 * graph inputs and earlier-bound names as arguments, plus literals (``1``, ``'done'``, ``True``, ``None``) and scalar bindings (``attempts = 0``);
 * ``if``/``elif``/``else``, ``while``, and ``x if condition else y``, with inline expressions and task calls directly in the tests (:ref:`topics:workflows:graphs:control_flow`);
 * inline arithmetic, comparisons, and unary operators (:ref:`topics:workflows:graphs:inline`);
-* a single final ``return`` of a name, a field, or a call, or of a ``dict`` of those with literal string keys; a graph with no outputs ends with an explicit ``return {}``;
+* an explicit ``return`` on every path, either at the end or from inside an ``if``, ``elif``, ``else``, or ``while`` region; return a name, a field, a call, or a ``dict`` of those with literal string keys (``return {}`` for no outputs);
 * field and namespace selection (``.key``, ``['key']``, ``.result``; ``.result`` on a single-output call is optional) and multi-output unpacking (``first, second = step(...)``);
 * module-qualified calls (``my_module.add(...)``) and explicitly aliased placements (``decl.alias('name')(...)``), required whenever one task or graph is placed twice in the same body;
 * namespace ``dict`` literals (``nodes={'text': text}``) and ``**bundle`` spreading (:ref:`topics:workflows:graphs:spreading`);
