@@ -334,7 +334,13 @@ Without an ``else``, the arm rebinds a name bound before the ``if``; when the te
             total = add(x=total, y=10)
         return total
 
-Each arm holds one statement: an assignment of a call, an assignment of a name bound earlier, such as ``chosen = first``, which runs no task, an assignment of one field of those, such as ``chosen = pair.sum``, an assignment of a whole namespace, such as ``chosen = pair``, an assignment of an inline expression, such as ``n = n - 1``, a ``while`` loop that rebinds one name bound before the ``if``, or another ``if``, such as an ``elif``, whose arms follow the same rules.
+In a branch without an early return, each arm holds one statement: an assignment of a call, an assignment of a name bound earlier, such as ``chosen = first``, which runs no task, an assignment of one field of those, such as ``chosen = pair.sum``, an assignment of a whole namespace, such as ``chosen = pair``, an assignment of an inline expression, such as ``n = n - 1``, a ``while`` loop that rebinds one name bound before the ``if``, or another ``if``, such as an ``elif``, whose arms follow the same rules.
+
+A return from a branch or loop exits the current graph invocation, and only continuing arms need to bind names used after the branch.
+All successful returns must provide compatible graph outputs.
+A taken return blocks later placements, including subsequent loop iterations, but does not cancel work that already started.
+In a ``Result``-annotated graph, use ``Ok(...)`` for success or ``Err(Errors.MEMBER)`` for a declared failure.
+A caller can handle the latter with ``catch_error``.
 Whole-namespace arms on both sides must share the same fields.
 The branch reserves the name ``condition`` for its test, so the arms cannot read a value of that name.
 A conditional expression ``x if condition else y`` selects one value the same way, without running the unselected side:
