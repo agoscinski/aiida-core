@@ -84,7 +84,7 @@ def _validate_alias_name(name: object) -> str:
 
 @dataclass(frozen=True, slots=True)
 class PlacementHandle(t.Generic[P, R]):
-    """A declaration paired with an explicit, immutable graph placement name."""
+    """A declaration paired with an explicit, immutable placement name for `par_map`."""
 
     target: Callable[P, R]
     placement_name: str
@@ -498,7 +498,7 @@ class FunctionTaskHandle(t.Generic[P, R]):
         return self._function.recreate_from(*args, **kwargs)
 
     def alias(self, name: str) -> PlacementHandle[P, R]:
-        """Return an immutable handle placing this task under an explicit placement name."""
+        """Name a `par_map` placement of this task; direct calls use `task(...).alias(name)`."""
         return PlacementHandle(self, name)
 
 
@@ -559,7 +559,7 @@ class CalcJobTaskHandle:
         return self._process_class.spec()
 
     def alias(self, name: str) -> PlacementHandle[t.Any, t.Any]:
-        """Return an immutable handle placing this task under an explicit placement name."""
+        """Name a `par_map` placement of this task; direct calls use `task(...).alias(name)`."""
         return PlacementHandle(self, name)
 
 
@@ -620,7 +620,7 @@ class WorkChainTaskHandle:
         return self._process_class.spec()
 
     def alias(self, name: str) -> PlacementHandle[t.Any, t.Any]:
-        """Return an immutable handle placing this task under an explicit placement name."""
+        """Name a `par_map` placement of this task; direct calls use `task(...).alias(name)`."""
         return PlacementHandle(self, name)
 
 
