@@ -1816,7 +1816,8 @@ def _scoped_statements(state: _LoweringState, statements: list[ast.stmt]) -> Ite
             or call.keywords
             or _resolve_base(state, call.func)[0] is not dataflow
         ):
-            _reject(state, node=statement, reason='only `with dataflow():` is supported in graph bodies')
+            msg = 'only `with dataflow():` is supported here; for any other context manager, move it into a task'
+            _reject(state, node=statement, reason=msg)
         if _has_region_return(statement.body):
             _reject(state, node=statement, reason='a `dataflow` block cannot return; move the return outside it')
         start = len(state.tasks)
