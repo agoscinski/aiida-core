@@ -37,6 +37,7 @@ from aiida.engine.processes.graphs.ir import (
     InlineOperation,
     LoopControl,
     MapControl,
+    OptionalOutputNamespace,
     OutputTree,
     ProcessTask,
     SubgraphTask,
@@ -1014,6 +1015,10 @@ class GraphRun:
         Leaves without a node stay out of the emitted outputs; a `None` value
         means the source was legitimately absent, never a stored node.
         """
+        if isinstance(tree, OptionalOutputNamespace):
+            if self._resolve_output_tree(scope_key, tree.presence) is None:
+                return None
+            tree = tree.fields
         if isinstance(tree, dict):
             regrouped = {}
             for name, child in tree.items():
