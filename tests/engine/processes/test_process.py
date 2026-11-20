@@ -6,8 +6,9 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Tests for `aiida.engine.processes.process.Process` runtime inputs."""
+"""Tests for `aiida.engine.processes.process.Process`."""
 
+import asyncio
 import typing as t
 from dataclasses import field
 from unittest.mock import Mock
@@ -17,10 +18,65 @@ import pytest
 from aiida import orm
 from aiida.common.extendeddicts import AttributesFrozendict
 from aiida.common.links import LinkType
+from aiida.common.processes import ProcessState
 from aiida.engine import PortField, PortModel, WorkChain, run_get_node
 from aiida.engine.processes.persistence import CheckpointPayload
+from tests.utils.processes import WaitProcess
 
 pytestmark = pytest.mark.presto
+
+
+@pytest.mark.parametrize('stepping', [pytest.param(False, id='synchronous'), pytest.param(True, id='asynchronous')])
+@pytest.mark.parametrize('reachable', [pytest.param(True, id='reachable'), pytest.param(False, id='unreachable')])
+@pytest.mark.usefixtures('aiida_profile_clean')
+def test_kill_waiting_parent_cancels_child(runner, stepping: bool, reachable: bool) -> None:
+    """Both immediate and deferred parent kills must get confirmation that an active child was killed."""
+    parent = WaitProcess(runner=runner)
+    child = WaitProcess(runner=runner, parent_pid=parent.pid)
+
+    async def exercise_kill() -> None:
+        await child.step()
+        await child.step()
+        await parent.step()
+        await parent.step()
+        assert child.state is ProcessState.WAITING
+        assert parent.state is ProcessState.WAITING
+        if not reachable:
+            # Unsubscribe from RPCs while leaving the child's node active.
+            child.close()
+
+        waiting_step = None
+        if stepping:
+            started = asyncio.Event()
+
+            async def wait() -> None:
+                started.set()
+                await parent.step()
+
+            waiting_step = asyncio.create_task(wait())
+            await started.wait()
+
+        try:
+            result = parent.kill()
+            assert parent.node.is_killed is not stepping
+            if isinstance(result, asyncio.Future):
+                result = await asyncio.wait_for(result, timeout=10)
+            assert result is reachable
+            assert parent.node.is_killed
+            if reachable:
+                assert child.node.is_killed
+                assert child.node.process_status == f'Killed by parent<{parent.pid}>'
+            else:
+                assert child.node.process_state is ProcessState.WAITING
+        finally:
+            if waiting_step is not None:
+                await asyncio.wait_for(waiting_step, timeout=10)
+
+    try:
+        runner.loop.run_until_complete(exercise_kill())
+    finally:
+        child.close()
+        parent.close()
 
 
 class RuntimeWorkChain(WorkChain):

@@ -212,6 +212,9 @@ Backups must include this directory; storage plugins provide its location throug
 
 ### Fixes
 
+Killing a waiting process now requests cancellation of its active children even if the parent is killed immediately.
+An undelivered or unsuccessful child kill request is no longer reported as a successful kill of the process tree.
+
 ### Deprecations
 
 ## v2.9.1 - 2026-08-27

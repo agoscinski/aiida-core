@@ -25,7 +25,7 @@ from uuid import UUID
 from aio_pika.exceptions import ConnectionClosed
 
 from aiida import orm
-from aiida.brokers.exceptions import UnroutableError
+from aiida.brokers.exceptions import CommunicatorClosed, DeliveryFailed
 from aiida.common import _callables as callables
 from aiida.common import exceptions
 from aiida.common.extendeddicts import AttributeDict, AttributesFrozendict
@@ -377,10 +377,13 @@ class Process(ProcessBase):
 
         self.node.logger.info(f'Loaded process<{self.node.pk}> from saved state')
 
-    def kill(self, msg_text: str | None = None, force_kill: bool = False) -> bool | futures.Future:
-        """Kill the process and all the children calculations it called
+    @override
+    def kill(self, msg_text: str | None = None, force_kill: bool = False) -> bool | asyncio.Future[bool]:
+        """Kill the process and request cancellation of its active children.
 
-        :param msg: message
+        :param msg_text: Optional kill message for this process.
+        :param force_kill: Whether to skip scheduler cancellation for this process.
+        :return: Whether the kill succeeded, or a future that resolves once pending kill requests complete.
         """
         self.node.logger.info(f'Request to kill Process<{self.node.pk}>')
 
@@ -412,44 +415,45 @@ class Process(ProcessBase):
                 return False
 
         result = super().kill(msg_text, force_kill)
+        if result is False:
+            return False
 
-        had_been_terminated = self.has_terminated()
+        # A successful kill can already have put this process in KILLED. The active
+        # children still need to be cancelled in that case.
+        children = [child for child in self.node.called if not child.is_terminated]
+        if not children:
+            return result
 
-        # Only kill children if we could be killed ourselves
-        if result is not False and not had_been_terminated:
-            killing = []
-            for child in self.node.called:
-                if self.runner.controller is None:
-                    self.logger.info('no controller available to kill child<%s>', child.pk)
-                    continue
-                try:
-                    kill_request = self.runner.controller.kill_process(
-                        child.pk, msg_text=f'Killed by parent<{self.node.pk}>'
-                    )
-                    wrapped_kill = asyncio.wrap_future(kill_request)
-                    if asyncio.isfuture(wrapped_kill):
-                        killing.append(wrapped_kill)
-                except ConnectionClosed:
-                    self.logger.info('no connection available to kill child<%s>', child.pk)
-                except UnroutableError:
-                    self.logger.info('kill signal was unable to reach child<%s>', child.pk)
+        killing: list[asyncio.Future[bool]] = []
+        all_requested = True
+        controller = self.runner.controller
+        for child in children:
+            if controller is None:
+                self.logger.info('no controller available to kill child<%s>', child.pk)
+                all_requested = False
+                continue
+            try:
+                request = controller.kill_process(child.pk, msg_text=f'Killed by parent<{self.node.pk}>')
+            except (ConnectionClosed, CommunicatorClosed, DeliveryFailed) as exc:
+                self.logger.info('kill signal was unable to reach child<%s>: %s', child.pk, exc)
+                all_requested = False
+            else:
+                # Some brokers acknowledge delivery with a future for the actual reply.
+                killing.append(asyncio.wrap_future(futures.unwrap_kiwi_future(request), loop=self.loop))
 
-            if asyncio.isfuture(result):
-                # We ourselves are waiting to be killed so add it to the list
-                killing.append(result)
+        if isinstance(result, asyncio.Future):
+            killing.append(result)
+        if not killing:
+            return all_requested
 
-            if killing:
-                # We are waiting for things to be killed, so return the 'gathered' future
-                kill_future = futures.gather(*killing)
-                result = self.loop.create_future()
+        async def confirm_kills() -> bool:
+            replies = await asyncio.gather(*killing, return_exceptions=True)
+            for reply in replies:
+                if isinstance(reply, BaseException):
+                    self.logger.info('kill request failed: %r', reply)
+            return all_requested and all(reply is True for reply in replies)
 
-                def done(done_future: futures.Future):
-                    is_all_killed = all(done_future.result())
-                    result.set_result(is_all_killed)
-
-                kill_future.add_done_callback(done)
-
-        return result
+        return self.loop.create_task(confirm_kills())
 
     async def _launch_task(self, coro, *args, **kwargs):
         """Launch a coroutine as a task, making sure to make it interruptable."""
