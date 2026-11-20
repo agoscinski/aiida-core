@@ -61,7 +61,6 @@ from aiida.engine.processes.graphs.operations import (
 )
 from aiida.engine.processes.graphs.par_map import par_map
 from aiida.engine.processes.graphs.process import GraphProcess
-from aiida.engine.processes.graphs.results import catch_error
 from aiida.engine.processes.graphs.shapes import (
     Forward,
     LeafShape,
@@ -165,7 +164,7 @@ class GraphHandle(t.Generic[P, R]):
         raise GraphError(msg)
 
     def alias(self, name: str) -> PlacementHandle[P, R]:
-        """Return an immutable handle placing this graph under an explicit placement name."""
+        """Name a `par_map` placement of this graph; direct calls use `graph(...).alias(name)`."""
         return PlacementHandle(self, name)
 
     @property
@@ -375,7 +374,7 @@ class _DeclarationNamespace:
         if not valid:
             msg = (
                 f'calls resolve by plain names to declarations; {name!r} is a global alias; '
-                "use `.alias('name')` inline instead"
+                "use `call(...).alias('name')` inline instead"
             )
             raise GraphLanguageError(msg)
         return target
@@ -550,11 +549,11 @@ def graph(function: Callable[..., t.Any] | None = None) -> t.Any:
 
         @graph
         def retrying(x: int, limit: int, attempt: int = 0) -> int:
-            value, error = catch_error(step(x=x, attempt=attempt))
+            value, error = step(x=x, attempt=attempt).catch()
             retry = error is MyErrors.RETRYABLE and attempt < limit
             while retry:
                 attempt = attempt + 1
-                value, error = catch_error(step(x=x, attempt=attempt))
+                value, error = step(x=x, attempt=attempt).catch()
                 retry = error is MyErrors.RETRYABLE and attempt < limit
             checked = ensure(value=value)
             return value
@@ -1006,14 +1005,11 @@ def _lower_unpack(state: _LoweringState, statement: ast.Assign, *, rebind: bool 
         )
         _reject(state, node=statement.value, reason=msg)
     call = statement.value
-    capture = _is_catch_error(state, call)
-    if capture:
-        if len(statement.targets) != 1 or len(names) != 2 or (names[0] == names[1] and names[0] != '_'):
-            _reject(state, node=target, reason='`catch_error` must unpack into exactly two names')
-        if len(call.args) != 1 or call.keywords or not isinstance(call.args[0], ast.Call):
-            _reject(state, node=call, reason='`catch_error` requires one direct fallible task or graph invocation')
-        call = call.args[0]
-    ref = _lower_call(state, expression=call, capture=capture, unpack=True)
+    if _invocation_receiver(call, 'catch') is not None and (
+        len(statement.targets) != 1 or len(names) != 2 or (names[0] == names[1] and names[0] != '_')
+    ):
+        _reject(state, node=target, reason='`.catch()` must unpack into exactly two names')
+    ref = _lower_call(state, expression=call, unpack=True)
     if not isinstance(ref.shape, NamespaceShape):
         if len(names) == 1:
             state.names[names[0]] = ref
@@ -1739,17 +1735,6 @@ def _callee_ids(state: _LoweringState, statements: list[ast.stmt], enclosing: Ma
         if not isinstance(node, ast.Call):
             continue
         callees.add(id(node.func))
-        if isinstance(node.func, ast.Attribute) and node.func.attr == 'alias':
-            for inner in ast.walk(node.func.value):
-                if isinstance(inner, ast.Name) and isinstance(inner.ctx, ast.Load) and inner.id not in enclosing:
-                    callees.add(id(inner))
-        if isinstance(node.func, ast.Call) and isinstance(node.func.func, ast.Attribute):
-            alias_call = node.func
-            assert isinstance(alias_call.func, ast.Attribute)
-            if alias_call.func.attr == 'alias':
-                for inner in ast.walk(alias_call.func.value):
-                    if isinstance(inner, ast.Name) and isinstance(inner.ctx, ast.Load) and inner.id not in enclosing:
-                        callees.add(id(inner))
         # Dotted calls read through a module, not a wire; a base shadowing an
         # enclosing wire stays a read so the call rejects the ambiguity.
         func: ast.expr = node.func
@@ -1896,8 +1881,16 @@ def _lower_region_body(state: _LoweringState, outputs: dict[str, _Reference]) ->
     )
 
 
-def _alias_call_parts(state: _LoweringState, alias_call: ast.Call) -> tuple[ast.expr, str]:
-    """Split one `.alias('name')` call into its declaration reference and explicit placement name."""
+def _invocation_receiver(call: ast.Call, method: str) -> ast.Call | None:
+    """Recognize a modifier on an invocation, not a module-qualified declaration call."""
+    func = call.func
+    if isinstance(func, ast.Attribute) and func.attr == method and isinstance(func.value, ast.Call):
+        return func.value
+    return None
+
+
+def _alias_name(state: _LoweringState, alias_call: ast.Call) -> str:
+    """Read a literal alias and validate it as a provenance link label."""
     candidate: ast.expr | None = alias_call.args[0] if len(alias_call.args) == 1 else None
     if (
         candidate is None
@@ -1919,15 +1912,7 @@ def _alias_call_parts(state: _LoweringState, alias_call: ast.Call) -> tuple[ast.
             + 'use alphanumerics and underscores without leading or trailing underscores instead'
         )
         _reject(state, node=alias_call, reason=msg)
-    assert isinstance(alias_call.func, ast.Attribute)
-    base = alias_call.func.value
-    if not isinstance(base, (ast.Name, ast.Attribute)):
-        msg = (
-            'calls resolve by module-level name to importable declarations; '
-            + "call tasks and graphs by their plain names with `.alias('name')` on the declaration instead"
-        )
-        _reject(state, node=alias_call, reason=msg)
-    return base, alias
+    return alias
 
 
 def _resolve_base(state: _LoweringState, expression: ast.expr) -> tuple[t.Any, str]:
@@ -1966,23 +1951,14 @@ def _resolve_callable(
 ) -> tuple[
     FunctionTaskHandle[t.Any, t.Any] | CalcJobTaskHandle | WorkChainTaskHandle | GraphHandle | Callable[..., t.Any],
     str,
-    str | None,
 ]:
-    """Resolve an ordinary or explicitly aliased callable for both calls and maps."""
-    explicit = None
-    base = expression
-    if (
-        isinstance(expression, ast.Call)
-        and isinstance(expression.func, ast.Attribute)
-        and expression.func.attr == 'alias'
-    ):
-        base, explicit = _alias_call_parts(state, expression)
-    target, label = _resolve_base(state, base)
+    """Resolve an importable declaration for a call or map."""
+    target, label = _resolve_base(state, expression)
     if (
         isinstance(target, (FunctionTaskHandle, CalcJobTaskHandle, WorkChainTaskHandle, GraphHandle))
         or target is par_map
     ):
-        return target, label.rsplit('.', 1)[-1], explicit
+        return target, label.rsplit('.', 1)[-1]
     if target is None and label in vars(builtins):
         msg = f'only registered declarations carry provenance; built-in {label!r}: wrap it in a task instead'
     else:
@@ -2126,14 +2102,13 @@ def _solved_spec(
 
 def _lower_par_map(state: _LoweringState, expression: ast.Call) -> _Reference:
     """Place a fan-out map over an owned container."""
-    if isinstance(expression.func, ast.Call):
-        msg = (
-            'maps take their name from the mapped callable, so the map call itself takes no alias; '
-            + "pass the alias on the callable instead, e.g. `par_map(task.alias('name'), values)`"
-        )
-        _reject(state, node=expression.func, reason=msg)
     func_expr, collection_expr, after_keyword = _bind_par_map_arguments(state, expression=expression)
-    target, call_name, explicit = _resolve_callable(state, func_expr)
+    explicit = None
+    base = func_expr
+    if isinstance(func_expr, ast.Call) and isinstance(func_expr.func, ast.Attribute) and func_expr.func.attr == 'alias':
+        explicit = _alias_name(state, func_expr)
+        base = func_expr.func.value
+    target, call_name = _resolve_callable(state, base)
     if not isinstance(target, (FunctionTaskHandle, CalcJobTaskHandle, WorkChainTaskHandle, GraphHandle)):
         msg = 'maps apply registered declarations per element; pass a task or graph instead'
         _reject(state, node=func_expr, reason=msg)
@@ -2410,15 +2385,6 @@ def _lower_operation(state: _LoweringState, node: ast.BinOp | ast.Compare | ast.
     return _place_operation(state, operation=operation, operands=lowered, node=node)
 
 
-def _is_catch_error(state: _LoweringState, expression: ast.Call) -> bool:
-    """Recognize the intrinsic by identity, including imported aliases."""
-    try:
-        target, _ = _resolve_base(state, expression.func)
-    except GraphLanguageError:
-        return False
-    return target is catch_error
-
-
 def _place_invocation(
     state: _LoweringState,
     expression: ast.Call,
@@ -2433,7 +2399,7 @@ def _place_invocation(
     errors = task.spec.result_errors if isinstance(task, ProcessTask) else task.body.declared_errors
     if capture:
         if not errors:
-            _reject(state, node=expression, reason='`catch_error` requires an invocation with declared failures')
+            _reject(state, node=expression, reason='`.catch()` requires an invocation with declared failures')
         task = replace(task, capture_error=True)
         if isinstance(task, ProcessTask):
             assert isinstance(result_shape, NamespaceShape)
@@ -2450,7 +2416,7 @@ def _place_invocation(
             _reject(
                 state,
                 node=expression,
-                reason='bare Result calls expose only success; use `value, error = catch_error(call(...))` '
+                reason='bare Result calls expose only success; use `value, error = call(...).catch()` '
                 'to unpack or bind the success to one name and select its fields',
             )
         assert isinstance(result_shape, NamespaceShape)
@@ -2460,17 +2426,33 @@ def _place_invocation(
     return _Reference(task.name, port=result_port, shape=result_shape)
 
 
-def _lower_call(
-    state: _LoweringState, expression: ast.expr, *, capture: bool = False, unpack: bool = False
-) -> _Reference:
+def _lower_call(state: _LoweringState, expression: ast.expr, *, unpack: bool = False) -> _Reference:
     """Place a task or graph call with wired graph inputs."""
     assert isinstance(expression, ast.Call)
-    if _is_catch_error(state, expression):
-        _reject(state, node=expression, reason='use `value, error = catch_error(call(...))` in a tuple assignment')
-    target, name, explicit = _resolve_callable(state, expression.func)
+    caught = _invocation_receiver(expression, 'catch')
+    if caught is not None:
+        if not unpack:
+            _reject(state, node=expression, reason='use `value, error = call(...).catch()` in a tuple assignment')
+        if expression.args or expression.keywords:
+            _reject(state, node=expression, reason='`.catch()` takes no arguments')
+        expression = caught
+    explicit = None
+    aliased = _invocation_receiver(expression, 'alias')
+    if aliased is not None:
+        explicit = _alias_name(state, expression)
+        expression = aliased
+    if (
+        isinstance(expression.func, ast.Call)
+        and isinstance(expression.func.func, ast.Attribute)
+        and expression.func.func.attr == 'alias'
+    ):
+        _reject(state, node=expression, reason="name the invocation with `call(...).alias('name')` instead")
+    target, name = _resolve_callable(state, expression.func)
     if target is par_map:
-        if capture:
-            _reject(state, node=expression, reason='`catch_error` captures only direct task or graph invocations')
+        if caught is not None:
+            _reject(state, node=expression, reason='`.catch()` captures only direct task or graph invocations')
+        if explicit is not None:
+            _reject(state, node=expression, reason="name the map with `par_map(task.alias('name'), values)` instead")
         return _lower_par_map(state, expression)
     assert isinstance(target, (FunctionTaskHandle, CalcJobTaskHandle, WorkChainTaskHandle, GraphHandle))
     if explicit is not None:
@@ -2516,7 +2498,9 @@ def _lower_call(
             + f'task {name!r} is missing required inputs: {missing}; pass them as call arguments'
         )
         _reject(state, node=expression, reason=msg)
-    return _place_invocation(state, expression, task, result_port, result_shape, capture=capture, unpack=unpack)
+    return _place_invocation(
+        state, expression, task, result_port, result_shape, capture=caught is not None, unpack=unpack
+    )
 
 
 def _bind_positional(
