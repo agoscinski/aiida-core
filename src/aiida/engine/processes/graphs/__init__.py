@@ -13,13 +13,23 @@ for provenance-bearing calculations.
 """
 
 from aiida.engine.processes.graphs.lowering import Forward, GraphHandle, forward_outputs, graph, par_map, task
+from aiida.engine.processes.graphs.preview import (
+    DeferredGraphInput,
+    GraphLaunchPreview,
+    GraphPlacementPreview,
+    ResolvedGraphInput,
+)
 from aiida.engine.processes.graphs.results import Err, Ok, RestartErrors, Result
 
 __all__ = (
+    'DeferredGraphInput',
     'Err',
     'Forward',
     'GraphHandle',
+    'GraphLaunchPreview',
+    'GraphPlacementPreview',
     'Ok',
+    'ResolvedGraphInput',
     'RestartErrors',
     'Result',
     'forward_outputs',
