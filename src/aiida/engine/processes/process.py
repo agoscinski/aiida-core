@@ -419,14 +419,16 @@ class Process(ProcessBase):
 
         # A synchronous kill has already changed our state. This does not mean
         # the children were killed, so check them even when the parent is terminal.
-        children = [child.pk for child in self.node.called if not child.is_terminated]
+        children = [child for child in self.node.called if not child.is_terminated]
         if not children:
             return result
 
         controller = self.runner.controller
         parent_pk = self.node.pk
 
-        async def kill_child(pk: int) -> bool:
+        async def kill_child(child: orm.ProcessNode) -> bool:
+            pk = child.pk
+            assert pk is not None  # CALL links only exist between stored nodes.
             if controller is None:
                 self.logger.info('no controller available to kill child<%s>', pk)
                 return False
@@ -439,7 +441,7 @@ class Process(ProcessBase):
             return reply is True
 
         async def wait_for_kills() -> bool:
-            killing = [kill_child(pk) for pk in children]
+            killing = [kill_child(child) for child in children]
             if asyncio.isfuture(result):
                 return all(await asyncio.gather(result, *killing))
             return all(await asyncio.gather(*killing))
