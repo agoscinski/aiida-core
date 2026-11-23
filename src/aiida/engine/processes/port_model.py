@@ -37,9 +37,11 @@ class PortField:
     """Metadata for a port, written as ``Annotated[T, PortField(help='...')]``.
 
     :param help: the help displayed for the generated port or namespace.
+    :param mutable: allow a task to edit a private copy of this data input.
     """
 
     help: str | None = None
+    mutable: bool = False
 
 
 @dataclass_transform(frozen_default=True, kw_only_default=True, field_specifiers=(dataclasses.field,))
@@ -103,6 +105,7 @@ class _Field:
     annotation: t.Any
     default: t.Any = UNSPECIFIED
     help: str | None = None
+    mutable: bool = False
 
     @property
     def required(self) -> bool:
@@ -248,6 +251,7 @@ def _field_from_annotation(
         annotation=_as_port_model(_without_marks(annotation)),
         default=default,
         help=_port_help(annotation) or help,
+        mutable=_port_field(annotation).mutable,
     )
 
 
@@ -311,7 +315,15 @@ def _port_model_fields(annotation: t.Any) -> tuple[_Field, ...]:
             default = declared.default_factory
         else:
             default = UNSPECIFIED
-        fields.append(_Field(name=declared.name, annotation=adapted, default=default, help=_port_help(hint)))
+        fields.append(
+            _Field(
+                name=declared.name,
+                annotation=adapted,
+                default=default,
+                help=_port_help(hint),
+                mutable=_port_field(hint).mutable,
+            )
+        )
     return tuple(fields)
 
 
@@ -361,9 +373,9 @@ def _port_model_from_pydantic(annotation: t.Any) -> type[PortModel]:
         if adapted is not bare and _is_structured(adapted) and default is not UNSPECIFIED:
             default = _adapted_default(default, bare, adapted, call_factory=info.default_factory is not None)
         annotations[name] = adapted
-        help_text = _pydantic_help(hint, info)
-        if help_text is not None:
-            annotations[name] = t.Annotated[adapted, PortField(help=help_text)]
+        contract = _pydantic_port_field(hint, info)
+        if contract.help is not None or contract.mutable:
+            annotations[name] = t.Annotated[adapted, contract]
         if default is not UNSPECIFIED:
             defaults[name] = default
     return _synthesize_model(annotation.__name__, annotations, defaults)
@@ -408,12 +420,13 @@ def _reject_non_json_leaf(name: str, annotation: t.Any, *, kind: str) -> None:
         raise TypeError(msg)
 
 
-def _pydantic_help(annotation: t.Any, info: t.Any) -> str | None:
-    """Return the help text of a pydantic field, preferring ``PortField`` over ``description``."""
+def _pydantic_port_field(annotation: t.Any, info: t.Any) -> PortField:
+    """Read the field contract, using the Pydantic description as fallback help."""
     for mark in info.metadata:
         if isinstance(mark, PortField):
-            return mark.help
-    return _port_help(annotation) or info.description
+            return mark
+    contract = _port_field(annotation)
+    return dataclasses.replace(contract, help=contract.help or info.description)
 
 
 def _namespace_value(value: t.Any) -> t.Any:
@@ -444,10 +457,12 @@ def _marks(annotation: t.Any) -> t.Iterator[t.Any]:
 
 def _port_help(annotation: t.Any) -> str | None:
     """Return the help text of a `PortField` mark."""
-    for mark in _marks(annotation):
-        if isinstance(mark, PortField):
-            return mark.help
-    return None
+    return _port_field(annotation).help
+
+
+def _port_field(annotation: t.Any) -> PortField:
+    """Return the engine contract carried by the annotation, or the default contract."""
+    return next((mark for mark in _marks(annotation) if isinstance(mark, PortField)), PortField())
 
 
 def _without_marks(annotation: t.Any) -> t.Any:

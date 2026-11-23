@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from aiida.common.exceptions import GraphLanguageError, GraphTypeCheckError
 from aiida.common.loaders import get_object_loader
 from aiida.engine.processes.generic.ports import UNSPECIFIED
-from aiida.engine.processes.port_model import _fields_of, _namespace_value, _port_help, _without_marks
+from aiida.engine.processes.port_model import _fields_of, _namespace_value, _port_field, _without_marks
 from aiida.engine.processes.ports import _infer_runtime_types
 
 if t.TYPE_CHECKING:
@@ -55,6 +55,7 @@ class LeafShape(_ValueShape):
     types: tuple[type, ...] | None = None
     element: Shape | None = None
     error_enums: frozenset[str] = frozenset()
+    mutable: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -233,7 +234,12 @@ def _element_shape(annotation: t.Any) -> Shape | None:
 
 
 def shape_for_annotation(
-    annotation: object, *, required: bool = True, default: object = UNSPECIFIED, help: str | None = None
+    annotation: object,
+    *,
+    required: bool = True,
+    default: object = UNSPECIFIED,
+    help: str | None = None,
+    mutable: bool = False,
 ) -> Shape:
     """Capture a Python declaration without constructing engine input or output ports."""
     if default is not UNSPECIFIED:
@@ -244,7 +250,8 @@ def shape_for_annotation(
                 msg = 'a default factory failed; declare a plain value or a working factory instead.'
                 raise GraphTypeCheckError(msg) from exception
         default = json_default(default)
-    resolved_help = help or _port_help(annotation)
+    contract = _port_field(annotation)
+    resolved_help = help or contract.help
     exposed = _exposed_inputs(annotation)
     if exposed is not None:
         return _exposed_shape(exposed.task, exposed.exclude)
@@ -258,12 +265,19 @@ def shape_for_annotation(
             required=required,
             default=default,
             help=resolved_help,
+            mutable=mutable or contract.mutable,
         )
     return NamespaceShape(
         fields=tuple(
             (
                 field.name,
-                shape_for_annotation(field.annotation, required=field.required, default=field.default, help=field.help),
+                shape_for_annotation(
+                    field.annotation,
+                    required=field.required,
+                    default=field.default,
+                    help=field.help,
+                    mutable=field.mutable,
+                ),
             )
             for field in fields
         ),
@@ -318,6 +332,8 @@ def dump_shape(shape: Shape, *, defaults: bool = True) -> dict[str, t.Any]:
         )
         if shape.element is not None:
             result['element'] = dump_shape(shape.element, defaults=defaults)
+        if shape.mutable:
+            result['mutable'] = True
         if shape.error_enums:
             result['error_enums'] = sorted(shape.error_enums)
     elif isinstance(shape, NamespaceShape):
@@ -334,6 +350,10 @@ def load_shape(data: Mapping[str, t.Any]) -> Shape:
             msg = f'malformed shape declaration; missing key {key!r}.'
             raise GraphTypeCheckError(msg)
     required, help = data['required'], data.get('help')
+    mutable = data.get('mutable', False)
+    if not isinstance(mutable, bool):
+        msg = 'shape declarations require a boolean mutable flag.'
+        raise GraphTypeCheckError(msg)
     if not isinstance(required, bool) or (help is not None and not isinstance(help, str)):
         msg = 'shape declarations require boolean requiredness and string help.'
         raise GraphTypeCheckError(msg)
@@ -347,6 +367,7 @@ def load_shape(data: Mapping[str, t.Any]) -> Shape:
             else tuple(type(None) if kind is None else get_object_loader().load_object(kind) for kind in types),
             element=load_shape(element_data) if element_data is not None else None,
             error_enums=frozenset(data.get('error_enums', ())),
+            mutable=mutable,
             required=required,
             help=help,
             default=default,

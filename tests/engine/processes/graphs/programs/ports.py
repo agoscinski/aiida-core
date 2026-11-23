@@ -203,10 +203,9 @@ def unrestricted_return(value: t.Any) -> Data:
     return value
 
 
-# rejected at lowering: workflows return existing nodes, they never create data.
 @graph
 def literal_return() -> int:
-    """Return a literal; workflows return existing nodes, they never create data."""
+    """Return a literal to be materialized at the graph boundary."""
     return 42
 
 

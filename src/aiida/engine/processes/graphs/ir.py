@@ -1098,6 +1098,10 @@ class MapControl(GraphTask):
                 namespace[name] = port
         return (namespace,)
 
+    def mapped_input_ports(self) -> PortNamespace:
+        """Return the mapped callable's input ports, including the element."""
+        return self.spec.inputs if self.spec is not None else self._body_inputs()
+
     def _body_inputs(self) -> PortNamespace:
         """Return the input contracts of the mapped nested graph."""
         if self.body is None:
@@ -1604,8 +1608,7 @@ class GraphIR:
     def build_output_namespace(self) -> PortNamespace:
         """Return the nested outputs with their stored types.
 
-        Outputs regroup existing nodes instead of creating data; every leaf keeps
-        the stored node its task or graph input already holds.
+        Outputs describe stored nodes, including inline values materialized at publication.
         """
         site = self._output_return_site()
         if site is not None:
@@ -1633,8 +1636,7 @@ class GraphIR:
     ) -> OutputPort | PortNamespace:
         """Return one output leaf or namespace, preserving the stored node types.
 
-        Outputs regroup their source nodes instead of creating data, so a leaf
-        whose source accepts `None` or stays unwired is optional downstream.
+        A leaf whose source accepts `None` or stays unwired is optional downstream.
         """
         if isinstance(source, (dict, OptionalOutputNamespace)):
             optional = isinstance(source, OptionalOutputNamespace)
@@ -1679,12 +1681,10 @@ class GraphIR:
         """Return the stored types of a graph output, normalizing runtime declarations."""
         if hint:
             return tuple(kind for declared in hint for kind in _infer_node_types(declared))
-        if isinstance(origin, InputPort):
-            kinds = origin.valid_type or ()
-            if isinstance(kinds, type):
-                kinds = (kinds,)
-            return tuple(kind for declared in kinds for kind in _infer_node_types(declared))
-        return origin.valid_type
+        kinds = origin.valid_type or ()
+        if isinstance(kinds, type):
+            kinds = (kinds,)
+        return tuple(kind for declared in kinds for kind in _infer_node_types(declared))
 
     def predecessors(self, name: str) -> set[str]:
         """Return the tasks one placement directly depends on."""

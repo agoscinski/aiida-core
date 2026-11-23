@@ -191,8 +191,9 @@ class InputPort(WithMetadata, WithSerialize, WithNonDb, ports.InputPort):
     process their specific keywords.
     """
 
-    def __init__(self, *args, **kwargs) -> None:
-        """Override the constructor to check the type of the default if set and warn if not immutable."""
+    def __init__(self, *args, mutable: bool = False, **kwargs) -> None:
+        """Initialize a port with an optional copy-on-write contract for tasks."""
+        self.mutable = mutable
         if 'default' in kwargs:
             default = kwargs['default']
             # If the default is specified and it is a node instance, raise a warning. This is to try and prevent that
