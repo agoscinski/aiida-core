@@ -314,7 +314,9 @@ def test_task_output_can_feed_writable_input() -> None:
     """A fresh task output starts a new binding without needing another graph opt-in."""
     outputs, node = run_get_node(fresh_source, structure=orm.StructureData(cell=UNIT_CELL))
     assert node.is_finished_ok
-    first, second = node.called
+    calls = node.base.links.get_outgoing(link_type=LinkType.CALL_CALC)
+    first = calls.get_node_by_label('expand')
+    second = calls.get_node_by_label('expand_again')
     assert first.outputs.result.uuid == second.inputs.structure.uuid
     assert outputs['result'].uuid != first.outputs.result.uuid
     assert outputs['result'].creator.uuid == second.uuid
