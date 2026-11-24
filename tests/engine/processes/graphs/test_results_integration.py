@@ -37,7 +37,7 @@ from aiida.engine.processes.graphs.ir import GraphIR
 from aiida.engine.processes.graphs.lowering import compile_graph
 from aiida.engine.processes.graphs.results import Err, Ok, Result
 from aiida.engine.processes.graphs.run import GraphRun
-from aiida.orm import CalcFunctionNode, DataList, Int
+from aiida.orm import CalcFunctionNode, DataList, GraphNode, Int
 from aiida.orm.utils.serialize import deserialize_unsafe, serialize
 from tests.engine.processes.graphs.programs import results
 
@@ -336,7 +336,8 @@ def test_capture_of_loop_return_exposes_only_error():
     outputs, node = run_get_node(capture_loop_return, x=0)
     assert node.is_finished_ok
     assert outputs['result'].value is True
-    scope, guard = node.called
+    (scope,) = (child for child in node.called if isinstance(child, GraphNode))
+    (guard,) = (child for child in node.called if not isinstance(child, GraphNode))
     assert (scope.exit_status, scope.exit_message) == FlakyErrors.TOO_BIG.value[:2]
     assert [child.process_label for child in scope.called] == ['advance_early']
     assert guard.process_label == 'mark_absent'
