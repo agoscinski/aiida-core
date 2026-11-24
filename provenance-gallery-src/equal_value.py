@@ -1,10 +1,10 @@
-from typing import TypedDict
+import typing as t
 
 from aiida import orm
 from aiida.engine import graph, run_get_node
 
 
-class Pair(TypedDict):
+class Pair(t.TypedDict):
     existing: int
     computed: int
 

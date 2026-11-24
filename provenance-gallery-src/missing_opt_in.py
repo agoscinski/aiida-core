@@ -1,10 +1,10 @@
-from typing import Annotated
+import typing as t
 
 from aiida import orm
 from aiida.common.exceptions import GraphTypeCheckError
 from aiida.engine import PortField, graph, task
 
-Writable = Annotated[orm.StructureData, PortField(mutable=True)]
+Writable = t.Annotated[orm.StructureData, PortField(mutable=True)]
 
 
 @task

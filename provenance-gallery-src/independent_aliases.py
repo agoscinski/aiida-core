@@ -1,12 +1,12 @@
-from typing import Annotated, TypedDict
+import typing as t
 
 from aiida import orm
 from aiida.engine import PortField, graph, run_get_node, task
 
-Writable = Annotated[orm.StructureData, PortField(mutable=True)]
+Writable = t.Annotated[orm.StructureData, PortField(mutable=True)]
 
 
-class Pair(TypedDict):
+class Pair(t.TypedDict):
     small: orm.StructureData
     large: orm.StructureData
 
@@ -21,7 +21,7 @@ def resize(first: Writable, second: Writable) -> Pair:
 @graph
 def size_pair(structure: Writable) -> Pair:
     resized = resize(first=structure, second=structure)
-    return {'small': resized.small, 'large': resized.large}
+    return {'small': resized['small'], 'large': resized['large']}
 
 
 def run_case():
