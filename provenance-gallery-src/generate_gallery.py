@@ -1,5 +1,8 @@
 """Run the gallery examples in disposable profiles and render their stored links."""
 
+# The CSS and HTML are embedded to make the report standalone.
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import base64
@@ -11,9 +14,9 @@ from html import escape
 from pathlib import Path
 
 import pytest
-from pygments import highlight
-from pygments.formatters import HtmlFormatter
-from pygments.lexers import PythonLexer
+from pygments import highlight  # type: ignore[import-untyped]
+from pygments.formatters import HtmlFormatter  # type: ignore[import-untyped]
+from pygments.lexers import PythonLexer  # type: ignore[import-untyped]
 
 from aiida import orm
 from aiida.common.links import LinkType
@@ -34,14 +37,50 @@ def revision() -> str:
     )
     return result.stdout.strip() if result.returncode == 0 else 'unknown'
 
+
 CASES = [
-    ('writable_task', 'A writable task input', 'FINISHED', 'The input link points to the original structure. The task edits an unstored clone and creates a new structure; its cell volume changes from 1 to 125 Å³.'),
-    ('nested_graphs', 'Forward write permission through a nested graph', 'FINISHED', 'Both report and prepare opt in. Only expand clones the structure. The nested prepare scope has no node of its own: prepare__expand is the child call label. The root returns both structures and creates and returns the inline count.'),
-    ('independent_aliases', 'The same source feeds two writable ports', 'FINISHED', 'The first and second input links point to the same UUID. The two ports receive independent clones, so they can publish structures with different volumes (8 and 27 Å³).'),
-    ('missing_opt_in', 'A nested scope drops write permission', 'BUILD REJECTED', 'The outer graph opts in, but prepare does not. Build rejects the read-only → writable binding before launching anything.'),
-    ('readonly_mutation', 'A setter on a read-only task input', 'EXCEPTED', 'The task runs with the original stored node. The setter raises ModificationNotAllowed. The task record and its input link remain, but there are no output links.'),
-    ('discarded_copy', 'The task discards its working copy', 'FINISHED', 'The expanded structure never enters provenance because the task does not publish it. Only its derived scalar, a volume of 64 Å³, is created.'),
-    ('equal_value', 'Equal values are not the same node', 'FINISHED', 'Both integers have value 7. The graph returns the existing UUID unchanged, but materializes value + 0 as a new UUID and records both CREATE and RETURN for it.'),
+    (
+        'writable_task',
+        'A writable task input',
+        'FINISHED',
+        'The input link points to the original structure. The task edits an unstored clone and creates a new structure; its cell volume changes from 1 to 125 Å³.',
+    ),
+    (
+        'nested_graphs',
+        'Forward write permission through a nested graph',
+        'FINISHED',
+        'Both report and prepare opt in. Only expand clones the structure. The nested prepare invocation has its own GraphNode and calls expand, but it runs in the same GraphProcess as report. The root returns both structures and creates and returns the inline count.',
+    ),
+    (
+        'independent_aliases',
+        'The same source feeds two writable ports',
+        'FINISHED',
+        'The first and second input links point to the same UUID. The two ports receive independent clones, so they can publish structures with different volumes (8 and 27 Å³).',
+    ),
+    (
+        'missing_opt_in',
+        'A nested scope drops write permission',
+        'BUILD REJECTED',
+        'The outer graph opts in, but prepare does not. Build rejects the read-only → writable binding before launching anything.',
+    ),
+    (
+        'readonly_mutation',
+        'A setter on a read-only task input',
+        'EXCEPTED',
+        'The task runs with the original stored node. The setter raises ModificationNotAllowed. The task record and its input link remain, but there are no output links.',
+    ),
+    (
+        'discarded_copy',
+        'The task discards its working copy',
+        'FINISHED',
+        'The expanded structure never enters provenance because the task does not publish it. Only its derived scalar, a volume of 64 Å³, is created.',
+    ),
+    (
+        'equal_value',
+        'Equal values are not the same node',
+        'FINISHED',
+        'Both integers have value 7. The graph returns the existing UUID unchanged, but materializes value + 0 as a new UUID and records both CREATE and RETURN for it.',
+    ),
 ]
 
 LINK_STYLES = {
@@ -56,21 +95,25 @@ LINK_STYLES = {
 
 def render(root: orm.ProcessNode, diagram_id: str) -> tuple[str, int, int]:
     """Render stored links, not inferred dependencies or relationships from the DSL."""
-    nodes = {}
+    nodes: dict[int, orm.Node] = {}
     edges = set()
     processes = [root]
     while processes:
         process = processes.pop(0)
+        assert process.pk is not None
         nodes[process.pk] = process
         for link in process.base.links.get_incoming(link_type=(LinkType.INPUT_CALC, LinkType.INPUT_WORK)).all():
             if isinstance(process, orm.GraphNode) and link.link_label in {'graph', 'runtime_config'}:
                 continue
+            assert link.node.pk is not None
             nodes[link.node.pk] = link.node
             edges.add((link.node.pk, process.pk, link.link_type, link.link_label))
         for link in process.base.links.get_outgoing(link_type=tuple(LINK_STYLES)).all():
+            assert link.node.pk is not None
             nodes[link.node.pk] = link.node
             edges.add((process.pk, link.node.pk, link.link_type, link.link_label))
             if link.link_type in (LinkType.CALL_CALC, LinkType.CALL_WORK):
+                assert isinstance(link.node, orm.ProcessNode)
                 processes.append(link.node)
 
     rankdir = 'TB' if len(edges) > 4 else 'LR'
@@ -84,10 +127,10 @@ def render(root: orm.ProcessNode, diagram_id: str) -> tuple[str, int, int]:
         info = [type(node).__name__]
         args = ''
         if isinstance(node, orm.GraphNode):
-            info.append(node.process_label)
+            info.append(node.process_label or '')
             args = ', fillcolor="#eaf0ff", color="#7093df", penwidth=1.5'
         elif isinstance(node, orm.ProcessNode):
-            info.append(node.process_label)
+            info.append(node.process_label or '')
             args = ', fillcolor="#f2ebff", color="#a082d4", penwidth=1.5'
         elif isinstance(node, orm.StructureData):
             info.append(f'V = {node.get_cell_volume():.6g} Å³')
@@ -96,19 +139,21 @@ def render(root: orm.ProcessNode, diagram_id: str) -> tuple[str, int, int]:
         info.append(f'PK {pk} · {node.uuid[:8]}')
         dot.append(f'n{pk} [label={json.dumps(chr(10).join(info), ensure_ascii=False)}{args}];')
 
-    for source, target, link_type, link_label in sorted(edges, key=lambda item: (item[0], item[1], item[2].value, item[3])):
+    for source, target, link_type, link_label in sorted(
+        edges, key=lambda item: (item[0], item[1], item[2].value, item[3])
+    ):
         color, style = LINK_STYLES[link_type]
         label = json.dumps(f'{link_type.name}\n{link_label}')
         dot.append(f'n{source} -> n{target} [label={label}, color="{color}", fontcolor="{color}", style="{style}"];')
     dot.append('}')
     svg = subprocess.run(['dot', '-Tsvg'], input='\n'.join(dot), text=True, capture_output=True, check=True).stdout
-    svg = svg[svg.index('<svg'):]
+    svg = svg[svg.index('<svg') :]
     svg = svg.replace('<svg ', '<svg role="img" aria-label="Stored AiiDA provenance links" ', 1)
     svg = svg.replace(' id="', f' id="svg-{diagram_id}-')
     return svg, len(nodes), len(edges)
 
 
-STYLE = '''
+STYLE = """
 :root{color-scheme:light;--ink:#142635;--muted:#4c6573;--paper:#f8fafb;--line:#d9e4e9;--accent:#0c7058}
 *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:4rem}
 body{margin:0;background:#edf2f4;color:var(--ink);font:15px/1.55 system-ui,-apple-system,BlinkMacSystemFont,sans-serif}
@@ -136,7 +181,7 @@ pre{margin:0;overflow:auto;padding:13px 12px 16px;font:12.5px/1.55 ui-monospace,
 footer{padding:10px 3px;color:var(--muted);font-size:.82rem}.panel-heading .count{white-space:nowrap;letter-spacing:.04em}
 @media(max-width:900px){main{width:calc(100% - 24px);margin:12px auto 28px}thead{display:none}table,tbody,tr,td,tbody th{display:block;width:100%}td,td:first-child,td:last-child{padding:0 12px 12px}tbody th{padding:16px 12px 10px}.pre-graph{min-height:112px}html{scroll-padding-top:.5rem}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
-'''
+"""
 
 
 def test_render_gallery(aiida_config_tmp, aiida_profile_factory):
@@ -165,7 +210,8 @@ def test_render_gallery(aiida_config_tmp, aiida_profile_factory):
 <td><div class="panel"><div class="panel-heading"><span>Stored provenance</span><span class="count">{nnodes} nodes · {nedges} links</span></div><div class="pre-graph">{diagram}</div></div></td></tr>
 </tbody>''')
 
-    TARGET.write_text(f'''<!doctype html>
+    TARGET.write_text(
+        f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AiiDA provenance gallery · Graphs and writable tasks</title><style>{STYLE}\n{fmt.get_style_defs('.python')}</style></head><body><main>
 <header><p class="eyebrow">AiiDA · Provenance gallery</p><h1>Graphs and writable tasks</h1><p>Seven Python examples, run in isolated SQLite profiles. The diagrams show the links AiiDA stored, including where an inline graph output carries both <code>CREATE</code> and <code>RETURN</code>.</p><p>Branch snapshot: <code>{escape(revision())}</code></p></header>
@@ -173,7 +219,9 @@ def test_render_gallery(aiida_config_tmp, aiida_profile_factory):
 <div class="legend" aria-label="Link styles"><strong>Links</strong><span><i class="sample input"></i>Input</span><span><i class="sample call"></i>Call</span><span><i class="sample create"></i>Create</span><span><i class="sample return"></i>Return</span><span>Node labels show the PK and first eight UUID characters.</span></div>
 <table aria-label="Python source with matching AiiDA provenance diagrams"><colgroup><col style="width:43%"><col style="width:57%"></colgroup><thead><tr><th class="panel-heading-label" scope="col">Python source</th><th class="panel-heading-label" scope="col">Provenance graph</th></tr></thead>
 {''.join(rows)}
-</table><footer>Technical inputs (the serialized graph definition and runtime configuration) are omitted so the diagrams focus on scientific data. PKs belong to the temporary profiles. The downloadable examples define a <code>run_case()</code> function; call it from a configured AiiDA profile to reproduce the example. The build rejection case expects an empty profile.</footer></main></body></html>''', encoding='utf-8')
+</table><footer>Technical inputs (the serialized graph definition and runtime configuration) are omitted so the diagrams focus on scientific data. PKs belong to the temporary profiles. The downloadable examples define a <code>run_case()</code> function; call it from a configured AiiDA profile to reproduce the example. The build rejection case expects an empty profile.</footer></main></body></html>""",
+        encoding='utf-8',
+    )
     assert TARGET.stat().st_size > 30_000
 
 

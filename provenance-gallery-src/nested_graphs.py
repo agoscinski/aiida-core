@@ -1,9 +1,9 @@
-from typing import Annotated, TypedDict
+import typing as t
 
 from aiida import orm
 from aiida.engine import PortField, graph, run_get_node, task
 
-Writable = Annotated[orm.StructureData, PortField(mutable=True)]
+Writable = t.Annotated[orm.StructureData, PortField(mutable=True)]
 
 
 @task
@@ -17,7 +17,7 @@ def prepare(structure: Writable) -> orm.StructureData:
     return expand(structure=structure)
 
 
-class Report(TypedDict):
+class Report(t.TypedDict):
     original: orm.StructureData
     expanded: orm.StructureData
     count: int
@@ -33,7 +33,11 @@ def run_case():
     source = orm.StructureData(cell=[[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     outputs, node = run_get_node(report, structure=source)
     assert outputs['original'].uuid == source.uuid
-    assert outputs['expanded'].creator.uuid == node.called[0].uuid
+    (nested,) = node.called
+    assert isinstance(nested, orm.GraphNode)
+    assert nested.inputs.structure.uuid == source.uuid
+    assert nested.outputs.result.uuid == outputs['expanded'].uuid
+    (calculation,) = nested.called
+    assert outputs['expanded'].creator.uuid == calculation.uuid
     assert outputs['count'].creator.uuid == node.uuid
-    assert len(node.called) == 1
     return node
