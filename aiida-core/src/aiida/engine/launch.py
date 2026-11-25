@@ -1,0 +1,209 @@
+###########################################################################
+# Copyright (c), The AiiDA team. All rights reserved.                     #
+# This file is part of the AiiDA code.                                    #
+#                                                                         #
+# The code is hosted on GitHub at https://github.com/aiidateam/aiida-core #
+# For further information on the license, see the LICENSE.txt file        #
+# For further information please visit http://www.aiida.net               #
+###########################################################################
+"""Top level functions that can be used to launch a Process."""
+
+from __future__ import annotations
+
+import time
+import typing as t
+
+from aiida.common import InvalidOperation
+from aiida.common.lang import type_check
+from aiida.common.log import AIIDA_LOGGER
+from aiida.engine.processes.builder import ProcessBuilder
+from aiida.engine.processes.functions import FunctionProcess
+from aiida.engine.processes.process import Process
+from aiida.engine.runners import TYPE_RUN_PROCESS, TYPE_SUBMIT_PROCESS, ResultAndPk
+from aiida.engine.utils import instantiate_process, is_process_scoped, prepare_inputs
+from aiida.manage import manager
+from aiida.orm import ProcessNode
+
+__all__ = ('await_processes', 'run', 'run_get_node', 'run_get_pk', 'submit')
+
+LOGGER = AIIDA_LOGGER.getChild('engine.launch')
+
+
+def run(process: TYPE_RUN_PROCESS, inputs: dict[str, t.Any] | None = None, **kwargs: t.Any) -> dict[str, t.Any]:
+    """Run the process with the supplied inputs in a local runner that will block until the process is completed.
+
+    :param process: the process class, instance, builder, or process function to run
+    :param inputs: the inputs to be passed to the process
+    :return: the outputs of the process
+    """
+    if isinstance(process, Process):
+        runner = process.runner
+    else:
+        # Note: it is safe to create new local runner here without but the explanation can be found in issue #7353
+        runner = manager.get_manager().create_runner(communicator=None)
+
+    return runner.run(process, inputs, **kwargs)
+
+
+def run_get_node(
+    process: TYPE_RUN_PROCESS, inputs: dict[str, t.Any] | None = None, **kwargs: t.Any
+) -> tuple[dict[str, t.Any], ProcessNode]:
+    """Run the process with the supplied inputs in a local runner that will block until the process is completed.
+
+    :param process: the process class, instance, builder or function to run
+    :param inputs: the inputs to be passed to the process
+    :return: tuple of the outputs of the process and the process node
+    """
+    if isinstance(process, Process):
+        runner = process.runner
+    else:
+        # Note: it is safe to create new local runner here without but the explanation can be found in issue #7353
+        runner = manager.get_manager().create_runner(communicator=None)
+
+    return runner.run_get_node(process, inputs, **kwargs)
+
+
+def run_get_pk(process: TYPE_RUN_PROCESS, inputs: dict[str, t.Any] | None = None, **kwargs: t.Any) -> ResultAndPk:
+    """Run the process with the supplied inputs in a local runner that will block until the process is completed.
+
+    :param process: the process class, instance, builder or function to run
+    :param inputs: the inputs to be passed to the process
+    :return: tuple of the outputs of the process and process node pk
+    """
+    if isinstance(process, Process):
+        runner = process.runner
+    else:
+        # Note: it is safe to create new local runner here without but the explanation can be found in issue #7353
+        runner = manager.get_manager().create_runner(communicator=None)
+
+    return runner.run_get_pk(process, inputs, **kwargs)
+
+
+def submit(
+    process: TYPE_SUBMIT_PROCESS,
+    inputs: dict[str, t.Any] | None = None,
+    *,
+    wait: bool = False,
+    wait_interval: int = 5,
+    **kwargs: t.Any,
+) -> ProcessNode:
+    """Submit the process with the supplied inputs to the daemon immediately returning control to the interpreter.
+
+    .. warning: this should not be used within another process. Instead, there one should use the ``submit`` method of
+        the wrapping process itself, i.e. use ``self.submit``.
+
+    .. warning: submission of processes requires ``store_provenance=True``.
+
+    :param process: the process class, instance, builder, or process function to submit
+    :param inputs: the input dictionary to be passed to the process
+    :param wait: when set to ``True``, the submission will be blocking and wait for the process to complete at which
+        point the function returns the calculation node.
+    :param wait_interval: the number of seconds to wait between checking the state of the process when ``wait=True``.
+    :param kwargs: inputs to be passed to the process. This is an alternative to the positional ``inputs`` argument.
+    :return: the calculation node of the process
+    """
+    from aiida.common.docs import URL_NO_BROKER
+
+    inputs = prepare_inputs(inputs, **kwargs)
+
+    # Submitting from within another process requires ``self.submit``, unless the current process is a legacy
+    # function process (which always runs inline). Task processes may run in the daemon, so they stay guarded.
+    current = Process.current()
+    if is_process_scoped() and not isinstance(current, FunctionProcess):
+        raise InvalidOperation('Cannot use top-level `submit` from within another process, use `self.submit` instead')
+
+    # If a dry run is requested, simply forward to `run`, because it is not compatible with `submit`. We choose for this
+    # instead of raising, because in this way the user does not have to change the launcher when testing. The same goes
+    # for if `remote_folder` is present in the inputs, which means we are importing an already completed calculation.
+    # Builder inputs need to be merged so that detection works for ``submit(builder)`` too. Other launchables carry
+    # no stored inputs, so the passed inputs alone decide.
+    if isinstance(process, ProcessBuilder):
+        merged_inputs = {**inputs, **process._inputs(prune=True)}
+    else:
+        merged_inputs = inputs
+    if (merged_inputs.get('metadata') or {}).get('dry_run', False) or 'remote_folder' in merged_inputs:
+        _, node = run_get_node(process, inputs)
+        return node
+
+    current_manager = manager.get_manager()
+    profile = current_manager.get_profile()
+
+    if profile is not None and profile.process_control_backend == 'core.zeromq':
+        daemon_client = current_manager.get_daemon_client()
+        # Note: ``is_daemon_running`` only checks for a PID file, so a stale PID from a crashed daemon will let this
+        # check pass.
+        if not daemon_client.is_daemon_running:
+            msg = (
+                'Cannot submit because the daemon is not running. The ZeroMQ broker is bundled into the daemon for '
+                'this profile, so submission requires `verdi daemon start`. To run the process locally without the '
+                'daemon instead, '
+                'use `aiida.engine.run` (or `run_get_node`).'
+            )
+            raise InvalidOperation(msg)
+
+    runner = current_manager.get_runner()
+
+    if runner.controller is None:
+        msg = (
+            'Cannot submit because the runner does not have a process controller, probably because the profile does '
+            'not define a broker like RabbitMQ. If a RabbitMQ server is available, the profile can be configured to '
+            'use it with `verdi profile configure-broker core.rabbitmq`. Otherwise, use '
+            ':meth:`aiida.engine.launch.run` instead to run the process in the local Python interpreter instead of '
+            'submitting it to the daemon. '
+            f'See {URL_NO_BROKER} for more details.'
+        )
+        raise InvalidOperation(msg)
+
+    assert runner.persister is not None, 'runner does not have a persister'
+
+    process_inited = instantiate_process(runner, process, **inputs)
+
+    if not process_inited.metadata.store_provenance:
+        raise InvalidOperation('cannot submit a process with `store_provenance=False`')
+
+    runner.persister.save_checkpoint(process_inited)
+    process_inited.close()
+
+    # Do not wait for the future's result, because in the case of a single worker this would cock-block itself
+    runner.controller.continue_process(process_inited.pid, nowait=False, no_reply=True)
+    node = process_inited.node
+
+    if not wait:
+        return node
+
+    while not node.is_terminated:
+        LOGGER.report(
+            f'Process<{node.pk}> has not yet terminated, current state is `{node.process_state}`. '
+            f'Waiting for {wait_interval} seconds.'
+        )
+        time.sleep(wait_interval)
+
+    return node
+
+
+def await_processes(nodes: t.Sequence[ProcessNode], wait_interval: int = 1) -> None:
+    """Run a loop until all processes are terminated.
+
+    :param nodes: Sequence of nodes that represent the processes to await.
+    :param wait_interval: The interval between each iteration of checking the status of all processes.
+    """
+    type_check(nodes, (list, tuple))
+
+    if any(not isinstance(node, ProcessNode) for node in nodes):
+        msg = f'`nodes` should be a list of `ProcessNode`s but got: {nodes}'
+        raise TypeError(msg)
+
+    start_time = time.time()
+    terminated = False
+
+    while not terminated:
+        running = [not node.is_terminated for node in nodes]
+        terminated = not any(running)
+        seconds_passed = time.time() - start_time
+        LOGGER.report(f'{running.count(False)} out of {len(nodes)} processes terminated. [{round(seconds_passed)} s]')
+        time.sleep(wait_interval)
+
+
+# Allow one to also use run.get_node and run.get_pk as a shortcut, without having to import the functions themselves
+run.get_node = run_get_node  # type: ignore[attr-defined]
+run.get_pk = run_get_pk  # type: ignore[attr-defined]

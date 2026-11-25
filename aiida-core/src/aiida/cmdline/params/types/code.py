@@ -1,0 +1,72 @@
+###########################################################################
+# Copyright (c), The AiiDA team. All rights reserved.                     #
+# This file is part of the AiiDA code.                                    #
+#                                                                         #
+# The code is hosted on GitHub at https://github.com/aiidateam/aiida-core #
+# For further information on the license, see the LICENSE.txt file        #
+# For further information please visit http://www.aiida.net               #
+###########################################################################
+"""Module to define the custom click type for code."""
+
+from __future__ import annotations
+
+import typing as t
+
+if t.TYPE_CHECKING:
+    from aiida.orm.utils.loaders import CodeEntityLoader
+
+import click
+from click.shell_completion import CompletionItem
+
+from aiida.cmdline.params.types.identifier import IdentifierParamType
+from aiida.cmdline.utils import decorators
+
+__all__ = ('CodeParamType',)
+
+
+class CodeParamType(IdentifierParamType):
+    """The ParamType for identifying Code entities or its subclasses"""
+
+    name = 'Code'
+
+    def __init__(self, sub_classes: tuple[str, ...] | None = None, entry_point: str | None = None):
+        """Construct the param type
+
+        :param sub_classes: specify a tuple of Code sub classes to narrow the query set
+        :param entry_point: specify an optional calculation entry point that the Code's input plugin should match
+        """
+        super().__init__(sub_classes)
+        self._entry_point = entry_point
+
+    @property
+    def orm_class_loader(self) -> type[CodeEntityLoader]:
+        """Return the orm entity loader class, which should be a subclass of OrmEntityLoader. This class is supposed
+        to be used to load the entity for a given identifier
+
+        :return: the orm entity loader class for this ParamType
+        """
+        from aiida.orm.utils.loaders import CodeEntityLoader
+
+        return CodeEntityLoader
+
+    @decorators.with_dbenv()
+    def shell_complete(self, ctx: click.Context, param: click.Parameter, incomplete: bool) -> list[CompletionItem]:
+        """Return possible completions based on an incomplete value.
+
+        :returns: list of tuples of valid entry points (matching incomplete) and a description
+        """
+        return [CompletionItem(option) for (option,) in self.orm_class_loader.get_options(incomplete, project='label')]  # type: ignore[no-untyped-call]
+
+    def convert(self, value: t.Any, param: click.Parameter | None, ctx: click.Context | None) -> t.Any:
+        code = super().convert(value, param, ctx)
+
+        if code and self._entry_point is not None:
+            entry_point = code.default_calc_job_plugin
+            if entry_point != self._entry_point:
+                msg = (
+                    f'the retrieved Code<{code.pk}> has plugin type "{entry_point}" '
+                    f'while "{self._entry_point}" is required'
+                )
+                raise click.BadParameter(msg)
+
+        return code

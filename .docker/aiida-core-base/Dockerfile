@@ -123,7 +123,7 @@ RUN set -x && \
         arch="64"; \
     fi && \
     wget --progress=dot:giga -O /tmp/micromamba.tar.bz2 \
-        "https://micromamba.snakepit.net/api/micromamba/linux-${arch}/latest" && \
+        "https://micro.mamba.pm/api/micromamba/linux-${arch}/latest" && \
     tar -xvjf /tmp/micromamba.tar.bz2 --strip-components=1 bin/micromamba && \
     rm /tmp/micromamba.tar.bz2 && \
     PYTHON_SPECIFIER="python=${PYTHON_VERSION}" && \
@@ -151,7 +151,7 @@ ENV PIP_USER=1
 # Install AiiDA from source code
 USER root
 COPY --from=src . /tmp/aiida-core
-RUN pip install /tmp/aiida-core --no-cache-dir && \
+RUN pip install /tmp/aiida-core/aiida-core --no-cache-dir && \
     rm -rf /tmp/aiida-core
 
 # Enable verdi autocompletion.

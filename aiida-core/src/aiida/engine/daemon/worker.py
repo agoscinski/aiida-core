@@ -1,0 +1,88 @@
+###########################################################################
+# Copyright (c), The AiiDA team. All rights reserved.                     #
+# This file is part of the AiiDA code.                                    #
+#                                                                         #
+# The code is hosted on GitHub at https://github.com/aiidateam/aiida-core #
+# For further information on the license, see the LICENSE.txt file        #
+# For further information please visit http://www.aiida.net               #
+###########################################################################
+"""Function that starts a daemon worker."""
+
+import asyncio
+import logging
+import signal
+import sys
+
+from aiida.common.log import configure_logging
+from aiida.engine.daemon.client import get_daemon_client
+from aiida.engine.runners import Runner
+from aiida.manage import get_config_option, get_manager
+
+LOGGER = logging.getLogger(__name__)
+
+
+async def shutdown_worker(runner: Runner) -> None:
+    """Cleanup tasks tied to the service's shutdown."""
+    from asyncio import all_tasks, current_task
+
+    LOGGER.info('Received signal to shut down the daemon worker')
+    tasks = [task for task in all_tasks() if task is not current_task()]
+
+    for task in tasks:
+        task.cancel()
+
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Close every open connection
+    get_manager().reset_profile()
+
+    LOGGER.info('Daemon worker stopped')
+
+
+def start_daemon_worker(foreground: bool = False, profile_name: str | None = None) -> None:
+    """Start a daemon worker for the given profile or the currently configured profile.
+
+    :param foreground: If true, the logging will be also configured to write to stdout, and not only to log file.
+    :param profile_name: Optional profile name.
+    """
+    manager = get_manager()
+    profile = manager.load_profile(profile_name)
+
+    daemon_client = get_daemon_client(profile_name)
+    configure_logging(with_orm=True, daemon=not foreground, daemon_log_file=daemon_client.daemon_log_file)
+
+    LOGGER.debug('Loaded profile %s', profile.name)
+    LOGGER.debug('sys.executable: %s', sys.executable)
+    LOGGER.debug('sys.path: %s', sys.path)
+
+    try:
+        runner = manager.create_daemon_runner()
+        manager.set_runner(runner)
+    except Exception:
+        LOGGER.exception('daemon worker failed to start')
+        raise
+
+    if isinstance(rlimit := get_config_option('daemon.recursion_limit'), int):
+        LOGGER.info('Setting maximum recursion limit of daemon worker to %s', rlimit)
+        sys.setrecursionlimit(rlimit)
+
+    shutdown_tasks: set[asyncio.Task[None]] = set()
+
+    def schedule_shutdown() -> None:
+        task = asyncio.create_task(shutdown_worker(runner))
+        shutdown_tasks.add(task)
+        task.add_done_callback(shutdown_tasks.discard)
+
+    signals = (signal.SIGTERM, signal.SIGINT)
+    for s in signals:
+        # https://github.com/python/mypy/issues/12557
+        runner.loop.add_signal_handler(s, schedule_shutdown)
+
+    try:
+        LOGGER.info('Starting a daemon worker')
+        runner.start()
+    except SystemError as exception:
+        LOGGER.info('Received a SystemError: %s', exception)
+        manager.reset_profile()
+
+    LOGGER.info('Daemon worker started')

@@ -1,0 +1,338 @@
+###########################################################################
+# Copyright (c), The AiiDA team. All rights reserved.                     #
+# This file is part of the AiiDA code.                                    #
+#                                                                         #
+# The code is hosted on GitHub at https://github.com/aiidateam/aiida-core #
+# For further information on the license, see the LICENSE.txt file        #
+# For further information please visit http://www.aiida.net               #
+###########################################################################
+"""Tests for ``verdi daemon``."""
+
+import sys
+from unittest.mock import patch
+
+import pytest
+
+from aiida import get_profile
+from aiida.brokers.zeromq.broker import ZeromqBroker
+from aiida.cmdline.commands import cmd_daemon
+from aiida.engine.daemon.client import DaemonClient, DaemonTimeoutException
+
+pytestmark = pytest.mark.requires_broker
+
+
+def format_local_time(timestamp, format_str='%Y-%m-%d %H:%M:%S'):
+    """Format a datetime object or UNIX timestamp in a human readable format
+
+    Mocked version of :func:`aiida.cmdline.utils.common.format_local_time` that does not consider the local timezone as
+    that will mess up the tests.
+
+    :param timestamp: a datetime object or a float representing a UNIX timestamp
+    :param format_str: optional string format to pass to strftime
+    """
+    from datetime import datetime, timezone
+
+    return datetime.fromtimestamp(timestamp, timezone.utc).strftime(format_str)
+
+
+def test_daemon_start(run_cli_command, stopped_daemon_client):
+    """Test ``verdi daemon start``."""
+    run_cli_command(cmd_daemon.start)
+
+    daemon_response = stopped_daemon_client.get_daemon_info()
+
+    assert 'status' in daemon_response
+    assert daemon_response['status'] == 'ok'
+
+    # The daemon start command only waits for the circus daemon itself to be up, not for all workers to have been
+    # spawned, so poll for the expected number of workers instead of asserting on a single snapshot.
+    stopped_daemon_client._await_condition(
+        lambda: stopped_daemon_client.get_number_of_workers() == 1,
+        DaemonTimeoutException('The daemon failed to start 1 worker.'),
+    )
+
+
+@pytest.mark.parametrize('options', ([], ['--reset']))
+@pytest.mark.flaky(reruns=2)
+def test_daemon_restart(run_cli_command, started_daemon_client, options):
+    """Test ``verdi daemon restart`` both with and without ``--reset`` flag."""
+    run_cli_command(cmd_daemon.restart, options)
+
+    daemon_response = started_daemon_client.get_daemon_info()
+    worker_response = started_daemon_client.get_worker_info()
+
+    assert 'status' in daemon_response
+    assert daemon_response['status'] == 'ok'
+
+    assert 'info' in worker_response
+    assert len(worker_response['info']) == 1
+
+
+def test_daemon_start_number(run_cli_command, stopped_daemon_client):
+    """Test ``verdi daemon start`` with a specific number of workers."""
+    number = 4
+    run_cli_command(cmd_daemon.start, [str(number)])
+
+    daemon_response = stopped_daemon_client.get_daemon_info()
+
+    assert 'status' in daemon_response
+    assert daemon_response['status'] == 'ok'
+
+    stopped_daemon_client._await_condition(
+        lambda: stopped_daemon_client.get_number_of_workers() == number,
+        DaemonTimeoutException(f'The daemon failed to start {number} workers.'),
+    )
+
+
+def test_daemon_start_number_config(run_cli_command, stopped_daemon_client, isolated_config):
+    """Test ``verdi daemon start`` with ``daemon.default_workers`` config option being set."""
+    number = 3
+    isolated_config.set_option('daemon.default_workers', number, scope=get_profile().name)
+    isolated_config.store()
+
+    run_cli_command(cmd_daemon.start, use_subprocess=False)
+
+    daemon_response = stopped_daemon_client.get_daemon_info()
+
+    assert 'status' in daemon_response
+    assert daemon_response['status'] == 'ok'
+
+    stopped_daemon_client._await_condition(
+        lambda: stopped_daemon_client.get_number_of_workers() == number,
+        DaemonTimeoutException(f'The daemon failed to start {number} workers.'),
+    )
+
+
+@pytest.mark.flaky(reruns=2)
+def test_daemon_stop(run_cli_command, started_daemon_client):
+    """Test ``verdi daemon stop``."""
+    result = run_cli_command(cmd_daemon.stop)
+
+    started_daemon_client._await_condition(
+        lambda: not started_daemon_client.is_daemon_running,
+        DaemonTimeoutException('The daemon failed to stop.'),
+    )
+
+    assert 'Stopping the daemon' in result.output
+    assert not started_daemon_client.is_daemon_running
+
+
+def test_foreground_multiple_workers(run_cli_command):
+    """Test `verdi daemon start` in foreground with more than one worker will fail."""
+    run_cli_command(cmd_daemon.start, ['--foreground', str(4)], raises=True)
+
+
+@pytest.mark.usefixtures('started_daemon_client', 'isolated_config')
+@pytest.mark.flaky(reruns=2)
+def test_daemon_status(run_cli_command):
+    """Test ``verdi daemon status``."""
+    result = run_cli_command(cmd_daemon.status)
+    last_line = result.output_lines[-1]
+
+    assert f'Profile: {get_profile().name}' in result.output
+    assert last_line == 'Use `verdi daemon [incr | decr] [num]` to increase / decrease the number of workers'
+
+
+@pytest.mark.usefixtures('empty_config')
+def test_daemon_status_no_profile(run_cli_command):
+    """Test ``verdi daemon status`` when no profiles are defined."""
+    result = run_cli_command(cmd_daemon.status, raises=True)
+    assert 'No profile loaded: make sure at least one profile is configured and a default is set.' in result.output
+
+
+@pytest.mark.usefixtures('stopped_daemon_client')
+def test_daemon_status_no_broker(run_cli_command):
+    """Test ``verdi daemon status`` warns if the profile does not define a broker and still checks status."""
+    from aiida.manage.manager import get_manager
+
+    manager = get_manager()
+    profile = manager.get_profile()
+    assert profile is not None
+
+    old_backend = profile.process_control_backend
+    old_config = profile.process_control_config
+
+    try:
+        profile.set_process_controller(None, None)
+        manager.reset_broker()
+        result = run_cli_command(cmd_daemon.status, raises=True, use_subprocess=False)
+    finally:
+        profile.set_process_controller(old_backend, old_config)
+        manager.reset_broker()
+
+    assert result.exit_code == 3
+    assert 'the daemon has no functionality because it cannot pass messages to workers' in result.output
+    assert 'The daemon is not running.' in result.output
+
+
+@pytest.mark.usefixtures('started_daemon_client', 'isolated_config')
+@pytest.mark.flaky(reruns=2)
+def test_daemon_status_timeout(run_cli_command):
+    """Test ``verdi daemon status`` with the ``--timeout`` option.
+
+    This will just test the timeout is accepted and doesn't cause an exception. It is not testing whether the command
+    will actually timeout if provided a small number, but that is difficult to make reproducible in a test environment.
+    """
+    result = run_cli_command(cmd_daemon.status, ['--timeout', '5'])
+    last_line = result.output_lines[-1]
+
+    assert f'Profile: {get_profile().name}' in result.output
+    assert last_line == 'Use `verdi daemon [incr | decr] [num]` to increase / decrease the number of workers'
+
+
+def get_daemon_info(_):
+    """Mock replacement of :meth:`aiida.engine.daemon.client.DaemonClient.get_daemon_info`."""
+    return {
+        'status': 'ok',
+        'time': 1576588772.459435,
+        'info': {
+            'cpu': 0.0,
+            'mem': 0.028,
+            'pid': 111015,
+            'create_time': 1576582938.75,
+        },
+        'id': 'a1c0d76c94304d62adfb36e30d335dd0',
+    }
+
+
+def get_worker_info(_):
+    """Mock replacement of :meth:`aiida.engine.daemon.client.DaemonClient.get_worker_info`."""
+    return {
+        'status': 'ok',
+        'time': 1576585659.221961,
+        'name': 'aiida-production',
+        'info': {
+            '4990': {
+                'cpu': 0.0,
+                'mem': 0.231,
+                'pid': 4990,
+                'create_time': 1576585658.730482,
+            }
+        },
+        'id': '4e1d768a522a44b59f85039806f9af14',
+    }
+
+
+def get_worker_info_broken(_):
+    """Mock replacement of :meth:`aiida.engine.daemon.client.DaemonClient.get_worker_info`.
+
+    This response simulations the event where the circus daemon cannot get the stats from one of the workers.
+    """
+    return {
+        'status': 'ok',
+        'time': 1576585659.221961,
+        'name': 'aiida-production',
+        'info': {'4990': 'No such process (stopped?)'},
+        'id': '4e1d768a522a44b59f85039806f9af14',
+    }
+
+
+@patch.object(DaemonClient, 'get_status', lambda *_, **__: {'status': 'running'})
+@patch.object(DaemonClient, 'get_daemon_info', get_daemon_info)
+@patch.object(DaemonClient, 'get_worker_info', get_worker_info)
+def test_daemon_status_legacy_rabbitmq_backend(run_cli_command):
+    """Status resolves the legacy broker name stored in unmigrated profiles."""
+    profile = get_profile()
+    original_backend = profile.process_control_backend
+    original_config = profile.process_control_config
+
+    try:
+        profile.set_process_controller('rabbitmq', original_config)
+        result = run_cli_command(cmd_daemon.status, use_subprocess=False)
+    finally:
+        profile.set_process_controller(original_backend, original_config)
+
+    assert f'Profile: {profile.name}' in result.output
+    assert 'Daemon is running as PID 111015' in result.output
+
+
+@patch.object(DaemonClient, 'get_status', lambda *_, **__: {'status': 'running'})
+@patch.object(DaemonClient, 'get_daemon_info', get_daemon_info)
+@patch.object(DaemonClient, 'get_worker_info', get_worker_info)
+@patch('aiida.cmdline.utils.common.format_local_time', format_local_time)
+def test_daemon_status_surfaces_zeromq_probe_error(run_cli_command, monkeypatch, tmp_path):
+    """Test ``verdi daemon status`` surfaces ZeroMQ probe errors even when the broker is reachable."""
+    broker = ZeromqBroker.__new__(ZeromqBroker)
+    broker._service_dir = tmp_path
+    broker._service_pid_file = tmp_path / 'broker.pid'
+    broker._service_status_file = tmp_path / 'broker.status'
+    broker._service_status_file.write_text('{INVALID JSON')
+    broker.check_service_reachable = lambda: True
+    monkeypatch.setattr('aiida.plugins.BrokerFactory', lambda entry_point: lambda profile: broker)
+
+    result = run_cli_command(cmd_daemon.status, use_subprocess=False)
+
+    assert 'Failed to probe broker status: JSONDecodeError' in result.output
+    assert 'Broker is running as PID ? [? pending, ? processing]' in result.output
+
+
+@patch.object(DaemonClient, 'get_status', lambda *_, **__: {'status': 'running'})
+@patch.object(DaemonClient, 'get_daemon_info', get_daemon_info)
+@patch.object(DaemonClient, 'get_worker_info', get_worker_info)
+@patch('aiida.cmdline.utils.common.format_local_time', format_local_time)
+def test_daemon_status_worker_info(run_cli_command, isolated_config, profile_factory, monkeypatch, tmp_path):
+    """Test `get_status` output if everything is working normally with a single worker."""
+    result = run_cli_command(cmd_daemon.status)
+    assert 'Daemon is running as PID 111015 since 2019-12-17 11:42:18' in result.output
+    assert 'Active workers [1]:' in result.output
+    assert '4990    0.231        0  2019-12-17 12:27:38' in result.output
+    assert 'Use `verdi daemon [incr | decr] [num]`' in result.output
+
+    profile_one = profile_factory('profile-one', process_control_backend='core.zeromq', test_profile=False)
+    profile_two = profile_factory('profile-two', process_control_backend='core.zeromq', test_profile=False)
+    isolated_config.add_profile(profile_one)
+    isolated_config.add_profile(profile_two)
+
+    brokers = {}
+    broker = ZeromqBroker.__new__(ZeromqBroker)
+    broker._service_dir = tmp_path / 'broker-one'
+    broker.probe_service_status = lambda: {'connected': True, 'pid': 111, 'pending_tasks': 2, 'processing_tasks': 1}
+    brokers[profile_one.name] = broker
+
+    broker = ZeromqBroker.__new__(ZeromqBroker)
+    broker._service_dir = tmp_path / 'broker-two'
+    broker.probe_service_status = lambda: {'connected': False, 'error': 'ConnectionError: connection failed'}
+    brokers[profile_two.name] = broker
+
+    monkeypatch.setattr('aiida.plugins.BrokerFactory', lambda entry_point: lambda profile: brokers[profile.name])
+
+    result = run_cli_command(cmd_daemon.status, ['--all'], use_subprocess=False)
+
+    assert 'Profile: profile-one' in result.output
+    assert 'Profile: profile-two' in result.output
+    assert 'Broker is running as PID 111 [2 pending, 1 processing]' in result.output
+    assert 'Broker is NOT running' in result.output
+
+
+@patch.object(DaemonClient, 'get_status', lambda *_, **__: {'status': 'running'})
+@patch.object(DaemonClient, 'get_daemon_info', get_daemon_info)
+@patch.object(DaemonClient, 'get_worker_info', get_worker_info_broken)
+@patch('aiida.cmdline.utils.common.format_local_time', format_local_time)
+def test_daemon_status_worker_timeout(run_cli_command):
+    """Test `get_status` output if a daemon worker cannot be reached by the circus daemon."""
+    result = run_cli_command(cmd_daemon.status)
+    assert 'Daemon is running as PID 111015 since 2019-12-17 11:42:18' in result.output
+    assert 'Active workers [1]:' in result.output
+    assert '4990  -        -        -' in result.output
+    assert 'Use `verdi daemon [incr | decr] [num]`' in result.output
+
+
+@patch.object(DaemonClient, 'get_status', lambda self, timeout=None: {'status': 'running'})
+@patch.object(DaemonClient, 'get_daemon_info', get_daemon_info)
+@patch.object(DaemonClient, 'get_worker_info', get_worker_info)
+@patch.object(
+    DaemonClient,
+    '_get_daemon_env_info',
+    lambda self: {'packages': {'aiida-core': {'version': '2.8.0.post0'}}, 'python_binary': sys.executable},
+)
+@patch.object(
+    DaemonClient,
+    '_get_package_version_snapshot',
+    lambda: {'aiida-core': {'version': '2.8.0.post0'}, 'aiida-plugin': {'version': '1.2.3'}},
+)
+@patch('aiida.cmdline.utils.common.format_local_time', format_local_time)
+def test_daemon_status_package_state_warning(run_cli_command):
+    """Test `verdi daemon status` includes package-state mismatch warnings."""
+    result = run_cli_command(cmd_daemon.status)
+    assert 'different package versions' in result.output
+    assert 'Added packages: aiida-plugin (1.2.3)' in result.output
