@@ -19,7 +19,7 @@ from aiida.orm.pydantic import OrmMetadataField
 if t.TYPE_CHECKING:
     import numpy as np
 
-    from aiida.orm.nodes.data.structure import Kind, StructureData
+    from aiida_atomistic.orm.nodes.data.structure import Kind, StructureData
 
 __all__ = ('TrajectoryData',)
 
@@ -219,10 +219,10 @@ class TrajectoryData(ArrayData):
 
     def set_structurelist(self, structurelist: t.Sequence[StructureData]) -> None:
         """Create trajectory from the list of
-        :py:class:`aiida.orm.nodes.data.structure.StructureData` instances.
+        :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData` instances.
 
         :param structurelist: a sequence of
-            :py:class:`aiida.orm.nodes.data.structure.StructureData` instances.
+            :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData` instances.
 
         :raises ValueError: if symbol lists of supplied structures are
             different
@@ -414,7 +414,7 @@ class TrajectoryData(ArrayData):
         return (int(self.get_stepids()[index]), time, cell, self.symbols, self.get_positions()[index, :, :], vel)
 
     def get_step_structure(self, index: int, custom_kinds: list[Kind] | None = None) -> StructureData:
-        """Return an AiiDA :py:class:`aiida.orm.nodes.data.structure.StructureData` node
+        """Return an AiiDA :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData` node
         (not stored yet!) with the coordinates of the given step, identified by
         its index. If you know only the step value, use the
         :py:meth:`.get_index_from_stepid` method to get the corresponding index.
@@ -424,17 +424,17 @@ class TrajectoryData(ArrayData):
         :param index: The index of the step that you want to retrieve, from
            0 to ``self.numsteps- 1``.
         :param custom_kinds: (Optional) If passed must be a list of
-          :py:class:`aiida.orm.nodes.data.structure.Kind` objects. There must be one
+          :py:class:`aiida_atomistic.orm.nodes.data.structure.Kind` objects. There must be one
           kind object for each different string in the ``symbols`` array, with
           ``kind.name`` set to this string.
           If this parameter is omitted, the automatic kind generation of AiiDA
-          :py:class:`aiida.orm.nodes.data.structure.StructureData` nodes is used,
+          :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData` nodes is used,
           meaning that the strings in the ``symbols`` array must be valid
           chemical symbols.
 
-        :return: :py:class:`aiida.orm.nodes.data.structure.StructureData` node.
+        :return: :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData` node.
         """
-        from aiida.orm.nodes.data.structure import Kind, Site, StructureData
+        from aiida_atomistic.orm.nodes.data.structure import Kind, Site, StructureData
 
         # ignore step, time, and velocities
         _, _, cell, symbols, positions, _ = self.get_step_data(index)
@@ -443,9 +443,7 @@ class TrajectoryData(ArrayData):
             kind_names = []
             for k in custom_kinds:
                 if not isinstance(k, Kind):
-                    raise TypeError(
-                        'Each element of the custom_kinds list must be a aiida.orm.nodes.data.structure.Kind object'
-                    )
+                    raise TypeError('Each element of the custom_kinds list must be a Kind object')
                 kind_names.append(k.name)
             if len(kind_names) != len(set(kind_names)):
                 raise ValueError('Multiple kinds with the same name passed as custom_kinds')
@@ -513,7 +511,7 @@ class TrajectoryData(ArrayData):
     ) -> tuple[bytes, dict[str, t.Any]]:
         """Write the given trajectory to a string of format CIF."""
         from aiida.common.utils import Capturing
-        from aiida.orm.nodes.data.cif import ase_loops, cif_from_ase, pycifrw_from_cif
+        from aiida_atomistic.orm.nodes.data.cif import ase_loops, cif_from_ase, pycifrw_from_cif
 
         cif = ''
         indices = list(range(self.numsteps))
@@ -527,29 +525,29 @@ class TrajectoryData(ArrayData):
         return cif.encode('utf-8'), {}
 
     def get_structure(self, store: bool = False, **kwargs: t.Any) -> StructureData:
-        """Creates :py:class:`aiida.orm.nodes.data.structure.StructureData`.
+        """Creates :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData`.
 
         :param store: If True, intermediate calculation gets stored in the
             AiiDA database for record. Default False.
         :param index: The index of the step that you want to retrieve, from
            0 to ``self.numsteps- 1``.
         :param custom_kinds: (Optional) If passed must be a list of
-          :py:class:`aiida.orm.nodes.data.structure.Kind` objects. There must be one
+          :py:class:`aiida_atomistic.orm.nodes.data.structure.Kind` objects. There must be one
           kind object for each different string in the ``symbols`` array, with
           ``kind.name`` set to this string.
           If this parameter is omitted, the automatic kind generation of AiiDA
-          :py:class:`aiida.orm.nodes.data.structure.StructureData` nodes is used,
+          :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData` nodes is used,
           meaning that the strings in the ``symbols`` array must be valid
           chemical symbols.
         :param custom_cell: (Optional) The cell matrix of the structure.
           If omitted, the cell will be read from the trajectory, if present,
           otherwise the default cell of
-          :py:class:`aiida.orm.nodes.data.structure.StructureData` will be used.
+          :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData` will be used.
 
-        :return: :py:class:`aiida.orm.nodes.data.structure.StructureData` node.
+        :return: :py:class:`aiida_atomistic.orm.nodes.data.structure.StructureData` node.
         """
         from aiida.orm.nodes.data.dict import Dict
-        from aiida.tools.data.array.trajectory import _get_aiida_structure_inline
+        from aiida_atomistic.tools.data.array.trajectory import _get_aiida_structure_inline
 
         param = Dict(kwargs)
 
@@ -557,7 +555,7 @@ class TrajectoryData(ArrayData):
         return ret_dict['structure']
 
     def get_cif(self, index: int | None = None, **kwargs: t.Any) -> t.Any:
-        """Creates :py:class:`aiida.orm.nodes.data.cif.CifData`"""
+        """Creates :py:class:`aiida_atomistic.orm.nodes.data.cif.CifData`"""
         struct = self.get_structure(index=index, **kwargs)
         cif = struct.get_cif(**kwargs)
         return cif
@@ -575,7 +573,7 @@ class TrajectoryData(ArrayData):
 
         Usage::
 
-            from aiida.orm.nodes.data.array.trajectory import TrajectoryData
+            from aiida_atomistic.orm.nodes.data.array.trajectory import TrajectoryData
 
             t = TrajectoryData()
             # get sites and number of timesteps
@@ -586,7 +584,7 @@ class TrajectoryData(ArrayData):
         from numpy import array
 
         from aiida.common.exceptions import ValidationError
-        from aiida.tools.data.structure import xyz_parser_iterator
+        from aiida_atomistic.tools.data.structure import xyz_parser_iterator
 
         numsteps = self.numsteps
         if numsteps == 0:
@@ -620,7 +618,7 @@ class TrajectoryData(ArrayData):
         from numpy import array
 
         from aiida.common.exceptions import ValidationError
-        from aiida.tools.data.structure import xyz_parser_iterator
+        from aiida_atomistic.tools.data.structure import xyz_parser_iterator
 
         numsteps = self.numsteps
         if numsteps == 0:

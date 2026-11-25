@@ -10,6 +10,10 @@ inputs:
     description: Subpackage directory containing the project
     default: aiida-core
     required: false
+  atomistic-shims:
+    description: Install the local aiida-atomistic package for mixed core suites
+    default: 'false'
+    required: false
   extras:
     description: list of optional dependencies
     default: ''
@@ -54,3 +58,9 @@ runs:
     run: |
       uv pip install --resolution ${{ inputs.resolution-strategy }} -e ./${{ inputs.package }}${{ inputs.extras && format('[{0}]', inputs.extras) || '' }}
     shell: bash
+  - name: Install local aiida-atomistic for core shims
+    if: ${{ inputs.atomistic-shims == 'true' }}
+    shell: bash
+    run: |
+      uv pip install --python python --no-deps -e ./aiida-atomistic
+      uv pip install --python python 'upf_to_json~=0.9.2'

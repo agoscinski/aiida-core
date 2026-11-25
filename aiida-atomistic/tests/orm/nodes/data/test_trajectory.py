@@ -4,8 +4,9 @@ import numpy as np
 import pytest
 
 from aiida.common.warnings import AiidaDeprecationWarning
-from aiida.orm import StructureData, TrajectoryData, load_node
-from aiida.orm.nodes.data.array.trajectory import plot_positions_XYZ
+from aiida.orm import load_node
+from aiida_atomistic.orm.nodes.data.array.trajectory import TrajectoryData, plot_positions_XYZ
+from aiida_atomistic.orm.nodes.data.structure import StructureData
 
 
 @pytest.fixture

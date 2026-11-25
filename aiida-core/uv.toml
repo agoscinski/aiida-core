@@ -10,5 +10,5 @@
 # and the minimum version here should be the first one that introduced a given version/revision.
 # NOTE: When you bump the minimum uv version, you might also need to change it in:
 # .pre-commit-config.yaml
-# .github/actions/install-aiida-core/action.yml
+# .github/actions/install-package/action.yml
 required-version = ">=0.8.4"

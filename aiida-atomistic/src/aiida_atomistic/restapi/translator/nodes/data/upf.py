@@ -17,7 +17,7 @@ class UpfDataTranslator(DataTranslator):
     # A label associated to the present class (coincides with the resource name)
     __label__ = 'upfs'
     # The AiiDA class one-to-one associated to the present class
-    from aiida.orm import UpfData
+    from aiida_atomistic.orm.nodes.data.upf import UpfData
 
     _aiida_class = UpfData
     # The string name of the AiiDA class

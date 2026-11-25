@@ -8,6 +8,6 @@
 ###########################################################################
 """Module for plugins to import data from external databases into an AiiDA database."""
 
-from aiida.tools.dbimporters.baseclasses import DbImporter
+from aiida_atomistic.tools.dbimporters.baseclasses import DbImporter
 
 __all__ = ('DbImporter',)

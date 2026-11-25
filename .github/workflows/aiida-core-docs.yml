@@ -26,6 +26,7 @@ jobs:
     - name: Install aiida-core and docs deps
       uses: ./.github/actions/install-package
       with:
+        atomistic-shims: 'true'
         python-version: '3.10'
         extras: docs,tests,rest,atomic_tools
         from-lock: 'false'

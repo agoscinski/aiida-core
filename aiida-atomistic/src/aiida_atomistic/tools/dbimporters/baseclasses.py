@@ -109,7 +109,7 @@ class DbSearchResults:
 
     def __iter__(self):
         """Instances of
-        :py:class:`aiida.tools.dbimporters.baseclasses.DbSearchResults` can
+        :py:class:`aiida_atomistic.tools.dbimporters.baseclasses.DbSearchResults` can
         be used as iterators.
         """
         return self.DbSearchResultsIterator(self)
@@ -122,7 +122,7 @@ class DbSearchResults:
 
     def fetch_all(self):
         """Returns all query results as an array of
-        :py:class:`aiida.tools.dbimporters.baseclasses.DbEntry`.
+        :py:class:`aiida_atomistic.tools.dbimporters.baseclasses.DbEntry`.
         """
         results = []
         for entry in self:
@@ -131,7 +131,7 @@ class DbSearchResults:
 
     def next(self):
         """Returns the next result of the query (instance of
-        :py:class:`aiida.tools.dbimporters.baseclasses.DbEntry`).
+        :py:class:`aiida_atomistic.tools.dbimporters.baseclasses.DbEntry`).
 
         :raise StopIteration: when the end of result array is reached.
         """
@@ -139,7 +139,7 @@ class DbSearchResults:
 
     def at(self, position):
         """Returns ``position``-th result as
-        :py:class:`aiida.tools.dbimporters.baseclasses.DbEntry`.
+        :py:class:`aiida_atomistic.tools.dbimporters.baseclasses.DbEntry`.
 
         :param position: zero-based index of a result.
 
@@ -256,20 +256,20 @@ class CifEntry(DbEntry):
         """Returns ASE representation of the CIF.
 
         .. note:: To be removed, as it is duplicated in
-            :py:class:`aiida.orm.nodes.data.cif.CifData`.
+            :py:class:`aiida_atomistic.orm.nodes.data.cif.CifData`.
         """
-        from aiida.orm import CifData
+        from aiida_atomistic.orm.nodes.data.cif import CifData
 
         return CifData.read_cif(io.StringIO(self.cif))
 
     def get_cif_node(self, store=False, parse_policy='lazy'):
         """Creates a CIF node, that can be used in AiiDA workflow.
 
-        :return: :py:class:`aiida.orm.nodes.data.cif.CifData` object
+        :return: :py:class:`aiida_atomistic.orm.nodes.data.cif.CifData` object
         """
         import tempfile
 
-        from aiida.orm.nodes.data.cif import CifData
+        from aiida_atomistic.orm.nodes.data.cif import CifData
 
         cifnode = None
 
@@ -305,11 +305,11 @@ class UpfEntry(DbEntry):
     def get_upf_node(self, store=False):
         """Creates an UPF node, that can be used in AiiDA workflow.
 
-        :return: :py:class:`aiida.orm.nodes.data.upf.UpfData` object
+        :return: :py:class:`aiida_atomistic.orm.nodes.data.upf.UpfData` object
         """
         import tempfile
 
-        from aiida.orm import UpfData
+        from aiida_atomistic.orm.nodes.data.upf import UpfData
 
         upfnode = None
 

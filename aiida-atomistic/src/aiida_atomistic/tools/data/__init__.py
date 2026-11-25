@@ -12,9 +12,9 @@
 
 # fmt: off
 
-from aiida.tools.data.array import *
-from aiida.tools.data.orbital import *
-from aiida.tools.data.structure import *
+from aiida_atomistic.tools.data.array import *
+from aiida_atomistic.tools.data.orbital import *
+from aiida_atomistic.tools.data.structure import *
 
 __all__ = (
     'Orbital',

@@ -1191,25 +1191,26 @@ def _migrate_mypy_excludes(lines: list[str], start: int, end: int) -> tuple[list
             continue
         indent, entry = match.group(1), match.group(2)
         core_rel = entry.rstrip('|')
-        is_regex = bool(re.search(r'[.*?\[\]()+]', core_rel))
-        literal = core_rel.split('/.*')[0] if '/.*' in core_rel else core_rel
+        literal, wildcard, _ = core_rel.partition('/.*')
         rel_path = literal.removeprefix('aiida-core/src/aiida/')
         in_moved_tree = any(rel_path == rel or rel_path.startswith(rel + '/') for rel in [*SRC_FILES, *SRC_DIRS])
-        if not in_moved_tree:
+        covers_moved_files = wildcard and any(rel.startswith(rel_path + '/') for rel in [*SRC_FILES, *SRC_DIRS])
+        if not (in_moved_tree or covers_moved_files):
             kept.append(line)
             continue
         new_entry = entry.replace('aiida-core/src/aiida/', 'aiida-atomistic/src/aiida_atomistic/', 1)
-        if is_regex:
-            remains = list((CORE_SRC / literal).rglob('*.py')) if (CORE_SRC / literal).is_dir() else []
-            if not remains:
-                dropped.append(core_rel)
-            else:
+        core_path = CORE_SRC / rel_path
+        if wildcard:
+            if any(core_path.rglob('*.py')):
                 kept.append(line)  # mixed content (e.g. translator nodes): keep core line too
-            added.append(f'{indent}{new_entry}')
-        elif (CORE_SRC / literal).exists():
+            else:
+                dropped.append(core_rel)
+        elif core_path.exists():
             kept.append(line)  # not moved after all; be conservative
+            continue
         else:
             dropped.append(core_rel)
+        if f'{indent}{new_entry}\n' not in lines[start:end]:
             added.append(f'{indent}{new_entry}')
     return kept, added, dropped
 

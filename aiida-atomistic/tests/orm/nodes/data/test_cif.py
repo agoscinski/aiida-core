@@ -10,7 +10,7 @@
 
 import pytest
 
-from aiida.orm.nodes.data.cif import parse_formula
+from aiida_atomistic.orm.nodes.data.cif import parse_formula
 
 
 def test_parse_formula():

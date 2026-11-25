@@ -24,7 +24,9 @@ from packaging.requirements import Requirement
 from packaging.version import parse
 
 REPO_ROOT = Path(__file__).resolve().parent.parent  # repository root
-ROOT = REPO_ROOT / 'aiida-core' if (REPO_ROOT / 'aiida-core' / 'pyproject.toml').exists() else REPO_ROOT  # package dir (monorepo) or repository root (legacy layout)
+ROOT = (
+    REPO_ROOT / 'aiida-core' if (REPO_ROOT / 'aiida-core' / 'pyproject.toml').exists() else REPO_ROOT
+)  # package dir (monorepo) or repository root (legacy layout)
 
 SETUPTOOLS_CONDA_MAPPINGS = {
     'graphviz': 'python-graphviz',

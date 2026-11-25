@@ -60,8 +60,8 @@ jobs:
 
     - name: Check uv.lock has the latest compatible dependencies
       run: |
-        uv lock --upgrade
-        git diff --exit-code -- uv.lock
+        uv lock --project aiida-core --upgrade
+        git diff --exit-code -- aiida-core/uv.lock
 
   pre-commit:
     if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'pull_request' && contains(fromJson(toJson(github.event.pull_request.labels)).*.name, 'test-release'))
@@ -75,6 +75,7 @@ jobs:
     - name: Install aiida-core and pre-commit
       uses: ./.github/actions/install-package
       with:
+        atomistic-shims: 'true'
         python-version: '3.11'
         extras: pre-commit
         # Full pre-commit runs in locked CI; run mypy additionally here
@@ -96,10 +97,12 @@ jobs:
     - name: Install aiida-core
       uses: ./.github/actions/install-package
       with:
+        atomistic-shims: 'true'
         python-version: '3.10'
 
     - name: Run sub-set of test suite
-      run: pytest -s -m requires_broker --broker-backend zmq --db-backend=sqlite aiida-core/tests/
+      working-directory: aiida-core
+      run: pytest -s -m requires_broker --broker-backend zmq --db-backend=sqlite tests/
 
   publish-pypi:
     if: startsWith(github.ref, 'refs/tags/')
@@ -124,9 +127,12 @@ jobs:
     - name: Install flit
       run: pip install --upgrade pip "flit>=4.0.2,<5"
     - name: Build
+      working-directory: aiida-core
       run: flit build
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        packages-dir: aiida-core/dist
 
 
   publish-testpypi:
@@ -152,8 +158,10 @@ jobs:
     - name: Install flit
       run: pip install --upgrade pip "flit>=4.0.2,<5"
     - name: Build
+      working-directory: aiida-core
       run: flit build
     - name: Publish to TestPyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         repository-url: https://test.pypi.org/legacy/
+        packages-dir: aiida-core/dist

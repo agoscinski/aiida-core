@@ -12,8 +12,7 @@
 
 Each package owns its workflows (`<package>-<workflow>.yml`); shared
 build/test jobs live in `docker-*.yml`. Dashed arrows are
-composite-action usage (`install-package` is used by ~every test/build job,
-`slack-notification` only on install failures).
+composite-action usage (`install-package` is shared across test and build jobs).
 
 ```mermaid
 flowchart TB
@@ -50,7 +49,6 @@ flowchart TB
     subgraph actions["Composite actions"]
         direction LR
         INSTALL["install-package"]
-        SLACK["slack-notification"]
     end
 
     DOCKER --> DBUILD
@@ -66,7 +64,6 @@ flowchart TB
     BENCH -.-> INSTALL
     RELEASE -.-> INSTALL
     RELEASEATOM -.-> INSTALL
-    TESTINSTALL -.-> SLACK
 ```
 
 Trigger cheat-sheet (from each file's `on:`):

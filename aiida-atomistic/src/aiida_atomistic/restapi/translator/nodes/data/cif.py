@@ -17,7 +17,7 @@ class CifDataTranslator(DataTranslator):
     # A label associated to the present class (coincides with the resource name)
     __label__ = 'cifs'
     # The AiiDA class one-to-one associated to the present class
-    from aiida.orm import CifData
+    from aiida_atomistic.orm.nodes.data.cif import CifData
 
     _aiida_class = CifData
     # The string name of the AiiDA class

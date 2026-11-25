@@ -44,7 +44,7 @@ def upf_uploadfamily(folder, group_label, group_description, stop_if_existing):
 
     Call without parameters to get some help.
     """
-    from aiida.orm.nodes.data.upf import upload_upf_family
+    from aiida_atomistic.orm.nodes.data.upf import upload_upf_family
 
     files_found, files_uploaded = upload_upf_family(folder, group_label, group_description, stop_if_existing)
     echo.echo_success(f'UPF files found: {files_found}. New files uploaded: {files_uploaded}')
@@ -127,7 +127,7 @@ def upf_exportfamily(folder, group):
 @decorators.with_dbenv()
 def upf_import(filename):
     """Import a UPF pseudopotential from a file."""
-    from aiida.orm import UpfData
+    from aiida_atomistic.orm.nodes.data.upf import UpfData
 
     node, _ = UpfData.get_or_create(filename)
     echo.echo_success(f'Imported: {node}')

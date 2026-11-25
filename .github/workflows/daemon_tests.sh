@@ -5,7 +5,7 @@ set -ev
 SYSTEM_TESTS="${GITHUB_WORKSPACE}/.github/system_tests"
 MODULE_POLISH="${GITHUB_WORKSPACE}/.molecule/default/files/polish"
 
-export PYTHONPATH="${PYTHONPATH}:${SYSTEM_TESTS}:${MODULE_POLISH}"
+export PYTHONPATH="${PYTHONPATH}:${SYSTEM_TESTS}:${MODULE_POLISH}:${GITHUB_WORKSPACE}/aiida-core"
 
 verdi daemon start 4
 verdi -p test_aiida run ${SYSTEM_TESTS}/test_daemon.py

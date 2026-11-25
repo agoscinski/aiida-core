@@ -57,7 +57,7 @@ banned-from = ["typing"]  # Only listed from-imports are banned
 ban-relative-imports = "all"
 
 [lint.isort]
-known-first-party = ["aiida"]
+known-first-party = ["aiida", "aiida_atomistic"]
 
 # Mark some classes as generic, per https://docs.astral.sh/ruff/settings/#lint_pyflakes_extend-generics
 # Needed due to https://github.com/astral-sh/ruff/issues/9298

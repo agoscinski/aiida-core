@@ -17,7 +17,7 @@ class StructureDataTranslator(DataTranslator):
     # A label associated to the present class (coincides with the resource name)
     __label__ = 'structures'
     # The AiiDA class one-to-one associated to the present class
-    from aiida.orm import StructureData
+    from aiida_atomistic.orm.nodes.data.structure import StructureData
 
     _aiida_class = StructureData
     # The string name of the AiiDA class

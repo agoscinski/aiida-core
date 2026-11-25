@@ -64,6 +64,7 @@ jobs:
     - name: Install aiida-core
       uses: ./.github/actions/install-package
       with:
+        atomistic-shims: 'true'
         python-version: '3.11'
         from-lock: 'true'
 
@@ -71,11 +72,12 @@ jobs:
       run: .github/workflows/setup.sh
 
     - name: Run pytest nigthly tests
+      working-directory: aiida-core
       env:
         AIIDA_TEST_PROFILE: test_aiida
         AIIDA_WARN_v3: 1
       run: |
-        pytest --db-backend psql -m nightly aiida-core/tests/
+        pytest --db-backend psql -m nightly tests/
 
     - name: Run daemon nightly tests
       run: .github/workflows/daemon_tests.sh
@@ -109,6 +111,7 @@ jobs:
     - name: Install aiida-core
       uses: ./.github/actions/install-package
       with:
+        atomistic-shims: 'true'
         python-version: '3.11'
         from-lock: 'true'
 
@@ -119,9 +122,10 @@ jobs:
       run: verdi config set warnings.rabbitmq_version False
 
     - name: Run tests
+      working-directory: aiida-core
       env:
         AIIDA_WARN_v3: 0
-      run: pytest -s --db-backend sqlite -m 'requires_rmq' aiida-core/tests/
+      run: pytest -s --db-backend sqlite -m 'requires_rmq' tests/
 
   notify-maintainers:
 

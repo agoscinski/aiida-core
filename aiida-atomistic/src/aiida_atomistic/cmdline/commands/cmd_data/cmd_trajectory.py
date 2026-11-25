@@ -33,7 +33,7 @@ def trajectory_list(raw, past_days, groups, all_users):
     """List TrajectoryData objects stored in the database."""
     from tabulate import tabulate
 
-    from aiida.orm import TrajectoryData
+    from aiida_atomistic.orm.nodes.data.array.trajectory import TrajectoryData
 
     elements = None
     elements_only = False

@@ -56,11 +56,13 @@ jobs:
     - name: Install aiida-core
       uses: ./.github/actions/install-package
       with:
+        atomistic-shims: 'true'
         python-version: '3.10'
         from-lock: 'true'
 
     - name: Run benchmarks
-      run: pytest --db-backend psql --benchmark-only --benchmark-json benchmark.json aiida-core/tests/
+      working-directory: aiida-core
+      run: pytest --db-backend psql --benchmark-only --benchmark-json ../benchmark.json tests/
 
     - name: Store benchmark result
       uses: aiidateam/github-action-benchmark@v3

@@ -17,7 +17,7 @@ class KpointsDataTranslator(DataTranslator):
     # A label associated to the present class (coincides with the resource name)
     __label__ = 'kpoints'
     # The AiiDA class one-to-one associated to the present class
-    from aiida.orm import KpointsData
+    from aiida_atomistic.orm.nodes.data.array.kpoints import KpointsData
 
     _aiida_class = KpointsData
     # The string name of the AiiDA class

@@ -1,0 +1,64 @@
+# Standalone CI for the ``aiida-atomistic`` subpackage.
+# Kept separate from ``aiida-core-ci.yml`` on purpose: each subpackage owns its
+# workflow file so changes to the test setup stay explicit per package.
+name: aiida-atomistic-ci
+
+on:
+  push:
+    branches-ignore: [gh-pages]
+    paths: [aiida-atomistic/**]
+  pull_request:
+    branches-ignore: [gh-pages]
+    paths: [aiida-atomistic/**]
+
+jobs:
+  pytest:
+
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:10
+        env:
+          POSTGRES_DB: test_aiida
+          POSTGRES_PASSWORD: ''
+          POSTGRES_HOST_AUTH_METHOD: trust
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+        - 5432:5432
+      rabbitmq:
+        image: rabbitmq:3.8.14-management
+        ports:
+        - 5672:5672
+        - 15672:15672
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install system dependencies
+      run: sudo apt update && sudo apt install postgresql graphviz
+
+    - name: Install package
+      uses: ./.github/actions/install-package
+      with:
+        package: aiida-atomistic
+        python-version: '3.10'
+
+    - name: Setup SSH on localhost
+      run: .github/workflows/setup_ssh.sh
+
+    - name: Run test suite
+      # Run from the package directory: `tests/conftest.py` registers
+      # custom options (`--db-backend`, `--broker-backend`) via
+      # `pytest_addoption`, which pytest only picks up when `tests` is
+      # importable at option-parsing time (cwd on `sys.path`).
+      working-directory: aiida-atomistic
+      env:
+        AIIDA_TEST_PROFILE: test_aiida
+        AIIDA_WARN_v3: '1'
+      run: pytest -n auto -m 'not nightly' tests/

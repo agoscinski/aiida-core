@@ -11,9 +11,9 @@
 
 import pytest
 
-from aiida.common.datastructures import Orbital
 from aiida.common.exceptions import ValidationError
 from aiida.plugins import OrbitalFactory
+from aiida_atomistic.tools.data.orbital.orbital import Orbital
 
 
 class TestOrbital:

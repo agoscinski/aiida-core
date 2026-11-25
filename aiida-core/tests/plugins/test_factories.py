@@ -18,8 +18,8 @@ from aiida.orm.implementation.storage_backend import StorageBackend
 from aiida.parsers import Parser
 from aiida.plugins import entry_point, factories
 from aiida.schedulers import Scheduler
-from aiida.tools.dbimporters import DbImporter
 from aiida.transports import AsyncTransport, BlockingTransport, Transport
+from aiida_atomistic.tools.dbimporters import DbImporter
 
 
 def custom_load_entry_point(group, name):

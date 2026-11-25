@@ -63,6 +63,7 @@ jobs:
     - name: Install aiida-core
       uses: ./.github/actions/install-package
       with:
+        atomistic-shims: 'true'
         python-version: ${{ matrix.python-version }}
 
     - name: Setup environment
@@ -115,6 +116,7 @@ jobs:
     - name: Install aiida-core
       uses: ./.github/actions/install-package
       with:
+        atomistic-shims: 'true'
         python-version: ${{ matrix.python-version }}
         from-lock: 'false'
         extras: tests
@@ -165,6 +167,7 @@ jobs:
     - name: Install aiida-core
       uses: ./.github/actions/install-package
       with:
+        atomistic-shims: 'true'
         package: aiida-core
         python-version: '3.14'
 
@@ -189,6 +192,7 @@ jobs:
     - name: Install aiida-core
       uses: ./.github/actions/install-package
       with:
+        atomistic-shims: 'true'
         python-version: '3.14'
         from-lock: 'true'
         extras: ''
@@ -232,6 +236,7 @@ jobs:
     - name: Install aiida-core
       uses: ./.github/actions/install-package
       with:
+        atomistic-shims: 'true'
         python-version: '3.10'
         from-lock: 'true'
         extras: tests
@@ -249,5 +254,5 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         name: test-pytest-fixtures
-        files: ./coverage.xml
+        files: ./aiida-core/coverage.xml
         fail_ci_if_error: false  # don't fail job, if coverage upload fails
